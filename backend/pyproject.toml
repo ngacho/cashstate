@@ -1,0 +1,46 @@
+[project]
+name = "cashstate-backend"
+version = "1.0.0"
+description = "CashState - Budget tracking with Plaid-powered financial data syncing"
+requires-python = ">=3.11"
+dependencies = [
+    # FastAPI and server
+    "fastapi",
+    "uvicorn[standard]",
+    "python-multipart",
+    # Supabase
+    "supabase",
+    # Plaid
+    "plaid-python",
+    # Auth and security
+    "python-jose[cryptography]",
+    "passlib[bcrypt]",
+    "pyjwt",
+    # Validation and settings
+    "pydantic",
+    "pydantic-settings",
+    "email-validator",
+    # Utilities
+    "httpx",
+    "python-dateutil",
+    "pytz",
+    # Development
+    "python-dotenv",
+    "gotrue>=2.12.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest",
+    "pytest-asyncio",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

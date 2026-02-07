@@ -1,0 +1,148 @@
+# CashState Backend
+
+Budget tracking with Plaid-powered financial data syncing.
+
+## Tech Stack
+
+- **Framework**: FastAPI (Python 3.11+)
+- **Database**: Supabase (PostgreSQL)
+- **Auth**: Supabase Auth (JWT-based)
+- **Financial Data**: Plaid API
+- **Package Manager**: uv
+
+## Prerequisites
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/) - Fast Python package manager
+- A [Supabase](https://supabase.com) project
+- A [Plaid](https://plaid.com) account (sandbox is free)
+
+### Install uv
+
+```bash
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Or with Homebrew
+brew install uv
+```
+
+## Setup
+
+### 1. Install Dependencies
+
+```bash
+uv sync
+```
+
+### 2. Configure Environment
+
+Copy `.env.example` to `.env` and fill in your credentials:
+
+```bash
+cp .env.example .env
+```
+
+Required variables:
+- `SUPABASE_URL` - Your Supabase project URL
+- `SUPABASE_SECRET_KEY` - Secret API key (`sb_secret_...`) from Project Settings > API
+- `SUPABASE_PUBLISHABLE_KEY` - Publishable API key (`sb_publishable_...`) from Project Settings > API
+- `PLAID_CLIENT_ID` - From Plaid Dashboard > Keys
+- `PLAID_SECRET` - From Plaid Dashboard > Keys
+- `PLAID_ENV` - `sandbox`, `development`, or `production`
+
+### 3. Set Up Database
+
+Run the migration SQL in your Supabase SQL Editor:
+
+1. Go to Supabase Dashboard > SQL Editor
+2. Copy contents of `supabase/migrations/001_initial_schema.sql`
+3. Execute the SQL
+
+This creates the `users`, `plaid_items`, `transactions`, and `sync_jobs` tables with RLS policies.
+
+### 4. Run the Server
+
+```bash
+uv run uvicorn app.main:app --reload
+```
+
+API available at `http://localhost:8000`
+
+## Quick Start (All Steps)
+
+```bash
+# 1. Install dependencies
+uv sync
+
+# 2. Configure environment
+cp .env.example .env
+# Edit .env with your Supabase + Plaid credentials
+
+# 3. Set up database (run supabase/migrations/001_initial_schema.sql in Supabase SQL Editor)
+
+# 4. Run server
+uv run uvicorn app.main:app --reload
+```
+
+## API Documentation
+
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+
+## API Endpoints
+
+Base URL: `/app/v1`
+
+### Authentication
+- `POST /auth/register` - Register new user
+- `POST /auth/login` - Login
+- `POST /auth/refresh` - Refresh token
+
+### Plaid
+- `POST /plaid/create-link-token` - Create Plaid Link token for frontend
+- `POST /plaid/exchange-token` - Exchange public token, store Plaid item
+- `GET /plaid/items` - List connected institutions
+
+### Sync
+- `POST /sync/trigger` - Sync all connected accounts
+- `POST /sync/trigger/{item_id}` - Sync a specific account
+- `GET /sync/status` - List sync jobs
+- `GET /sync/status/{job_id}` - Get sync job details
+
+### Transactions
+- `GET /transactions` - List transactions (with date filters, pagination)
+- `GET /transactions/{id}` - Get single transaction
+
+## Project Structure
+
+```
+cashstate-backend/
+├── app/
+│   ├── main.py           # FastAPI app
+│   ├── config.py         # Settings (Supabase + Plaid)
+│   ├── database.py       # Supabase client + Database class
+│   ├── dependencies.py   # Auth + DB dependency injection
+│   ├── schemas/          # Request/response models
+│   │   ├── auth.py
+│   │   ├── common.py
+│   │   ├── plaid.py
+│   │   ├── sync.py
+│   │   └── transaction.py
+│   ├── routers/          # API routes
+│   │   ├── auth.py
+│   │   ├── plaid.py
+│   │   ├── sync.py
+│   │   └── transactions.py
+│   ├── services/         # Business logic
+│   │   ├── auth_service.py
+│   │   ├── plaid_service.py
+│   │   └── sync_service.py
+│   └── utils/
+├── supabase/
+│   └── migrations/
+│       └── 001_initial_schema.sql
+├── pyproject.toml
+├── uv.lock
+└── .env.example
+```
