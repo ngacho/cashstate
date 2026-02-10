@@ -114,6 +114,59 @@ Base URL: `/app/v1`
 - `GET /transactions` - List transactions (with date filters, pagination)
 - `GET /transactions/{id}` - Get single transaction
 
+## Testing
+
+The integration test runs the full Plaid flow against the sandbox — no Link UI needed.
+
+### Prerequisites
+
+1. Complete the [Setup](#setup) steps (database migration, `.env` configured)
+2. Add test user credentials to `.env`:
+   ```
+   TEST_USER_EMAIL=your-email@example.com
+   TEST_USER_PASSWORD=password
+   ```
+3. `PLAID_ENV` must be `sandbox`
+
+### Run all tests
+
+```bash
+uv run pytest tests/test_complete_run.py -v -s
+```
+
+### Run tests and stop at first failure
+
+```bash
+uv run pytest tests/test_complete_run.py -v -s -x
+```
+
+### Run specific tests
+
+```bash
+# Single test
+uv run pytest tests/test_complete_run.py::TestCompletePlaidFlow::test_01_login -v -s
+
+# Multiple tests (note: later tests depend on earlier ones for shared state)
+uv run pytest tests/test_complete_run.py -v -s -k "test_01 or test_02 or test_03"
+```
+
+**Flags:**
+- `-v` — verbose output (shows each test name)
+- `-s` — shows print output so you can see transaction details as each step runs
+- `-x` — stop at first failure
+- `-k "expr"` — run only tests matching the expression
+
+### What the test does
+
+1. Logs in (or registers) the test user
+2. Creates a sandbox public token via Plaid SDK (bypasses Link UI)
+3. Exchanges it through `POST /plaid/exchange-token`
+4. Triggers a transaction sync via `POST /sync/trigger/{item_id}`
+5. Verifies sync job completed with transactions added
+6. Fetches and validates transactions via `GET /transactions`
+7. Tests single transaction fetch and date filtering
+8. Triggers a sync-all via `POST /sync/trigger`
+
 ## Project Structure
 
 ```

@@ -1,479 +1,330 @@
 """
-Complete airport run test.
+Complete CashState integration test.
 
-This test simulates a full user journey through an airport:
-1. Register/login
-2. Add a flight
-3. Enter airport geofence
-4. Find nearby checkpoints
-5. Start security session
-6. End security session
-7. Start gate journey
-8. Add waypoints
-9. Start/end dwell at shop
-10. End journey at gate
-11. Submit feedback
+Tests the full Plaid integration flow against the sandbox:
+1. Login with test user
+2. Create a sandbox public token (bypasses Link UI)
+3. Exchange it via our API
+4. Trigger a transaction sync
+5. Fetch transactions
 """
 
+import os
 import pytest
-from datetime import datetime, timedelta, timezone
-import time
+import plaid
+from plaid.api import plaid_api
+from plaid.model.sandbox_public_token_create_request import SandboxPublicTokenCreateRequest
+from plaid.model.products import Products
 
 
-class TestCompleteAirportRun:
-    """Test complete airport journey flow."""
+class TestCompletePlaidFlow:
+    """Test complete Plaid integration flow."""
 
-    # Store state between tests
     access_token: str = None
     user_id: str = None
-    flight_id: str = None
-    checkpoint_id: str = None
-    session_id: str = None
-    journey_id: str = None
-    gate_id: str = None
+    plaid_item_id: str = None
+    sync_job_id: str = None
 
     @pytest.fixture(autouse=True)
     def setup(self, client):
-        """Store client for all tests."""
         self.client = client
         self.base_url = "/app/v1"
 
     def get_headers(self):
-        """Get authorization headers."""
         return {"Authorization": f"Bearer {self.access_token}"}
 
     # =========================================
-    # Step 1: Register/Login
+    # Step 1: Login
     # =========================================
-    def test_01_register_user(self):
-        """Step 1: Login (or register) a user."""
-        import os
+    def test_01_login(self):
+        """Login with the test user."""
         email = os.getenv("TEST_USER_EMAIL")
-        if not email:
-            pytest.skip("TEST_USER_EMAIL not set in environment")
-
         password = os.getenv("TEST_USER_PASSWORD", "TestRunner123!")
 
-        # Try login first (user may already exist)
-        login_response = self.client.post(
+        if not email:
+            pytest.skip("TEST_USER_EMAIL not set")
+
+        # Try login first
+        response = self.client.post(
             f"{self.base_url}/auth/login",
             json={"email": email, "password": password},
         )
 
-        if login_response.status_code == 200:
-            data = login_response.json()
-            TestCompleteAirportRun.access_token = data["access_token"]
-            TestCompleteAirportRun.user_id = data["user_id"]
-            assert data["access_token"] is not None
+        if response.status_code == 200:
+            data = response.json()
+            TestCompletePlaidFlow.access_token = data["access_token"]
+            TestCompletePlaidFlow.user_id = data["user_id"]
+            print(f"Logged in as {email}, user_id={data['user_id']}")
             return
 
-        # If login fails, try registration
+        # Try register
         response = self.client.post(
             f"{self.base_url}/auth/register",
             json={
                 "email": email,
                 "password": password,
-                "display_name": "Airport Runner",
+                "display_name": "CashState Tester",
             },
         )
 
         if response.status_code == 201:
             data = response.json()
-            TestCompleteAirportRun.access_token = data["access_token"]
-            TestCompleteAirportRun.user_id = data["user_id"]
-            assert data["access_token"] is not None
+            TestCompletePlaidFlow.access_token = data["access_token"]
+            TestCompletePlaidFlow.user_id = data["user_id"]
+            print(f"Registered as {email}, user_id={data['user_id']}")
         else:
-            pytest.fail(f"Login failed: {login_response.json()}, Register failed: {response.json()}")
+            pytest.fail(f"Could not login or register: {response.json()}")
 
-    def test_02_get_user_profile(self):
-        """Verify user profile can be retrieved."""
-        if not self.access_token:
-            pytest.skip("No access token")
-
-        response = self.client.get(
-            f"{self.base_url}/users/me",
-            headers=self.get_headers(),
-        )
-
+    # =========================================
+    # Step 2: Health check
+    # =========================================
+    def test_02_health_check(self):
+        """Verify server is healthy."""
+        response = self.client.get("/health")
         assert response.status_code == 200
         data = response.json()
-        assert data["email"] is not None
-        assert data["total_xp"] == 0
-        assert data["level"] == 1
+        assert data["status"] == "healthy"
+        assert data["app"] == "CashState"
+        print(f"Health: {data}")
 
     # =========================================
-    # Step 2: Add a Flight
+    # Step 3: Create sandbox public token directly via Plaid SDK
     # =========================================
-    def test_03_create_flight(self):
-        """Step 2: Add an upcoming flight."""
+    def test_03_create_sandbox_token_and_exchange(self):
+        """Create a Plaid sandbox public token and exchange it."""
         if not self.access_token:
             pytest.skip("No access token")
 
-        departure = datetime.now(timezone.utc) + timedelta(hours=3)
+        client_id = os.getenv("PLAID_CLIENT_ID")
+        secret = os.getenv("PLAID_SECRET")
 
-        response = self.client.post(
-            f"{self.base_url}/flights",
+        if not client_id or not secret:
+            pytest.skip("PLAID_CLIENT_ID or PLAID_SECRET not set")
+
+        # Create sandbox public token directly via Plaid API
+        configuration = plaid.Configuration(
+            host=plaid.Environment.Sandbox,
+            api_key={
+                "clientId": client_id,
+                "secret": secret,
+            },
+        )
+        api_client = plaid.ApiClient(configuration)
+        plaid_client = plaid_api.PlaidApi(api_client)
+
+        # Use sandbox institution "First Platypus Bank"
+        request = SandboxPublicTokenCreateRequest(
+            institution_id="ins_109508",
+            initial_products=[Products("transactions")],
+        )
+        response = plaid_client.sandbox_public_token_create(request)
+        public_token = response.public_token
+        print(f"Got sandbox public_token: {public_token[:20]}...")
+
+        # Exchange via our API
+        exchange_response = self.client.post(
+            f"{self.base_url}/plaid/exchange-token",
             headers=self.get_headers(),
             json={
-                "flight_number": "AA100",
-                "airline": "American Airlines",
-                "departure_airport": "LAX",
-                "arrival_airport": "JFK",
-                "departure_time": departure.isoformat(),
+                "public_token": public_token,
+                "institution_id": "ins_109508",
+                "institution_name": "First Platypus Bank",
             },
         )
 
-        assert response.status_code == 201
-        data = response.json()
-        TestCompleteAirportRun.flight_id = data["id"]
-        assert data["flight_number"] == "AA100"
-        assert data["status"] == "scheduled"
+        assert exchange_response.status_code == 200, f"Exchange failed: {exchange_response.json()}"
+        data = exchange_response.json()
+        TestCompletePlaidFlow.plaid_item_id = data["item_id"]
+        print(f"Exchanged token, item_id={data['item_id']}")
+        print(f"Institution: {data['institution_name']}")
 
-    def test_04_list_flights(self):
-        """Verify flight appears in list."""
+    # =========================================
+    # Step 4: List Plaid items
+    # =========================================
+    def test_04_list_plaid_items(self):
+        """Verify our Plaid item shows up."""
         if not self.access_token:
             pytest.skip("No access token")
 
         response = self.client.get(
-            f"{self.base_url}/flights",
+            f"{self.base_url}/plaid/items",
             headers=self.get_headers(),
         )
 
         assert response.status_code == 200
-        data = response.json()
-        assert len(data) >= 1
-        assert any(f["id"] == self.flight_id for f in data)
+        items = response.json()
+        assert len(items) >= 1
+        print(f"Found {len(items)} Plaid item(s)")
+
+        # Find our item
+        our_item = next((i for i in items if i["id"] == self.plaid_item_id), None)
+        if our_item:
+            assert our_item["status"] == "active"
+            assert our_item["institution_name"] == "First Platypus Bank"
+            print(f"Item status: {our_item['status']}")
 
     # =========================================
-    # Step 3: Enter Airport Geofence
+    # Step 5: Trigger sync
     # =========================================
-    def test_05_enter_airport_geofence(self):
-        """Step 3: Enter LAX airport geofence."""
-        if not self.access_token:
-            pytest.skip("No access token")
+    def test_05_trigger_sync(self):
+        """Trigger transaction sync for our Plaid item."""
+        if not self.access_token or not self.plaid_item_id:
+            pytest.skip("No Plaid item to sync")
 
         response = self.client.post(
-            f"{self.base_url}/location/geofence/enter",
+            f"{self.base_url}/sync/trigger/{self.plaid_item_id}",
             headers=self.get_headers(),
-            json={
-                "airport_code": "LAX",
-                "latitude": 33.9425,
-                "longitude": -118.4081,
-                "flight_id": self.flight_id,
-            },
+        )
+
+        assert response.status_code == 200, f"Sync trigger failed: {response.json()}"
+        data = response.json()
+        assert len(data["job_ids"]) == 1
+        TestCompletePlaidFlow.sync_job_id = data["job_ids"][0]
+        print(f"Sync triggered, job_id={data['job_ids'][0]}")
+        print(f"Message: {data['message']}")
+
+    # =========================================
+    # Step 6: Check sync status
+    # =========================================
+    def test_06_check_sync_status(self):
+        """Check the sync job completed."""
+        if not self.access_token or not self.sync_job_id:
+            pytest.skip("No sync job to check")
+
+        response = self.client.get(
+            f"{self.base_url}/sync/status/{self.sync_job_id}",
+            headers=self.get_headers(),
         )
 
         assert response.status_code == 200
         data = response.json()
-        assert data["airport_code"] == "LAX"
-        assert "Welcome" in data["message"] or "Already" in data["message"]
+        print(f"Sync job status: {data['status']}")
+        print(f"  Added: {data['transactions_added']}")
+        print(f"  Modified: {data['transactions_modified']}")
+        print(f"  Removed: {data['transactions_removed']}")
+
+        assert data["status"] == "completed"
+        assert data["transactions_added"] > 0, "Expected sandbox to provide transactions"
 
     # =========================================
-    # Step 4: Find Nearby Checkpoints
+    # Step 7: List all sync jobs
     # =========================================
-    def test_06_find_nearby_checkpoints(self):
-        """Step 4: Find checkpoints near current location."""
+    def test_07_list_sync_jobs(self):
+        """List all sync jobs for the user."""
         if not self.access_token:
             pytest.skip("No access token")
 
         response = self.client.get(
-            f"{self.base_url}/checkpoints/nearby",
+            f"{self.base_url}/sync/status",
+            headers=self.get_headers(),
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["jobs"]) >= 1
+        print(f"Total sync jobs: {len(data['jobs'])}")
+
+    # =========================================
+    # Step 8: Fetch transactions
+    # =========================================
+    def test_08_list_transactions(self):
+        """Fetch synced transactions."""
+        if not self.access_token:
+            pytest.skip("No access token")
+
+        response = self.client.get(
+            f"{self.base_url}/transactions",
+            headers=self.get_headers(),
+            params={"limit": 10},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        print(f"Total transactions: {data['total']}")
+        print(f"Returned: {len(data['items'])}")
+        assert data["total"] > 0, "Expected transactions from sandbox sync"
+        assert len(data["items"]) > 0
+
+        # Check first transaction has expected fields
+        txn = data["items"][0]
+        print(f"Sample transaction:")
+        print(f"  Name: {txn['name']}")
+        print(f"  Amount: {txn['amount']} {txn.get('iso_currency_code', 'USD')}")
+        print(f"  Date: {txn['date']}")
+        print(f"  Merchant: {txn.get('merchant_name', 'N/A')}")
+        print(f"  Pending: {txn['pending']}")
+
+        assert txn["name"] is not None
+        assert txn["amount"] is not None
+        assert txn["date"] is not None
+
+    # =========================================
+    # Step 9: Get single transaction
+    # =========================================
+    def test_09_get_single_transaction(self):
+        """Fetch a single transaction by ID."""
+        if not self.access_token:
+            pytest.skip("No access token")
+
+        # First get a transaction ID
+        list_response = self.client.get(
+            f"{self.base_url}/transactions",
+            headers=self.get_headers(),
+            params={"limit": 1},
+        )
+        items = list_response.json()["items"]
+        if not items:
+            pytest.skip("No transactions to fetch")
+
+        txn_id = items[0]["id"]
+
+        response = self.client.get(
+            f"{self.base_url}/transactions/{txn_id}",
+            headers=self.get_headers(),
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == txn_id
+        print(f"Got transaction {txn_id}: {data['name']} ${data['amount']}")
+
+    # =========================================
+    # Step 10: Test date filtering
+    # =========================================
+    def test_10_filter_transactions_by_date(self):
+        """Test transaction date filtering."""
+        if not self.access_token:
+            pytest.skip("No access token")
+
+        # Filter to a narrow date range that should return fewer results
+        response = self.client.get(
+            f"{self.base_url}/transactions",
             headers=self.get_headers(),
             params={
-                "latitude": 33.9435,  # Slightly offset to be near a checkpoint
-                "longitude": -118.4071,
-                "radius": 5000,
+                "date_from": "2024-01-01",
+                "date_to": "2024-01-31",
+                "limit": 5,
             },
         )
 
         assert response.status_code == 200
         data = response.json()
-
-        if data:
-            # Use the first checkpoint found
-            TestCompleteAirportRun.checkpoint_id = data[0]["checkpoint"]["id"]
-            assert data[0]["distance_meters"] >= 0
-
-    def test_07_get_airport_comparison(self):
-        """Get checkpoint comparison for LAX."""
-        if not self.access_token:
-            pytest.skip("No access token")
-
-        response = self.client.get(
-            f"{self.base_url}/checkpoints/airports/LAX/comparison",
-            headers=self.get_headers(),
-        )
-
-        # May be 404 if no checkpoints seeded
-        if response.status_code == 200:
-            data = response.json()
-            assert data["airport_code"] == "LAX"
-
-            # Get a checkpoint ID if we don't have one
-            if not self.checkpoint_id and data.get("checkpoints"):
-                TestCompleteAirportRun.checkpoint_id = data["checkpoints"][0]["id"]
+        print(f"Transactions in Jan 2024: {data['total']}")
 
     # =========================================
-    # Step 5: Start Security Session
+    # Step 11: Trigger sync-all
     # =========================================
-    def test_08_start_security_session(self):
-        """Step 5: Start timing security checkpoint."""
-        if not self.access_token:
-            pytest.skip("No access token")
-        if not self.checkpoint_id:
-            pytest.skip("No checkpoint ID - seed database first")
-
-        response = self.client.post(
-            f"{self.base_url}/sessions/security/start",
-            headers=self.get_headers(),
-            json={
-                "checkpoint_id": self.checkpoint_id,
-                "flight_id": self.flight_id,
-                "estimated_wait_minutes": 15,
-            },
-        )
-
-        assert response.status_code == 201
-        data = response.json()
-        TestCompleteAirportRun.session_id = data["id"]
-        assert data["checkpoint_id"] == self.checkpoint_id
-
-    def test_09_check_active_session(self):
-        """Verify active session exists."""
-        if not self.access_token:
-            pytest.skip("No access token")
-
-        response = self.client.get(
-            f"{self.base_url}/sessions/security/active",
-            headers=self.get_headers(),
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-
-        if data:
-            assert data["session"]["id"] == self.session_id
-            assert data["elapsed_seconds"] >= 0
-
-    # =========================================
-    # Step 6: End Security Session
-    # =========================================
-    def test_10_end_security_session(self):
-        """Step 6: Complete security and get results."""
-        if not self.access_token or not self.session_id:
-            pytest.skip("No session to end")
-
-        # Wait a moment to accumulate some time
-        time.sleep(1)
-
-        response = self.client.post(
-            f"{self.base_url}/sessions/security/{self.session_id}/end",
-            headers=self.get_headers(),
-            json={},
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["ended_at"] is not None
-        assert data["xp_earned"] >= 0
-        assert data["actual_wait_minutes"] is not None
-
-    # =========================================
-    # Step 7: Start Gate Journey
-    # =========================================
-    def test_11_get_gate_info(self):
-        """Get a gate to journey to."""
-        if not self.access_token:
-            pytest.skip("No access token")
-
-        # Get gates at LAX
-        from app.database import get_supabase_client
-
-        try:
-            client = get_supabase_client()
-            result = client.table("gates").select("id").eq("airport_code", "LAX").limit(1).execute()
-            if result.data:
-                TestCompleteAirportRun.gate_id = result.data[0]["id"]
-        except Exception:
-            pass  # Will skip journey tests if no gates
-
-    def test_12_start_gate_journey(self):
-        """Step 7: Start journey to gate."""
+    def test_11_trigger_sync_all(self):
+        """Trigger sync for all items."""
         if not self.access_token:
             pytest.skip("No access token")
 
         response = self.client.post(
-            f"{self.base_url}/journeys/start",
-            headers=self.get_headers(),
-            json={
-                "flight_id": self.flight_id,
-                "security_session_id": self.session_id,
-                "origin_checkpoint_id": self.checkpoint_id,
-                "destination_gate_id": self.gate_id,
-                "latitude": 33.9430,
-                "longitude": -118.4075,
-            },
-        )
-
-        assert response.status_code == 201
-        data = response.json()
-        TestCompleteAirportRun.journey_id = data["id"]
-
-    # =========================================
-    # Step 8: Add Waypoints
-    # =========================================
-    def test_13_add_waypoint(self):
-        """Step 8: Record location during journey."""
-        if not self.access_token or not self.journey_id:
-            pytest.skip("No journey to add waypoint to")
-
-        response = self.client.post(
-            f"{self.base_url}/journeys/{self.journey_id}/waypoint",
-            headers=self.get_headers(),
-            json={
-                "latitude": 33.9435,
-                "longitude": -118.4070,
-                "accuracy": 10.0,
-            },
-        )
-
-        assert response.status_code == 200
-
-    # =========================================
-    # Step 9: Start/End Dwell at Shop
-    # =========================================
-    def test_14_start_dwell(self):
-        """Step 9a: Stop at a shop."""
-        if not self.access_token or not self.journey_id:
-            pytest.skip("No journey for dwell")
-
-        response = self.client.post(
-            f"{self.base_url}/journeys/{self.journey_id}/dwell/start",
-            headers=self.get_headers(),
-            json={
-                "location_type": "shop",
-                "location_name": "Hudson News",
-                "latitude": 33.9437,
-                "longitude": -118.4068,
-            },
-        )
-
-        assert response.status_code == 201
-
-    def test_15_end_dwell(self):
-        """Step 9b: Leave the shop."""
-        if not self.access_token or not self.journey_id:
-            pytest.skip("No journey for dwell")
-
-        time.sleep(1)  # Spend some time at shop
-
-        response = self.client.post(
-            f"{self.base_url}/journeys/{self.journey_id}/dwell/end",
-            headers=self.get_headers(),
-            json={},
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["duration_seconds"] is not None
-
-    # =========================================
-    # Step 10: End Journey at Gate
-    # =========================================
-    def test_16_end_journey(self):
-        """Step 10: Arrive at gate and complete journey."""
-        if not self.access_token or not self.journey_id:
-            pytest.skip("No journey to end")
-
-        response = self.client.post(
-            f"{self.base_url}/journeys/{self.journey_id}/end",
-            headers=self.get_headers(),
-            json={
-                "latitude": 33.9440,
-                "longitude": -118.4060,
-            },
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["ended_at"] is not None
-        assert data["total_duration_seconds"] is not None
-        assert data["xp_earned"] >= 0
-
-    # =========================================
-    # Step 11: Submit Feedback
-    # =========================================
-    def test_17_get_journey_summary(self):
-        """Get summary of the journey."""
-        if not self.access_token or not self.flight_id:
-            pytest.skip("No flight for summary")
-
-        response = self.client.get(
-            f"{self.base_url}/flights/{self.flight_id}/journey-summary",
+            f"{self.base_url}/sync/trigger",
             headers=self.get_headers(),
         )
 
         assert response.status_code == 200
         data = response.json()
-        assert data["flight_id"] == self.flight_id
-        assert data["total_xp_earned"] >= 0
-
-    def test_18_submit_feedback(self):
-        """Step 11: Submit feedback about the experience."""
-        if not self.access_token or not self.flight_id:
-            pytest.skip("No flight for feedback")
-
-        response = self.client.post(
-            f"{self.base_url}/flights/{self.flight_id}/feedback",
-            headers=self.get_headers(),
-            json={
-                "security_session_id": self.session_id,
-                "checkpoint_id": self.checkpoint_id,
-                "rating": 4,
-                "wait_accuracy": "accurate",
-                "comments": "Smooth experience, thanks!",
-            },
-        )
-
-        # May be 400 if feedback already submitted
-        assert response.status_code in [201, 400]
-
-        if response.status_code == 201:
-            data = response.json()
-            assert data["rating"] == 4
-            assert data["xp_earned"] > 0
-
-    # =========================================
-    # Final: Check User Stats
-    # =========================================
-    def test_19_check_user_stats(self):
-        """Verify user stats were updated."""
-        if not self.access_token:
-            pytest.skip("No access token")
-
-        response = self.client.get(
-            f"{self.base_url}/users/me/stats",
-            headers=self.get_headers(),
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["total_xp"] >= 0
-        assert data["total_flights"] >= 1
-        assert data["total_security_sessions"] >= 0
-
-    def test_20_check_final_xp(self):
-        """Verify XP was earned."""
-        if not self.access_token:
-            pytest.skip("No access token")
-
-        response = self.client.get(
-            f"{self.base_url}/users/me",
-            headers=self.get_headers(),
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        # Should have earned XP from security session, journey, and feedback
-        print(f"Final XP: {data['total_xp']}")
-        print(f"Final Level: {data['level']}")
+        print(f"Sync-all: {data['message']}")
+        print(f"Job IDs: {data['job_ids']}")

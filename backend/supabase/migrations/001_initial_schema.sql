@@ -15,6 +15,10 @@ create policy "Users can read own profile"
     on public.users for select
     using (auth.uid() = id);
 
+create policy "Users can insert own profile"
+    on public.users for insert
+    with check (auth.uid() = id);
+
 create policy "Users can update own profile"
     on public.users for update
     using (auth.uid() = id);
@@ -37,6 +41,14 @@ alter table public.plaid_items enable row level security;
 
 create policy "Users can read own plaid items"
     on public.plaid_items for select
+    using (auth.uid() = user_id);
+
+create policy "Users can insert own plaid items"
+    on public.plaid_items for insert
+    with check (auth.uid() = user_id);
+
+create policy "Users can update own plaid items"
+    on public.plaid_items for update
     using (auth.uid() = user_id);
 
 create index idx_plaid_items_user_id on public.plaid_items(user_id);
@@ -69,6 +81,30 @@ create policy "Users can read own transactions"
         )
     );
 
+create policy "Users can insert own transactions"
+    on public.transactions for insert
+    with check (
+        plaid_item_id in (
+            select id from public.plaid_items where user_id = auth.uid()
+        )
+    );
+
+create policy "Users can update own transactions"
+    on public.transactions for update
+    using (
+        plaid_item_id in (
+            select id from public.plaid_items where user_id = auth.uid()
+        )
+    );
+
+create policy "Users can delete own transactions"
+    on public.transactions for delete
+    using (
+        plaid_item_id in (
+            select id from public.plaid_items where user_id = auth.uid()
+        )
+    );
+
 create index idx_transactions_plaid_item_id on public.transactions(plaid_item_id);
 create index idx_transactions_date on public.transactions(date desc);
 create index idx_transactions_plaid_transaction_id on public.transactions(plaid_transaction_id);
@@ -91,6 +127,22 @@ alter table public.sync_jobs enable row level security;
 
 create policy "Users can read own sync jobs"
     on public.sync_jobs for select
+    using (
+        plaid_item_id in (
+            select id from public.plaid_items where user_id = auth.uid()
+        )
+    );
+
+create policy "Users can insert own sync jobs"
+    on public.sync_jobs for insert
+    with check (
+        plaid_item_id in (
+            select id from public.plaid_items where user_id = auth.uid()
+        )
+    );
+
+create policy "Users can update own sync jobs"
+    on public.sync_jobs for update
     using (
         plaid_item_id in (
             select id from public.plaid_items where user_id = auth.uid()

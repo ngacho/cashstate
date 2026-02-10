@@ -5,10 +5,9 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from jwt import PyJWKClient
-from supabase import Client
 
 from app.config import get_settings, Settings
-from app.database import get_db, Database
+from app.database import get_authenticated_postgrest_client, Database
 
 
 security = HTTPBearer()
@@ -34,15 +33,17 @@ def get_jwks_client(settings: Settings) -> PyJWKClient:
     return _jwks_client
 
 
-async def get_current_user(
+async def get_current_user_with_token(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     settings: Settings = Depends(get_settings),
-    db: Client = Depends(get_db),
-) -> dict:
+) -> tuple[dict, str]:
     """
-    Validate JWT token using JWKS and return current user.
+    Validate JWT token using JWKS and return (user_dict, token).
 
-    Uses Supabase's JWKS endpoint for public key verification.
+    Core dependency: validates the JWT, fetches or auto-creates the user
+    profile, and returns both the user dict and the raw access token.
+    FastAPI caches this per-request so it only runs once even when
+    both get_current_user and get_database depend on it.
     """
     token = credentials.credentials
 
@@ -87,8 +88,9 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Fetch user from database
-    database = Database(db)
+    # Use the authenticated client for DB operations (RLS-aware)
+    client = get_authenticated_postgrest_client(token)
+    database = Database(client)
     user = database.get_user_by_id(user_id)
 
     if user is None:
@@ -106,7 +108,27 @@ async def get_current_user(
                 detail="Failed to create user record",
             )
 
+    return user, token
+
+
+async def get_current_user(
+    user_and_token: tuple[dict, str] = Depends(get_current_user_with_token),
+) -> dict:
+    """Return just the user dict. Drop-in replacement for existing router usage."""
+    user, _token = user_and_token
     return user
+
+
+async def get_database(
+    user_and_token: tuple[dict, str] = Depends(get_current_user_with_token),
+) -> Database:
+    """Get a Database instance authenticated with the current user's JWT.
+
+    PostgREST sees auth.uid() from the JWT, so RLS policies work.
+    """
+    _user, token = user_and_token
+    client = get_authenticated_postgrest_client(token)
+    return Database(client)
 
 
 async def get_optional_user(
@@ -114,7 +136,6 @@ async def get_optional_user(
         HTTPBearer(auto_error=False)
     ),
     settings: Settings = Depends(get_settings),
-    db: Client = Depends(get_db),
 ) -> dict | None:
     """
     Optionally validate JWT token and return user if present.
@@ -126,13 +147,15 @@ async def get_optional_user(
         return None
 
     try:
+        token = credentials.credentials
+
         # Get the signing key from JWKS
         jwks_client = get_jwks_client(settings)
-        signing_key = jwks_client.get_signing_key_from_jwt(credentials.credentials)
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
 
         # Verify and decode the JWT
         payload = jwt.decode(
-            credentials.credentials,
+            token,
             signing_key.key,
             algorithms=["RS256", "ES256"],
             audience="authenticated",
@@ -143,13 +166,9 @@ async def get_optional_user(
         if user_id is None:
             return None
 
-        database = Database(db)
+        client = get_authenticated_postgrest_client(token)
+        database = Database(client)
         return database.get_user_by_id(user_id)
 
     except Exception:
         return None
-
-
-def get_database(db: Client = Depends(get_db)) -> Database:
-    """Get Database helper instance."""
-    return Database(db)

@@ -3,7 +3,7 @@
 from supabase import Client
 from gotrue.errors import AuthApiError
 
-from app.database import Database
+from app.database import Database, get_authenticated_postgrest_client
 
 
 class AuthService:
@@ -39,14 +39,22 @@ class AuthService:
 
         user_id = auth_response.user.id
 
-        # Create user profile in our users table
+        # Create user profile in our users table using the new session's JWT
+        # so PostgREST sees auth.uid() and RLS policies allow the insert.
         user_data = {
             "id": user_id,
             "email": email,
             "display_name": display_name,
         }
 
-        self.db.create_user(user_data)
+        if auth_response.session and auth_response.session.access_token:
+            user_db = Database(
+                get_authenticated_postgrest_client(auth_response.session.access_token)
+            )
+            user_db.create_user(user_data)
+        else:
+            # Fallback: no session (e.g. email confirmation required)
+            self.db.create_user(user_data)
 
         return {
             "user_id": user_id,

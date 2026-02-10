@@ -2,13 +2,18 @@
 
 from functools import lru_cache
 from supabase import create_client, Client
+from postgrest import SyncPostgrestClient
 
 from app.config import get_settings
 
 
 @lru_cache
 def get_supabase_client() -> Client:
-    """Get cached Supabase client instance using secret key."""
+    """Get cached Supabase client instance using secret key.
+
+    Used for GoTrue auth operations (sign_up, sign_in, refresh).
+    NOT suitable for RLS-protected table operations.
+    """
     settings = get_settings()
     return create_client(
         settings.supabase_url,
@@ -16,15 +21,32 @@ def get_supabase_client() -> Client:
     )
 
 
+def get_authenticated_postgrest_client(access_token: str) -> SyncPostgrestClient:
+    """Create a PostgREST client authenticated with the user's JWT.
+
+    Bypasses the Supabase Client (whose auth listener overwrites the
+    Authorization header) and talks to PostgREST directly with the
+    anon key as apikey and the user's JWT as Authorization.
+    """
+    settings = get_settings()
+    return SyncPostgrestClient(
+        base_url=f"{settings.supabase_url}/rest/v1",
+        headers={
+            "apikey": settings.supabase_publishable_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+    )
+
+
 def get_db() -> Client:
-    """Dependency for getting Supabase client in routes."""
+    """Dependency for getting Supabase admin client in routes."""
     return get_supabase_client()
 
 
 class Database:
     """Database helper class for CashState operations."""
 
-    def __init__(self, client: Client):
+    def __init__(self, client: Client | SyncPostgrestClient):
         self.client = client
 
     # --- Users ---
@@ -125,6 +147,10 @@ class Database:
         )
         return result.data[0] if result.data else None
 
+    def _get_user_plaid_item_ids(self, user_id: str) -> list[str]:
+        items = self.get_user_plaid_items(user_id)
+        return [item["id"] for item in items]
+
     def get_user_transactions(
         self,
         user_id: str,
@@ -133,10 +159,13 @@ class Database:
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict]:
+        item_ids = self._get_user_plaid_item_ids(user_id)
+        if not item_ids:
+            return []
         query = (
             self.client.table("transactions")
-            .select("*, plaid_items!inner(user_id)")
-            .eq("plaid_items.user_id", user_id)
+            .select("*")
+            .in_("plaid_item_id", item_ids)
         )
         if date_from:
             query = query.gte("date", date_from)
@@ -155,10 +184,13 @@ class Database:
         date_from: str | None = None,
         date_to: str | None = None,
     ) -> int:
+        item_ids = self._get_user_plaid_item_ids(user_id)
+        if not item_ids:
+            return 0
         query = (
             self.client.table("transactions")
             .select("id", count="exact")
-            .eq("plaid_items.user_id", user_id)
+            .in_("plaid_item_id", item_ids)
         )
         if date_from:
             query = query.gte("date", date_from)
@@ -178,10 +210,13 @@ class Database:
         return result.data[0] if result.data else None
 
     def get_sync_jobs_for_user(self, user_id: str, limit: int = 20) -> list[dict]:
+        item_ids = self._get_user_plaid_item_ids(user_id)
+        if not item_ids:
+            return []
         result = (
             self.client.table("sync_jobs")
-            .select("*, plaid_items!inner(user_id)")
-            .eq("plaid_items.user_id", user_id)
+            .select("*")
+            .in_("plaid_item_id", item_ids)
             .order("created_at", desc=True)
             .limit(limit)
             .execute()

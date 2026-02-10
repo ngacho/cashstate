@@ -18,7 +18,7 @@ def _get_plaid_client() -> plaid_api.PlaidApi:
 
     env_map = {
         "sandbox": plaid.Environment.Sandbox,
-        "development": plaid.Environment.Development,
+        "development": plaid.Environment.Sandbox,  # Plaid SDK only has Sandbox/Production
         "production": plaid.Environment.Production,
     }
 

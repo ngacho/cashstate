@@ -1,0 +1,1 @@
+Update project specific readme with commands on how to run simple things to the project, starting up, running tests etc if they're not present already
