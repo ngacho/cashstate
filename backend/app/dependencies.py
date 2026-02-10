@@ -7,7 +7,7 @@ import jwt
 from jwt import PyJWKClient
 
 from app.config import get_settings, Settings
-from app.database import get_authenticated_postgrest_client, Database
+from app.database import get_authenticated_postgrest_client, Database, get_db
 
 
 security = HTTPBearer()
@@ -88,9 +88,10 @@ async def get_current_user_with_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Use the authenticated client for DB operations (RLS-aware)
-    client = get_authenticated_postgrest_client(token)
-    database = Database(client)
+    # Use admin client for DB operations (bypasses RLS)
+    # Authorization is enforced by JWT validation above
+    admin_client = get_db()
+    database = Database(admin_client)
     user = database.get_user_by_id(user_id)
 
     if user is None:
@@ -126,8 +127,9 @@ async def get_database(
 
     PostgREST sees auth.uid() from the JWT, so RLS policies work.
     """
-    _user, token = user_and_token
-    client = get_authenticated_postgrest_client(token)
+    _user, _token = user_and_token
+    # Use admin client - user authorization already verified above
+    client = get_db()
     return Database(client)
 
 

@@ -21,6 +21,21 @@ def get_supabase_client() -> Client:
     )
 
 
+def get_admin_client() -> Client:
+    """Get Supabase admin client using service_role key (NO CACHE).
+
+    Bypasses RLS - use for backend operations where authorization
+    is handled at the application level.
+
+    Note: Not cached to avoid shared state issues across requests.
+    """
+    settings = get_settings()
+    return create_client(
+        settings.supabase_url,
+        settings.supabase_service_role_key
+    )
+
+
 def get_authenticated_postgrest_client(access_token: str) -> SyncPostgrestClient:
     """Create a PostgREST client authenticated with the user's JWT.
 
@@ -40,7 +55,7 @@ def get_authenticated_postgrest_client(access_token: str) -> SyncPostgrestClient
 
 def get_db() -> Client:
     """Dependency for getting Supabase admin client in routes."""
-    return get_supabase_client()
+    return get_admin_client()
 
 
 class Database:
