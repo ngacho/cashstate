@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     # API
     api_v1_prefix: str = "/app/v1"
 
+    # Encryption
+    encryption_key: str  # Fernet key for encrypting sensitive data (Plaid tokens, etc.)
+
     @property
     def is_development(self) -> bool:
         return self.app_env == "development"

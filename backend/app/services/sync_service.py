@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from app.database import Database
 from app.services import plaid_service
+from app.utils.encryption import decrypt_token
 
 
 def sync_item(db: Database, plaid_item_id: str) -> dict:
@@ -42,7 +43,9 @@ def sync_item(db: Database, plaid_item_id: str) -> dict:
         if item is None:
             raise ValueError(f"Plaid item {plaid_item_id} not found")
 
-        access_token = item["access_token"]
+        # Decrypt the access token before using it
+        encrypted_token = item["access_token"]
+        access_token = decrypt_token(encrypted_token)
         cursor = item.get("cursor")
 
         # Mark job as in_progress

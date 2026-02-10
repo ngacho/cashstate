@@ -12,6 +12,7 @@ from app.schemas.plaid import (
     PlaidItemResponse,
 )
 from app.services import plaid_service
+from app.utils.encryption import encrypt_token
 
 
 router = APIRouter(prefix="/plaid", tags=["Plaid"])
@@ -38,15 +39,18 @@ async def exchange_token(
     """
     Exchange a Plaid public token for an access token.
 
-    Stores the resulting Plaid item in the database.
+    Stores the resulting Plaid item in the database with encrypted access token.
     """
     result = plaid_service.exchange_public_token(request.public_token)
+
+    # Encrypt the access token before storing
+    encrypted_token = encrypt_token(result["access_token"])
 
     # Store plaid item in DB
     item = db.create_plaid_item({
         "user_id": user["id"],
         "plaid_item_id": result["item_id"],
-        "access_token": result["access_token"],
+        "access_token": encrypted_token,  # Store encrypted token
         "institution_id": request.institution_id,
         "institution_name": request.institution_name,
         "status": "active",
