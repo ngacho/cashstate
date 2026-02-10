@@ -46,10 +46,12 @@ cp .env.example .env
 Required variables:
 - `SUPABASE_URL` - Your Supabase project URL
 - `SUPABASE_SECRET_KEY` - Secret API key (`sb_secret_...`) from Project Settings > API
+- `SUPABASE_SERVICE_ROLE_KEY` - Service role key (`sb_service_role_...`) from Project Settings > API
 - `SUPABASE_PUBLISHABLE_KEY` - Publishable API key (`sb_publishable_...`) from Project Settings > API
 - `PLAID_CLIENT_ID` - From Plaid Dashboard > Keys
 - `PLAID_SECRET` - From Plaid Dashboard > Keys
 - `PLAID_ENV` - `sandbox`, `development`, or `production`
+- `ENCRYPTION_KEY` - Fernet encryption key (generate with: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`)
 
 ### 3. Set Up Database
 
@@ -61,7 +63,15 @@ Run the migration SQL in your Supabase SQL Editor:
 
 This creates the `users`, `plaid_items`, `transactions`, and `sync_jobs` tables with RLS policies.
 
-### 4. Run the Server
+### 4. Activate Virtual Environment (Optional)
+
+```bash
+source .venv/bin/activate
+```
+
+Or let `uv` handle it automatically with `uv run` commands.
+
+### 5. Run the Server
 
 ```bash
 uv run uvicorn app.main:app --reload
@@ -79,10 +89,18 @@ uv sync
 cp .env.example .env
 # Edit .env with your Supabase + Plaid credentials
 
-# 3. Set up database (run supabase/migrations/001_initial_schema.sql in Supabase SQL Editor)
+# 3. Generate encryption key
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Add the output to .env as ENCRYPTION_KEY
 
-# 4. Run server
+# 4. Set up database (run supabase/migrations/001_initial_schema.sql in Supabase SQL Editor)
+
+# 5. Run server
 uv run uvicorn app.main:app --reload
+
+# Or activate venv first, then run without uv
+source .venv/bin/activate
+uvicorn app.main:app --reload
 ```
 
 ## API Documentation
