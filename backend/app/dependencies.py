@@ -88,10 +88,10 @@ async def get_current_user_with_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Use admin client for DB operations (bypasses RLS)
-    # Authorization is enforced by JWT validation above
-    admin_client = get_db()
-    database = Database(admin_client)
+    # Use PostgREST client with user's JWT for RLS-aware operations
+    # The JWT from Supabase Auth contains auth.uid() that RLS policies can read
+    user_client = get_authenticated_postgrest_client(token)
+    database = Database(user_client)
     user = database.get_user_by_id(user_id)
 
     if user is None:
@@ -127,9 +127,9 @@ async def get_database(
 
     PostgREST sees auth.uid() from the JWT, so RLS policies work.
     """
-    _user, _token = user_and_token
-    # Use admin client - user authorization already verified above
-    client = get_db()
+    _user, token = user_and_token
+    # Use PostgREST client with user's JWT for RLS-aware operations
+    client = get_authenticated_postgrest_client(token)
     return Database(client)
 
 

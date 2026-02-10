@@ -12,27 +12,12 @@ def get_supabase_client() -> Client:
     """Get cached Supabase client instance using secret key.
 
     Used for GoTrue auth operations (sign_up, sign_in, refresh).
-    NOT suitable for RLS-protected table operations.
+    NOT suitable for RLS-protected table operations - use get_authenticated_postgrest_client() instead.
     """
     settings = get_settings()
     return create_client(
         settings.supabase_url,
         settings.supabase_secret_key
-    )
-
-
-def get_admin_client() -> Client:
-    """Get Supabase admin client using service_role key (NO CACHE).
-
-    Bypasses RLS - use for backend operations where authorization
-    is handled at the application level.
-
-    Note: Not cached to avoid shared state issues across requests.
-    """
-    settings = get_settings()
-    return create_client(
-        settings.supabase_url,
-        settings.supabase_service_role_key
     )
 
 
@@ -54,8 +39,8 @@ def get_authenticated_postgrest_client(access_token: str) -> SyncPostgrestClient
 
 
 def get_db() -> Client:
-    """Dependency for getting Supabase admin client in routes."""
-    return get_admin_client()
+    """Dependency for getting Supabase client for auth operations."""
+    return get_supabase_client()
 
 
 class Database:

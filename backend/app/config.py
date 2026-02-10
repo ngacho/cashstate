@@ -16,9 +16,8 @@ class Settings(BaseSettings):
 
     # Supabase API Keys
     supabase_url: str
-    supabase_secret_key: str  # For auth operations only
-    supabase_service_role_key: str  # Service role key - bypasses RLS, use for backend operations
-    supabase_publishable_key: str = ""  # Anon key
+    supabase_secret_key: str  # For GoTrue auth operations (sign_up, sign_in, refresh)
+    supabase_publishable_key: str  # Anon/publishable key for client requests
 
     # Plaid
     plaid_client_id: str
