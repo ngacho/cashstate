@@ -6,19 +6,24 @@ struct MainView: View {
 
     var body: some View {
         TabView {
+            HomeView(apiClient: apiClient)
+                .tabItem {
+                    Label("Home", systemImage: "house.fill")
+                }
+
             TransactionsView(apiClient: apiClient)
                 .tabItem {
-                    Label("Transactions", systemImage: "list.bullet")
+                    Label("Transactions", systemImage: "list.bullet.rectangle")
                 }
 
-            InsightsView(apiClient: apiClient)
+            BudgetsView(apiClient: apiClient)
                 .tabItem {
-                    Label("Insights", systemImage: "chart.pie.fill")
+                    Label("Budgets", systemImage: "chart.pie.fill")
                 }
 
-            ProfileView(isAuthenticated: $isAuthenticated)
+            AccountsView(isAuthenticated: $isAuthenticated)
                 .tabItem {
-                    Label("Profile", systemImage: "person.fill")
+                    Label("Accounts", systemImage: "wallet.pass.fill")
                 }
         }
         .tint(Theme.Colors.primary)
@@ -415,21 +420,55 @@ struct CategoryRow: View {
     }
 }
 
-struct ProfileView: View {
+struct BudgetsView: View {
+    let apiClient: APIClient
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: Theme.Spacing.lg) {
+                    Text("Budget Management")
+                        .font(.title2)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .padding()
+
+                    Text("Coming soon: Set category budgets and track spending goals")
+                        .font(.body)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .navigationTitle("Budgets")
+            .background(Theme.Colors.background)
+        }
+    }
+}
+
+struct AccountsView: View {
     @Binding var isAuthenticated: Bool
 
     var body: some View {
         NavigationView {
             List {
-                Section {
+                Section("Connected Accounts") {
+                    Text("No accounts connected yet")
+                        .foregroundColor(Theme.Colors.textSecondary)
+                }
+
+                Section("Settings") {
                     Button(role: .destructive) {
                         isAuthenticated = false
                     } label: {
-                        Text("Sign Out")
+                        HStack {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                            Text("Sign Out")
+                        }
                     }
                 }
             }
-            .navigationTitle("Profile")
+            .navigationTitle("Accounts")
         }
     }
 }

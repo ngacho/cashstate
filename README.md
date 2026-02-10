@@ -115,13 +115,15 @@ cashstate/
 │   └── tests/              # E2E tests
 ├── ios/                     # iOS SwiftUI app
 │   └── CashState/
-│       ├── APIClient.swift # HTTP client with auth
-│       ├── Config.swift    # Backend & Supabase URLs
-│       ├── Models.swift    # Transaction, Auth models
-│       ├── Theme.swift     # Design system
-│       ├── LoginView.swift # Authentication UI
-│       ├── MainView.swift  # Transactions, Insights, Profile
-│       └── ContentView.swift # Root view
+│       ├── CashStateApp.swift # App entry point
+│       ├── ContentView.swift  # Root view (login/main router)
+│       ├── Config.swift       # Backend & Supabase URLs
+│       ├── Theme.swift        # Design system (colors, spacing)
+│       ├── Models.swift       # Transaction, Auth models
+│       ├── APIClient.swift    # HTTP client with auth
+│       ├── LoginView.swift    # Authentication UI
+│       ├── HomeView.swift     # Dashboard (budget, trends, top spending)
+│       └── MainView.swift     # Tab bar container (all views)
 └── supabase/
     └── migrations/         # Database schema
 ```
@@ -153,24 +155,29 @@ cashstate/
 ### iOS App
 
 **Current Features:**
-- ✅ Authentication (Login via backend API)
-- ✅ Transaction list with pull-to-refresh
-- ✅ Spending insights with visual charts:
-  - Income/Expenses/Net summary cards
-  - Category breakdown with progress bars
-  - Daily spending bar chart
-  - Time range filters (Day/Week/Month/Year)
-- ✅ Profile management (Sign out)
-- ✅ Error handling with user-friendly messages
+- ✅ **Home Dashboard** (Mint-inspired design):
+  - Budget tracker with progress bar
+  - "Left to Spend" prominent display
+  - Spending trend line chart (daily view)
+  - Top 3 spending categories with color coding
+  - Smart category icons and amounts
+- ✅ **Authentication** (Login via backend API)
+- ✅ **Transaction List** with pull-to-refresh
+- ✅ **Tab Bar Navigation**: Home, Transactions, Budgets, Accounts
+- ✅ **Real-time Calculations**: Budget tracking from live transaction data
+- ✅ **Error Handling**: User-friendly messages and loading states
 - ⏳ Plaid Link integration (backend ready, iOS pending)
 - ⏳ Registration UI (backend ready, iOS pending)
+- ⏳ Budget configuration (currently hardcoded)
 
 **UI/UX:**
-- Mint-inspired design (teal/green color scheme)
-- SwiftUI with async/await networking
-- Pull-to-refresh on all data views
-- Loading states and error alerts
-- Secure token storage (ready for Keychain)
+- 🎨 Mint-inspired design (teal primary color #00D09C)
+- 📊 Visual spending trends with line charts
+- 🎯 Budget progress indicators
+- 🏷️ Smart category icons and color coding
+- 📱 Native SwiftUI with async/await networking
+- 🔄 Pull-to-refresh on all data views
+- ⚡ Smooth animations and transitions
 
 ## Security
 
