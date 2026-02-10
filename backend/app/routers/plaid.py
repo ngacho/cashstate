@@ -1,11 +1,10 @@
 """Plaid integration router."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 
 from app.database import Database
 from app.dependencies import get_current_user, get_database
 from app.schemas.plaid import (
-    LinkTokenRequest,
     LinkTokenResponse,
     ExchangeTokenRequest,
     ExchangeTokenResponse,

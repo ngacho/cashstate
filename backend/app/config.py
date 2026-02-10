@@ -41,10 +41,12 @@ class Settings(BaseSettings):
 
     @property
     def is_development(self) -> bool:
+        """Check if running in development mode."""
         return self.app_env == "development"
 
     @property
     def is_production(self) -> bool:
+        """Check if running in production mode."""
         return self.app_env == "production"
 
 

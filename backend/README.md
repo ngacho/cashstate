@@ -132,6 +132,20 @@ Base URL: `/app/v1`
 - `GET /transactions` - List transactions (with date filters, pagination)
 - `GET /transactions/{id}` - Get single transaction
 
+## Linting
+
+Flake8 with Google Python Style Guide:
+
+```bash
+# Run linter
+uv run flake8 app/
+
+# Run linter with auto-fix suggestions
+uv run flake8 app/ --show-source
+```
+
+Configuration: `.flake8` (Google style, 88 char line length)
+
 ## Testing
 
 The integration test runs the full Plaid flow against the sandbox — no Link UI needed.

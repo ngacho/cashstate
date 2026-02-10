@@ -7,7 +7,7 @@ import jwt
 from jwt import PyJWKClient
 
 from app.config import get_settings, Settings
-from app.database import get_authenticated_postgrest_client, Database, get_db
+from app.database import get_authenticated_postgrest_client, Database
 
 
 security = HTTPBearer()

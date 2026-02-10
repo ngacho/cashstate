@@ -83,7 +83,7 @@ async def login(
             user_id=result["user_id"],
         )
 
-    except AuthApiError as e:
+    except AuthApiError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
@@ -112,7 +112,7 @@ async def refresh_token(
             user_id=result["user_id"],
         )
 
-    except AuthApiError as e:
+    except AuthApiError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
