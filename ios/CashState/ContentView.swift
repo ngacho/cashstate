@@ -1,21 +1,17 @@
-//
-//  ContentView.swift
-//  CashState
-//
-//  Created by Brandon Ngacho on 2/9/26.
-//
-
 import SwiftUI
 
 struct ContentView: View {
+    @State private var isAuthenticated = false
+    private let apiClient = APIClient()
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        Group {
+            if isAuthenticated {
+                MainView(isAuthenticated: $isAuthenticated, apiClient: apiClient)
+            } else {
+                LoginView(isAuthenticated: $isAuthenticated, apiClient: apiClient)
+            }
         }
-        .padding()
     }
 }
 

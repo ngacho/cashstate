@@ -247,7 +247,7 @@ class TestCompletePlaidFlow:
 
         # Check first transaction has expected fields
         txn = data["items"][0]
-        print(f"Sample transaction:")
+        print("Sample transaction:")
         print(f"  Name: {txn['name']}")
         print(f"  Amount: {txn['amount']} {txn.get('iso_currency_code', 'USD')}")
         print(f"  Date: {txn['date']}")

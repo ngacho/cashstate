@@ -76,25 +76,27 @@ ngrok http 8000
    - iOS 17+ deployment target
    - Backend running (locally or via ngrok)
 
-2. **Setup:**
-   - See detailed instructions in `ios/SETUP.md`
-   - Configure `ios/App/Config.swift` with:
-     - Backend URL (localhost or ngrok)
-     - Supabase URL and anon key
-
-3. **Create Xcode Project:**
-   ```
-   # Follow steps in ios/SETUP.md to:
-   # 1. Create new iOS app in Xcode
-   # 2. Add existing files
-   # 3. Add Swift Package dependencies
-   # 4. Configure and run
+2. **Configure backend URL:**
+   ```bash
+   # Edit ios/CashState/Config.swift and update:
+   # - backendURL (your ngrok URL)
+   # - supabaseURL (your Supabase project URL)
+   # - supabasePublishableKey (your Supabase anon key)
    ```
 
-4. **Run:**
-   - Open project in Xcode
-   - Select simulator or device
-   - Press Cmd + R
+3. **Open and run:**
+   ```bash
+   cd ios
+   open CashState.xcodeproj
+   # In Xcode:
+   # 1. Select target device/simulator
+   # 2. Press Cmd + R to build and run
+   ```
+
+4. **Test the app:**
+   - Login with your backend credentials
+   - View transactions from connected Plaid accounts
+   - Check spending insights with charts and breakdowns
 
 ## Project Structure
 
@@ -102,21 +104,24 @@ ngrok http 8000
 cashstate/
 ├── backend/                 # FastAPI backend
 │   ├── app/
-│   │   ├── routers/        # API endpoints
-│   │   ├── services/       # Business logic
+│   │   ├── routers/        # API endpoints (auth, plaid, sync, transactions)
+│   │   ├── services/       # Business logic (auth, plaid, sync)
+│   │   ├── schemas/        # Pydantic models
+│   │   ├── utils/          # Encryption, helpers
 │   │   ├── database.py     # Supabase + PostgREST client
 │   │   ├── config.py       # Settings
+│   │   ├── dependencies.py # Auth & DB injection
 │   │   └── main.py         # App entry point
 │   └── tests/              # E2E tests
-├── ios/                     # iOS app
-│   ├── App/                # Entry point, config
-│   ├── Core/               # Base, DI, networking
-│   ├── Data/               # DTOs, repos, mappers
-│   ├── Domain/             # Entities, use cases
-│   ├── Presentation/       # Views, ViewModels
-│   ├── Resources/          # Assets, fonts
-│   ├── SETUP.md            # Detailed iOS setup guide
-│   └── CONFIGURATION.md    # Where to put ngrok URL
+├── ios/                     # iOS SwiftUI app
+│   └── CashState/
+│       ├── APIClient.swift # HTTP client with auth
+│       ├── Config.swift    # Backend & Supabase URLs
+│       ├── Models.swift    # Transaction, Auth models
+│       ├── Theme.swift     # Design system
+│       ├── LoginView.swift # Authentication UI
+│       ├── MainView.swift  # Transactions, Insights, Profile
+│       └── ContentView.swift # Root view
 └── supabase/
     └── migrations/         # Database schema
 ```
@@ -148,18 +153,24 @@ cashstate/
 ### iOS App
 
 **Current Features:**
-- ✅ Authentication (Login/Register)
-- ✅ Transaction list with category icons
-- ✅ Spending insights by day/week/month/year
-- ✅ Profile management
-- ⏳ Plaid Link integration (structure ready)
-- ⏳ Budget tracking (placeholder)
+- ✅ Authentication (Login via backend API)
+- ✅ Transaction list with pull-to-refresh
+- ✅ Spending insights with visual charts:
+  - Income/Expenses/Net summary cards
+  - Category breakdown with progress bars
+  - Daily spending bar chart
+  - Time range filters (Day/Week/Month/Year)
+- ✅ Profile management (Sign out)
+- ✅ Error handling with user-friendly messages
+- ⏳ Plaid Link integration (backend ready, iOS pending)
+- ⏳ Registration UI (backend ready, iOS pending)
 
 **UI/UX:**
 - Mint-inspired design (teal/green color scheme)
-- Clean Architecture + MVVM
-- SwiftUI with memory-safe ViewModels
-- Pull-to-refresh, error handling
+- SwiftUI with async/await networking
+- Pull-to-refresh on all data views
+- Loading states and error alerts
+- Secure token storage (ready for Keychain)
 
 ## Security
 
@@ -233,12 +244,12 @@ ENCRYPTION_KEY=your-fernet-key
 DATABASE_URL=postgresql://user:pass@host:5432/db
 ```
 
-### iOS (ios/App/Config.swift)
+### iOS (ios/CashState/Config.swift)
 
 ```swift
-static let backendURL = "http://localhost:8000"  // or ngrok URL
+static let backendURL = "https://your-ngrok-url.ngrok-free.app"
 static let supabaseURL = "https://your-project.supabase.co"
-static let supabaseAnonKey = "your-anon-key"
+static let supabasePublishableKey = "your-anon-key"
 ```
 
 ## Dependencies
@@ -255,9 +266,13 @@ static let supabaseAnonKey = "your-anon-key"
 
 ### iOS
 
-- **Supabase Swift SDK** - Auth and database
-- **Plaid Link iOS** - Bank linking (coming soon)
-- **Swift Charts** - Data visualization (coming soon)
+- **Native URLSession** - HTTP networking with async/await
+- **SwiftUI** - Declarative UI framework
+- **Foundation** - Date formatting, JSON encoding/decoding
+- Future additions:
+  - **Supabase Swift SDK** - Direct auth (optional)
+  - **Plaid Link iOS** - Bank linking UI
+  - **Swift Charts** - Native charting library
 
 ## API Documentation
 
