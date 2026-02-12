@@ -12,11 +12,7 @@ router = APIRouter(prefix="/snapshots", tags=["snapshots"])
 class SnapshotData(BaseModel):
     """Single snapshot data point."""
     date: str = Field(..., description="Date in YYYY-MM-DD format")
-    balance: float = Field(..., description="Total balance (net worth)")
-    spent: float = Field(..., description="Amount spent in this period")
-    income: float = Field(..., description="Amount earned in this period")
-    net: float = Field(..., description="Net change (income - spent)")
-    transaction_count: int = Field(..., description="Number of transactions")
+    balance: float = Field(..., description="Balance at end of day")
 
 
 class SnapshotsResponse(BaseModel):
@@ -36,27 +32,25 @@ async def get_snapshots(
     db=Depends(get_database)
 ):
     """
-    Get financial snapshots with flexible date range and granularity.
+    Get net worth snapshots with flexible granularity.
+
+    Stores daily snapshots but can return weekly/monthly/yearly aggregated views.
 
     **Examples:**
-    - Last 7 days (daily): `?granularity=day`
-    - Specific week (daily): `?start_date=2024-01-15&end_date=2024-01-21&granularity=day`
-    - Last month (weekly): `?granularity=week`
-    - Specific month (weekly): `?start_date=2024-01-01&end_date=2024-01-31&granularity=week`
-    - Last year (monthly): `?granularity=month`
-    - All time (yearly): `?granularity=year`
+    - Last 7 days (daily): `/snapshots?granularity=day`
+    - Last 4 weeks (weekly): `/snapshots?granularity=week`
+    - Last 12 months (monthly): `/snapshots?granularity=month`
+    - All time (yearly): `/snapshots?granularity=year`
 
-    **Granularity options:**
-    - `day`: Individual daily snapshots
-    - `week`: Aggregated by week (Monday-Sunday)
-    - `month`: Aggregated by month
-    - `year`: Aggregated by year
+    **Granularity:**
+    - `day`: Daily snapshots (default)
+    - `week`: Weekly aggregation (last balance of each week)
+    - `month`: Monthly aggregation (last balance of each month)
+    - `year`: Yearly aggregation (last balance of each year)
 
     **Response:**
+    - `date`: Date in YYYY-MM-DD format (period start for week/month/year)
     - `balance`: Total net worth at end of period
-    - `spent`: Total amount spent in period
-    - `income`: Total income in period
-    - `net`: Net change (income - spent)
     """
     user, _ = user_and_token
     snapshot_service = SnapshotService(db)
@@ -131,19 +125,16 @@ async def get_transaction_snapshots(
     db=Depends(get_database)
 ):
     """
-    Get balance snapshots for a specific account.
-
-    Returns historical balance data for individual account charts.
+    Get balance snapshots for a specific account with flexible granularity.
 
     **Examples:**
-    - Last 7 days: `/snapshots/account/{account_id}?granularity=day`
-    - Specific month: `/snapshots/account/{account_id}?start_date=2024-01-01&end_date=2024-01-31&granularity=week`
+    - Last 7 days (daily): `/snapshots/account/{account_id}?granularity=day`
+    - Last 4 weeks (weekly): `/snapshots/account/{account_id}?granularity=week`
+    - Last 12 months (monthly): `/snapshots/account/{account_id}?granularity=month`
 
     **Response:**
+    - `date`: Date in YYYY-MM-DD format
     - `balance`: Account balance at end of period
-    - `spent`: Amount spent from this account in period
-    - `income`: Amount received into this account in period
-    - `net`: Net change (income - spent)
     """
     user, _ = user_and_token
     snapshot_service = SnapshotService(db)

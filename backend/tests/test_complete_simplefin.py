@@ -302,23 +302,20 @@ class TestCompleteSimplefinFlow:
             for snapshot in snapshots:
                 date = snapshot["date"]
                 balance = snapshot["balance"]
-                spent = snapshot["spent"]
-                income = snapshot["income"]
-                txn_count = snapshot["transaction_count"]
-                print(f"  {date}: Balance=${balance:,.2f} | Spent=${spent:,.2f} | Income=${income:,.2f} | Txns={txn_count}")
+                print(f"  {date}: Balance=${balance:,.2f}")
 
     # =========================================
-    # Step 10: Verify weekly aggregation
+    # Step 10: Verify weekly snapshots
     # =========================================
     def test_10_get_weekly_snapshots(self):
-        """Get weekly aggregated snapshots (last 4 weeks)."""
+        """Get weekly aggregated snapshots (last 12 weeks)."""
         import datetime
 
         if not self.access_token:
             pytest.skip("Not logged in - run test_01_login first")
 
         end_date = datetime.date.today()
-        start_date = end_date - datetime.timedelta(days=29)
+        start_date = end_date - datetime.timedelta(days=83)
 
         print(f"\nGetting weekly snapshots from {start_date} to {end_date}")
 
@@ -332,7 +329,7 @@ class TestCompleteSimplefinFlow:
             headers=self.get_headers(),
         )
 
-        assert response.status_code == 200, f"Failed to get weekly snapshots: {response.json()}"
+        assert response.status_code == 200, f"Failed to get snapshots: {response.json()}"
 
         data = response.json()
         assert "data" in data
@@ -344,25 +341,20 @@ class TestCompleteSimplefinFlow:
         if snapshots:
             print("\nWeekly snapshots:")
             for snapshot in snapshots:
-                week_start = snapshot["date"]
-                balance = snapshot["balance"]
-                spent = snapshot["spent"]
-                income = snapshot["income"]
-                print(f"  Week of {week_start}: Balance=${balance:,.2f} | Spent=${spent:,.2f} | Income=${income:,.2f}")
+                print(f"  Week of {snapshot['date']}: ${snapshot['balance']:,.2f}")
 
     # =========================================
-    # Step 11: Verify monthly aggregation
+    # Step 11: Verify monthly snapshots
     # =========================================
     def test_11_get_monthly_snapshots(self):
-        """Get monthly aggregated snapshots (last 3 months)."""
+        """Get monthly aggregated snapshots (last 12 months)."""
         import datetime
 
         if not self.access_token:
             pytest.skip("Not logged in - run test_01_login first")
 
         end_date = datetime.date.today()
-        # Go back 3 months
-        start_date = (end_date - datetime.timedelta(days=90)).replace(day=1)
+        start_date = end_date - datetime.timedelta(days=365)
 
         print(f"\nGetting monthly snapshots from {start_date} to {end_date}")
 
@@ -376,7 +368,7 @@ class TestCompleteSimplefinFlow:
             headers=self.get_headers(),
         )
 
-        assert response.status_code == 200, f"Failed to get monthly snapshots: {response.json()}"
+        assert response.status_code == 200, f"Failed to get snapshots: {response.json()}"
 
         data = response.json()
         assert "data" in data
@@ -388,11 +380,7 @@ class TestCompleteSimplefinFlow:
         if snapshots:
             print("\nMonthly snapshots:")
             for snapshot in snapshots:
-                month_start = snapshot["date"]
-                balance = snapshot["balance"]
-                spent = snapshot["spent"]
-                income = snapshot["income"]
-                print(f"  {month_start}: Balance=${balance:,.2f} | Spent=${spent:,.2f} | Income=${income:,.2f}")
+                print(f"  {snapshot['date']}: ${snapshot['balance']:,.2f}")
 
     # =========================================
     # Step 12: Test net worth trend
@@ -468,9 +456,9 @@ class TestCompleteSimplefinFlow:
         account_id = accounts[0]["id"]
         account_name = accounts[0]["name"]
 
-        print(f"\n💳 Testing transaction snapshots for account: {account_name}")
+        print(f"\n💳 Testing account snapshots for: {account_name}")
 
-        # Get transaction snapshots for this account
+        # Get account snapshots
         end_date = datetime.date.today()
         start_date = end_date - datetime.timedelta(days=6)
 
@@ -491,24 +479,19 @@ class TestCompleteSimplefinFlow:
         assert data["granularity"] == "day"
 
         snapshots = data["data"]
-        print(f"Found {len(snapshots)} transaction snapshot(s) for {account_name}")
+        print(f"Found {len(snapshots)} account snapshot(s) for {account_name}")
 
         if snapshots:
-            print("\nTransaction snapshots (last 7 days):")
+            print("\nAccount snapshots (last 7 days):")
             for snapshot in snapshots:
                 date = snapshot["date"]
                 balance = snapshot["balance"]
-                spent = snapshot["spent"]
-                income = snapshot["income"]
-                txn_count = snapshot["transaction_count"]
-                print(f"  {date}: Balance=${balance:,.2f} | Spent=${spent:,.2f} | Income=${income:,.2f} | Txns={txn_count}")
+                print(f"  {date}: Balance=${balance:,.2f}")
 
             # Verify data structure
             for snapshot in snapshots:
                 assert "date" in snapshot
                 assert "balance" in snapshot
-                assert "spent" in snapshot
-                assert "income" in snapshot
                 assert isinstance(snapshot["balance"], (int, float))
 
             print(f"   ✅ {len(snapshots)} data points ready for account chart")

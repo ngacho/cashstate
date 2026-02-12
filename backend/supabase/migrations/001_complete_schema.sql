@@ -177,26 +177,9 @@ CREATE TABLE IF NOT EXISTS public.net_snapshots (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     snapshot_date DATE NOT NULL,
-
-    -- Balances (end of day across all accounts)
-    total_balance NUMERIC(12, 2) DEFAULT 0,
-    cash_balance NUMERIC(12, 2) DEFAULT 0,
-    credit_balance NUMERIC(12, 2) DEFAULT 0,
-
-    -- Daily activity (across all accounts)
-    daily_spent NUMERIC(12, 2) DEFAULT 0,
-    daily_income NUMERIC(12, 2) DEFAULT 0,
-    daily_net NUMERIC(12, 2) DEFAULT 0,
-    transaction_count INTEGER DEFAULT 0,
-
-    -- Running totals
-    mtd_spent NUMERIC(12, 2) DEFAULT 0,  -- Month-to-date
-    ytd_spent NUMERIC(12, 2) DEFAULT 0,  -- Year-to-date
-
-    -- Metadata
-    is_finalized BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    total_balance NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     UNIQUE(user_id, snapshot_date)
 );
@@ -224,20 +207,9 @@ CREATE TABLE IF NOT EXISTS public.transaction_snapshots (
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     simplefin_account_id UUID NOT NULL REFERENCES public.simplefin_accounts(id) ON DELETE CASCADE,
     snapshot_date DATE NOT NULL,
-
-    -- Account balance at end of day
-    balance NUMERIC(12, 2) DEFAULT 0,
-
-    -- Daily activity for this account
-    daily_spent NUMERIC(12, 2) DEFAULT 0,
-    daily_income NUMERIC(12, 2) DEFAULT 0,
-    daily_net NUMERIC(12, 2) DEFAULT 0,
-    transaction_count INTEGER DEFAULT 0,
-
-    -- Metadata
-    is_finalized BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    balance NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     UNIQUE(user_id, simplefin_account_id, snapshot_date)
 );

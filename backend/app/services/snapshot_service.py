@@ -45,103 +45,28 @@ class SnapshotService:
             current_date += timedelta(days=1)
 
     async def _calculate_snapshot_for_date(self, user_id: str, snapshot_date: date) -> None:
-        """Calculate snapshot for a specific date."""
-        # Get all transactions for this date
-        start_timestamp = int(datetime.combine(snapshot_date, datetime.min.time()).timestamp())
+        """Calculate snapshot for a specific date - just the total balance."""
+        # Get end of day timestamp
         end_timestamp = int(datetime.combine(snapshot_date, datetime.max.time()).timestamp())
 
-        daily_txns = self.db.client.table("simplefin_transactions") \
-            .select("amount") \
-            .eq("user_id", user_id) \
-            .gte("posted_date", start_timestamp) \
-            .lte("posted_date", end_timestamp) \
-            .execute()
-
-        # Calculate daily totals
-        daily_spent = Decimal(0)
-        daily_income = Decimal(0)
-        transaction_count = len(daily_txns.data)
-
-        for txn in daily_txns.data:
-            amount = Decimal(str(txn["amount"]))
-            if amount < 0:
-                daily_spent += abs(amount)
-            else:
-                daily_income += amount
-
-        daily_net = daily_income - daily_spent
-
-        # Get running balance (all transactions up to end of this date)
+        # Get all transactions up to end of this date
         all_txns = self.db.client.table("simplefin_transactions") \
             .select("amount") \
             .eq("user_id", user_id) \
             .lte("posted_date", end_timestamp) \
             .execute()
 
+        # Sum up all transaction amounts to get total balance
         total_balance = sum(Decimal(str(t["amount"])) for t in all_txns.data)
-
-        # Get accounts and calculate cash/credit balance
-        accounts = self.db.client.table("simplefin_accounts") \
-            .select("name, balance") \
-            .eq("user_id", user_id) \
-            .execute()
-
-        cash_balance = Decimal(0)
-        credit_balance = Decimal(0)
-
-        for account in accounts.data:
-            name = account["name"].lower()
-            balance = Decimal(str(account.get("balance") or 0))
-
-            if "credit" in name or "card" in name:
-                credit_balance += balance
-            else:
-                cash_balance += balance
-
-        # Calculate MTD (month-to-date) spent
-        month_start = snapshot_date.replace(day=1)
-        month_start_timestamp = int(datetime.combine(month_start, datetime.min.time()).timestamp())
-
-        mtd_txns = self.db.client.table("simplefin_transactions") \
-            .select("amount") \
-            .eq("user_id", user_id) \
-            .gte("posted_date", month_start_timestamp) \
-            .lte("posted_date", end_timestamp) \
-            .execute()
-
-        mtd_spent = sum(abs(Decimal(str(t["amount"]))) for t in mtd_txns.data if Decimal(str(t["amount"])) < 0)
-
-        # Calculate YTD (year-to-date) spent
-        year_start = snapshot_date.replace(month=1, day=1)
-        year_start_timestamp = int(datetime.combine(year_start, datetime.min.time()).timestamp())
-
-        ytd_txns = self.db.client.table("simplefin_transactions") \
-            .select("amount") \
-            .eq("user_id", user_id) \
-            .gte("posted_date", year_start_timestamp) \
-            .lte("posted_date", end_timestamp) \
-            .execute()
-
-        ytd_spent = sum(abs(Decimal(str(t["amount"]))) for t in ytd_txns.data if Decimal(str(t["amount"])) < 0)
 
         # Upsert snapshot
         snapshot_data = {
             "user_id": user_id,
             "snapshot_date": snapshot_date.isoformat(),
             "total_balance": float(total_balance),
-            "cash_balance": float(cash_balance),
-            "credit_balance": float(credit_balance),
-            "daily_spent": float(daily_spent),
-            "daily_income": float(daily_income),
-            "daily_net": float(daily_net),
-            "transaction_count": transaction_count,
-            "mtd_spent": float(mtd_spent),
-            "ytd_spent": float(ytd_spent),
-            "is_finalized": snapshot_date < date.today(),
             "updated_at": datetime.utcnow().isoformat(),
         }
 
-        # Upsert (update if exists, insert if not)
         self.db.client.table("net_snapshots") \
             .upsert(snapshot_data, on_conflict="user_id,snapshot_date") \
             .execute()
@@ -154,13 +79,13 @@ class SnapshotService:
         granularity: str = "day"
     ) -> List[dict]:
         """
-        Get snapshots with flexible date range and granularity.
+        Get net worth snapshots for date range with optional aggregation.
 
         Args:
-            user_id: User ID
-            start_date: Start date (defaults based on granularity)
-            end_date: End date (defaults to today)
             granularity: 'day', 'week', 'month', or 'year'
+
+        Returns:
+            List of {date, balance} dicts
         """
         if not end_date:
             end_date = date.today()
@@ -168,9 +93,9 @@ class SnapshotService:
         if not start_date:
             # Default based on granularity
             if granularity == "day":
-                start_date = end_date - timedelta(days=7)
-            elif granularity == "week":
                 start_date = end_date - timedelta(days=30)
+            elif granularity == "week":
+                start_date = end_date - timedelta(days=90)
             elif granularity == "month":
                 start_date = end_date - timedelta(days=365)
             else:  # year
@@ -181,83 +106,54 @@ class SnapshotService:
                     .order("snapshot_date", desc=False) \
                     .limit(1) \
                     .execute()
-
                 if result.data:
                     start_date = datetime.fromisoformat(result.data[0]["snapshot_date"]).date()
                 else:
                     start_date = end_date
 
-        # Query based on granularity
-        if granularity == "day":
-            # Return daily snapshots
-            result = self.db.client.table("net_snapshots") \
-                .select("snapshot_date, total_balance, daily_spent, daily_income, daily_net, transaction_count") \
-                .eq("user_id", user_id) \
-                .gte("snapshot_date", start_date.isoformat()) \
-                .lte("snapshot_date", end_date.isoformat()) \
-                .order("snapshot_date", desc=False) \
-                .execute()
+        # Fetch all daily snapshots
+        result = self.db.client.table("net_snapshots") \
+            .select("snapshot_date, total_balance") \
+            .eq("user_id", user_id) \
+            .gte("snapshot_date", start_date.isoformat()) \
+            .lte("snapshot_date", end_date.isoformat()) \
+            .order("snapshot_date", desc=False) \
+            .execute()
 
+        if granularity == "day":
+            # Return daily snapshots as-is
             return [
                 {
                     "date": row["snapshot_date"],
-                    "balance": float(row["total_balance"]),
-                    "spent": float(row["daily_spent"]),
-                    "income": float(row["daily_income"]),
-                    "net": float(row["daily_net"]),
-                    "transaction_count": row["transaction_count"]
+                    "balance": float(row["total_balance"])
                 }
                 for row in result.data
             ]
 
-        else:
-            # For week/month/year, we need to aggregate in Python
-            # (Supabase doesn't support GROUP BY with date_trunc directly via the Python client)
-            all_snapshots = self.db.client.table("net_snapshots") \
-                .select("snapshot_date, total_balance, daily_spent, daily_income, daily_net, transaction_count") \
-                .eq("user_id", user_id) \
-                .gte("snapshot_date", start_date.isoformat()) \
-                .lte("snapshot_date", end_date.isoformat()) \
-                .order("snapshot_date", desc=False) \
-                .execute()
+        # Aggregate by granularity (take last balance in each period)
+        aggregated = {}
+        for row in result.data:
+            snapshot_dt = datetime.fromisoformat(row["snapshot_date"])
 
-            # Aggregate by granularity
-            aggregated = {}
-            for row in all_snapshots.data:
-                snapshot_dt = datetime.fromisoformat(row["snapshot_date"])
+            # Determine the grouping key
+            if granularity == "week":
+                # ISO week (Monday as first day)
+                key = snapshot_dt.isocalendar()[:2]  # (year, week)
+                key_date = datetime.strptime(f"{key[0]}-W{key[1]:02d}-1", "%G-W%V-%u").date()
+            elif granularity == "month":
+                key = (snapshot_dt.year, snapshot_dt.month)
+                key_date = date(key[0], key[1], 1)
+            else:  # year
+                key = snapshot_dt.year
+                key_date = date(key, 1, 1)
 
-                # Determine the grouping key
-                if granularity == "week":
-                    # ISO week (Monday as first day)
-                    key = snapshot_dt.isocalendar()[:2]  # (year, week)
-                    key_date = datetime.strptime(f"{key[0]}-W{key[1]:02d}-1", "%G-W%W-%u").date()
-                elif granularity == "month":
-                    key = (snapshot_dt.year, snapshot_dt.month)
-                    key_date = date(key[0], key[1], 1)
-                else:  # year
-                    key = snapshot_dt.year
-                    key_date = date(key, 1, 1)
+            # Use last balance in the period
+            aggregated[key] = {
+                "date": key_date.isoformat(),
+                "balance": float(row["total_balance"])
+            }
 
-                if key not in aggregated:
-                    aggregated[key] = {
-                        "date": key_date.isoformat(),
-                        "balance": float(row["total_balance"]),  # Use last day's balance
-                        "spent": 0,
-                        "income": 0,
-                        "net": 0,
-                        "transaction_count": 0
-                    }
-
-                # Sum up the values
-                aggregated[key]["spent"] += float(row["daily_spent"])
-                aggregated[key]["income"] += float(row["daily_income"])
-                aggregated[key]["net"] += float(row["daily_net"])
-                aggregated[key]["transaction_count"] += row["transaction_count"]
-                # Update balance to the latest
-                aggregated[key]["balance"] = float(row["total_balance"])
-
-            # Sort by date
-            return sorted(aggregated.values(), key=lambda x: x["date"])
+        return sorted(aggregated.values(), key=lambda x: x["date"])
 
     async def calculate_transaction_snapshots(
         self,
@@ -321,34 +217,10 @@ class SnapshotService:
         snapshot_date: date,
         current_balance: float
     ) -> None:
-        """Calculate snapshot for a specific account on a specific date."""
-        # Get transactions for this account on this date
-        start_timestamp = int(datetime.combine(snapshot_date, datetime.min.time()).timestamp())
+        """Calculate snapshot for a specific account on a specific date - just the balance."""
+        # Get end of day timestamp
         end_timestamp = int(datetime.combine(snapshot_date, datetime.max.time()).timestamp())
 
-        daily_txns = self.db.client.table("simplefin_transactions") \
-            .select("amount") \
-            .eq("user_id", user_id) \
-            .eq("simplefin_account_id", account_id) \
-            .gte("posted_date", start_timestamp) \
-            .lte("posted_date", end_timestamp) \
-            .execute()
-
-        # Calculate daily totals
-        daily_spent = Decimal(0)
-        daily_income = Decimal(0)
-        transaction_count = len(daily_txns.data)
-
-        for txn in daily_txns.data:
-            amount = Decimal(str(txn["amount"]))
-            if amount < 0:
-                daily_spent += abs(amount)
-            else:
-                daily_income += amount
-
-        daily_net = daily_income - daily_spent
-
-        # Calculate running balance (work backwards from current balance)
         # Get all transactions for this account up to end of this date
         all_txns = self.db.client.table("simplefin_transactions") \
             .select("amount") \
@@ -357,7 +229,7 @@ class SnapshotService:
             .lte("posted_date", end_timestamp) \
             .execute()
 
-        # Running balance = sum of all transactions up to this date
+        # Sum all transaction amounts to get balance
         running_balance = sum(Decimal(str(t["amount"])) for t in all_txns.data)
 
         # Upsert snapshot
@@ -366,11 +238,6 @@ class SnapshotService:
             "simplefin_account_id": account_id,
             "snapshot_date": snapshot_date.isoformat(),
             "balance": float(running_balance),
-            "daily_spent": float(daily_spent),
-            "daily_income": float(daily_income),
-            "daily_net": float(daily_net),
-            "transaction_count": transaction_count,
-            "is_finalized": snapshot_date < date.today(),
             "updated_at": datetime.utcnow().isoformat(),
         }
 
@@ -387,14 +254,13 @@ class SnapshotService:
         granularity: str = "day"
     ) -> List[dict]:
         """
-        Get snapshots for a specific account.
+        Get balance snapshots for a specific account with optional aggregation.
 
         Args:
-            user_id: User ID
-            account_id: SimpleFin account ID (UUID)
-            start_date: Start date (defaults based on granularity)
-            end_date: End date (defaults to today)
             granularity: 'day', 'week', 'month', or 'year'
+
+        Returns:
+            List of {date, balance} dicts
         """
         if not end_date:
             end_date = date.today()
@@ -402,9 +268,9 @@ class SnapshotService:
         if not start_date:
             # Default based on granularity
             if granularity == "day":
-                start_date = end_date - timedelta(days=7)
-            elif granularity == "week":
                 start_date = end_date - timedelta(days=30)
+            elif granularity == "week":
+                start_date = end_date - timedelta(days=90)
             elif granularity == "month":
                 start_date = end_date - timedelta(days=365)
             else:  # year
@@ -416,75 +282,51 @@ class SnapshotService:
                     .order("snapshot_date", desc=False) \
                     .limit(1) \
                     .execute()
-
                 if result.data:
                     start_date = datetime.fromisoformat(result.data[0]["snapshot_date"]).date()
                 else:
                     start_date = end_date
 
-        # Query snapshots
-        if granularity == "day":
-            result = self.db.client.table("transaction_snapshots") \
-                .select("snapshot_date, balance, daily_spent, daily_income, daily_net, transaction_count") \
-                .eq("user_id", user_id) \
-                .eq("simplefin_account_id", account_id) \
-                .gte("snapshot_date", start_date.isoformat()) \
-                .lte("snapshot_date", end_date.isoformat()) \
-                .order("snapshot_date", desc=False) \
-                .execute()
+        # Fetch all daily snapshots
+        result = self.db.client.table("transaction_snapshots") \
+            .select("snapshot_date, balance") \
+            .eq("user_id", user_id) \
+            .eq("simplefin_account_id", account_id) \
+            .gte("snapshot_date", start_date.isoformat()) \
+            .lte("snapshot_date", end_date.isoformat()) \
+            .order("snapshot_date", desc=False) \
+            .execute()
 
+        if granularity == "day":
+            # Return daily snapshots as-is
             return [
                 {
                     "date": row["snapshot_date"],
-                    "balance": float(row["balance"]),
-                    "spent": float(row["daily_spent"]),
-                    "income": float(row["daily_income"]),
-                    "net": float(row["daily_net"]),
-                    "transaction_count": row["transaction_count"]
+                    "balance": float(row["balance"])
                 }
                 for row in result.data
             ]
 
-        else:
-            # Aggregate for week/month/year
-            all_snapshots = self.db.client.table("transaction_snapshots") \
-                .select("snapshot_date, balance, daily_spent, daily_income, daily_net, transaction_count") \
-                .eq("user_id", user_id) \
-                .eq("simplefin_account_id", account_id) \
-                .gte("snapshot_date", start_date.isoformat()) \
-                .lte("snapshot_date", end_date.isoformat()) \
-                .order("snapshot_date", desc=False) \
-                .execute()
+        # Aggregate by granularity (take last balance in each period)
+        aggregated = {}
+        for row in result.data:
+            snapshot_dt = datetime.fromisoformat(row["snapshot_date"])
 
-            # Aggregate by granularity (same logic as user-level snapshots)
-            aggregated = {}
-            for row in all_snapshots.data:
-                snapshot_dt = datetime.fromisoformat(row["snapshot_date"])
+            # Determine the grouping key
+            if granularity == "week":
+                key = snapshot_dt.isocalendar()[:2]
+                key_date = datetime.strptime(f"{key[0]}-W{key[1]:02d}-1", "%G-W%V-%u").date()
+            elif granularity == "month":
+                key = (snapshot_dt.year, snapshot_dt.month)
+                key_date = date(key[0], key[1], 1)
+            else:  # year
+                key = snapshot_dt.year
+                key_date = date(key, 1, 1)
 
-                if granularity == "week":
-                    key = snapshot_dt.isocalendar()[:2]
-                    key_date = datetime.strptime(f"{key[0]}-W{key[1]:02d}-1", "%G-W%W-%u").date()
-                elif granularity == "month":
-                    key = (snapshot_dt.year, snapshot_dt.month)
-                    key_date = date(key[0], key[1], 1)
-                else:  # year
-                    key = snapshot_dt.year
-                    key_date = date(key, 1, 1)
+            # Use last balance in the period
+            aggregated[key] = {
+                "date": key_date.isoformat(),
+                "balance": float(row["balance"])
+            }
 
-                if key not in aggregated:
-                    aggregated[key] = {
-                        "date": key_date.isoformat(),
-                        "balance": float(row["balance"]),
-                        "spent": 0,
-                        "income": 0,
-                        "net": 0,
-                        "transaction_count": 0
-                    }
-
-                aggregated[key]["spent"] += float(row["daily_spent"])
-                aggregated[key]["income"] += float(row["daily_income"])
-                aggregated[key]["net"] += float(row["daily_net"])
-                aggregated[key]["transaction_count"] += row["transaction_count"]
-                aggregated[key]["balance"] = float(row["balance"])
-
-            return sorted(aggregated.values(), key=lambda x: x["date"])
+        return sorted(aggregated.values(), key=lambda x: x["date"])
