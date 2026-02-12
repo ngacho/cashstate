@@ -153,7 +153,7 @@ class TestCompleteSimplefinFlow:
 
         response = self.client.post(
             f"{self.base_url}/simplefin/sync/{self.simplefin_item_id}",
-            params={"start_date": start_timestamp},
+            params={"start_date": start_timestamp, "force_sync": "true"},
             headers=self.get_headers(),
         )
 

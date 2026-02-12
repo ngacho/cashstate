@@ -176,6 +176,7 @@ async def list_transactions(
 async def sync_item(
     item_id: str,
     start_date: int | None = None,
+    force_sync: bool = False,
     user: dict = Depends(get_current_user),
     db: Database = Depends(get_database),
 ):
@@ -190,6 +191,8 @@ async def sync_item(
         start_date: Optional start date (Unix timestamp in seconds since epoch).
                    Example: 1704067200 for 2024-01-01.
                    If not provided, SimpleFin returns recent transactions only.
+        force_sync: If True, bypass the 24-hour rate limit. Use for new accounts
+                   or testing. Default: False.
         user: Current authenticated user (injected).
         db: Database instance (injected).
     """
@@ -205,7 +208,11 @@ async def sync_item(
         )
 
     # Rate limiting: Check last sync time (24 hour cooldown)
-    if item.get("last_synced_at"):
+    # Skip if force_sync is True (for new accounts or testing)
+    if force_sync:
+        print(f"[SimpleFin] Force sync enabled for item {item_id} by user {user['id']}")
+
+    if not force_sync and item.get("last_synced_at"):
         from datetime import datetime, timezone, timedelta
 
         last_synced = item["last_synced_at"]
