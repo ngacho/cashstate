@@ -10,6 +10,7 @@ from app.routers import (
     auth_router,
     plaid_router,
     simplefin_router,
+    snapshots_router,
     sync_router,
     transactions_router,
 )
@@ -86,6 +87,7 @@ api_prefix = settings.api_v1_prefix
 app.include_router(auth_router, prefix=api_prefix)
 app.include_router(plaid_router, prefix=api_prefix)
 app.include_router(simplefin_router, prefix=api_prefix)
+app.include_router(snapshots_router, prefix=api_prefix)
 app.include_router(sync_router, prefix=api_prefix)
 app.include_router(transactions_router, prefix=api_prefix)
 

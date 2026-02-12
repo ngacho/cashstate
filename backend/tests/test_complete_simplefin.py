@@ -229,3 +229,216 @@ class TestCompleteSimplefinFlow:
             description = txn['description']
             payee = txn.get('payee', 'N/A')
             print(f"  - {posted_date.date()} | {amount:>8} | {payee or description}")
+
+    # =========================================
+    # Step 8: Calculate snapshots
+    # =========================================
+    def test_08_calculate_snapshots(self):
+        """Calculate daily snapshots from transaction data."""
+        import datetime
+
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        # Calculate snapshots from 2025-12-31 to today
+        start_date = datetime.datetime(2025, 12, 31).date()
+        end_date = datetime.date.today()
+
+        print(f"\nCalculating snapshots from {start_date} to {end_date}")
+
+        response = self.client.post(
+            f"{self.base_url}/snapshots/calculate",
+            params={
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+            },
+            headers=self.get_headers(),
+        )
+
+        assert response.status_code == 200, f"Calculate snapshots failed: {response.json()}"
+
+        data = response.json()
+        assert data["success"] is True
+        assert "message" in data
+
+        print(f"✅ {data['message']}")
+
+    # =========================================
+    # Step 9: Verify daily snapshots
+    # =========================================
+    def test_09_get_daily_snapshots(self):
+        """Get daily snapshots (last 7 days)."""
+        import datetime
+
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        end_date = datetime.date.today()
+        start_date = end_date - datetime.timedelta(days=6)
+
+        print(f"\nGetting daily snapshots from {start_date} to {end_date}")
+
+        response = self.client.get(
+            f"{self.base_url}/snapshots",
+            params={
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "granularity": "day",
+            },
+            headers=self.get_headers(),
+        )
+
+        assert response.status_code == 200, f"Failed to get snapshots: {response.json()}"
+
+        data = response.json()
+        assert "data" in data
+        assert data["granularity"] == "day"
+
+        snapshots = data["data"]
+        print(f"Found {len(snapshots)} daily snapshot(s)")
+
+        if snapshots:
+            print("\nDaily snapshots (last 7 days):")
+            for snapshot in snapshots:
+                date = snapshot["date"]
+                balance = snapshot["balance"]
+                spent = snapshot["spent"]
+                income = snapshot["income"]
+                txn_count = snapshot["transaction_count"]
+                print(f"  {date}: Balance=${balance:,.2f} | Spent=${spent:,.2f} | Income=${income:,.2f} | Txns={txn_count}")
+
+    # =========================================
+    # Step 10: Verify weekly aggregation
+    # =========================================
+    def test_10_get_weekly_snapshots(self):
+        """Get weekly aggregated snapshots (last 4 weeks)."""
+        import datetime
+
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        end_date = datetime.date.today()
+        start_date = end_date - datetime.timedelta(days=29)
+
+        print(f"\nGetting weekly snapshots from {start_date} to {end_date}")
+
+        response = self.client.get(
+            f"{self.base_url}/snapshots",
+            params={
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "granularity": "week",
+            },
+            headers=self.get_headers(),
+        )
+
+        assert response.status_code == 200, f"Failed to get weekly snapshots: {response.json()}"
+
+        data = response.json()
+        assert "data" in data
+        assert data["granularity"] == "week"
+
+        snapshots = data["data"]
+        print(f"Found {len(snapshots)} weekly snapshot(s)")
+
+        if snapshots:
+            print("\nWeekly snapshots:")
+            for snapshot in snapshots:
+                week_start = snapshot["date"]
+                balance = snapshot["balance"]
+                spent = snapshot["spent"]
+                income = snapshot["income"]
+                print(f"  Week of {week_start}: Balance=${balance:,.2f} | Spent=${spent:,.2f} | Income=${income:,.2f}")
+
+    # =========================================
+    # Step 11: Verify monthly aggregation
+    # =========================================
+    def test_11_get_monthly_snapshots(self):
+        """Get monthly aggregated snapshots (last 3 months)."""
+        import datetime
+
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        end_date = datetime.date.today()
+        # Go back 3 months
+        start_date = (end_date - datetime.timedelta(days=90)).replace(day=1)
+
+        print(f"\nGetting monthly snapshots from {start_date} to {end_date}")
+
+        response = self.client.get(
+            f"{self.base_url}/snapshots",
+            params={
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "granularity": "month",
+            },
+            headers=self.get_headers(),
+        )
+
+        assert response.status_code == 200, f"Failed to get monthly snapshots: {response.json()}"
+
+        data = response.json()
+        assert "data" in data
+        assert data["granularity"] == "month"
+
+        snapshots = data["data"]
+        print(f"Found {len(snapshots)} monthly snapshot(s)")
+
+        if snapshots:
+            print("\nMonthly snapshots:")
+            for snapshot in snapshots:
+                month_start = snapshot["date"]
+                balance = snapshot["balance"]
+                spent = snapshot["spent"]
+                income = snapshot["income"]
+                print(f"  {month_start}: Balance=${balance:,.2f} | Spent=${spent:,.2f} | Income=${income:,.2f}")
+
+    # =========================================
+    # Step 12: Test net worth trend
+    # =========================================
+    def test_12_verify_net_worth_trend(self):
+        """Verify net worth data can be used for charting."""
+        import datetime
+
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        # Get last 30 days for a chart
+        end_date = datetime.date.today()
+        start_date = end_date - datetime.timedelta(days=29)
+
+        response = self.client.get(
+            f"{self.base_url}/snapshots",
+            params={
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "granularity": "day",
+            },
+            headers=self.get_headers(),
+        )
+
+        assert response.status_code == 200
+
+        data = response.json()
+        snapshots = data["data"]
+
+        if len(snapshots) > 1:
+            # Calculate net worth change
+            first_balance = snapshots[0]["balance"]
+            last_balance = snapshots[-1]["balance"]
+            change = last_balance - first_balance
+            change_pct = (change / first_balance * 100) if first_balance != 0 else 0
+
+            print(f"\n📈 Net Worth Trend (30 days):")
+            print(f"   Start: ${first_balance:,.2f}")
+            print(f"   End:   ${last_balance:,.2f}")
+            print(f"   Change: ${change:+,.2f} ({change_pct:+.1f}%)")
+
+            # Verify data structure is suitable for charting
+            for snapshot in snapshots:
+                assert "date" in snapshot
+                assert "balance" in snapshot
+                assert isinstance(snapshot["balance"], (int, float))
+
+            print(f"   ✅ {len(snapshots)} data points ready for line chart")

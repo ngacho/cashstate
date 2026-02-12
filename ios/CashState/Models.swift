@@ -186,3 +186,45 @@ struct SimplefinSyncResponse: Codable {
         case errors
     }
 }
+
+// MARK: - Snapshots
+
+struct SnapshotData: Codable, Identifiable {
+    let date: String
+    let balance: Double
+    let spent: Double
+    let income: Double
+    let net: Double
+    let transactionCount: Int
+
+    var id: String { date }
+
+    enum CodingKeys: String, CodingKey {
+        case date
+        case balance
+        case spent
+        case income
+        case net
+        case transactionCount = "transaction_count"
+    }
+
+    var dateValue: Date {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate]
+        return formatter.date(from: date) ?? Date()
+    }
+}
+
+struct SnapshotsResponse: Codable {
+    let startDate: String
+    let endDate: String
+    let granularity: String
+    let data: [SnapshotData]
+
+    enum CodingKeys: String, CodingKey {
+        case startDate = "start_date"
+        case endDate = "end_date"
+        case granularity
+        case data
+    }
+}

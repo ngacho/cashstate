@@ -1,12 +1,18 @@
 import SwiftUI
 
+import Charts
+
 struct HomeView: View {
     let apiClient: APIClient
     @State private var simplefinItems: [SimplefinItem] = []
     @State private var accounts: [SimplefinAccount] = []
+    @State private var snapshots: [SnapshotData] = []
     @State private var isLoading = false
     @State private var isSyncing = false
+    @State private var isLoadingSnapshots = false
     @State private var showSyncSuccess = false
+    @State private var selectedTimeRange: TimeRange = .month
+    @State private var selectedDate = Date()
 
     var totalBalance: Double {
         accounts.compactMap { $0.balance }.reduce(0, +)
@@ -140,6 +146,63 @@ struct HomeView: View {
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.top, Theme.Spacing.sm)
 
+                    // Net Worth Chart Section
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        HStack {
+                            Text("Net Worth")
+                                .font(.headline)
+                                .foregroundColor(Theme.Colors.textPrimary)
+                            Spacer()
+                            // Time range menu
+                            Menu {
+                                Picker("Period", selection: $selectedTimeRange) {
+                                    Text("Week").tag(TimeRange.week)
+                                    Text("Month").tag(TimeRange.month)
+                                    Text("Year").tag(TimeRange.year)
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(selectedTimeRange.rawValue)
+                                        .font(.subheadline)
+                                        .foregroundColor(Theme.Colors.textPrimary)
+                                    Image(systemName: "chevron.down")
+                                        .font(.caption)
+                                        .foregroundColor(Theme.Colors.textSecondary)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, Theme.Spacing.md)
+
+                        if isLoadingSnapshots {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 200)
+                        } else if snapshots.isEmpty {
+                            VStack(spacing: Theme.Spacing.sm) {
+                                Image(systemName: "chart.line.uptrend.xyaxis")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(Theme.Colors.textSecondary.opacity(0.5))
+                                Text("No data yet")
+                                    .font(.caption)
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 200)
+                            .background(Theme.Colors.cardBackground)
+                            .cornerRadius(Theme.CornerRadius.md)
+                            .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                            .padding(.horizontal, Theme.Spacing.md)
+                        } else {
+                            NetWorthChart(snapshots: snapshots)
+                                .frame(height: 200)
+                                .padding(Theme.Spacing.md)
+                                .background(Theme.Colors.cardBackground)
+                                .cornerRadius(Theme.CornerRadius.md)
+                                .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                                .padding(.horizontal, Theme.Spacing.md)
+                        }
+                    }
+
                     // Accounts Section
                     if isLoading {
                         ProgressView()
@@ -207,9 +270,16 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .refreshable {
                 await loadAccounts()
+                await loadSnapshots()
             }
             .task {
                 await loadAccounts()
+                await loadSnapshots()
+            }
+            .onChange(of: selectedTimeRange) { _, _ in
+                Task {
+                    await loadSnapshots()
+                }
             }
             .alert("Sync Complete", isPresented: $showSyncSuccess) {
                 Button("OK") { }
@@ -237,6 +307,51 @@ struct HomeView: View {
         } catch {
             // Silently fail and show empty state - no accounts connected yet
             print("Failed to load accounts: \(error)")
+        }
+    }
+
+    func loadSnapshots() async {
+        isLoadingSnapshots = true
+        defer { isLoadingSnapshots = false }
+
+        do {
+            let (startDate, endDate, granularity) = calculateDateRange()
+            let response = try await apiClient.getSnapshots(
+                startDate: startDate,
+                endDate: endDate,
+                granularity: granularity
+            )
+            snapshots = response.data
+        } catch {
+            // Silently fail and show empty state
+            print("Failed to load snapshots: \(error)")
+        }
+    }
+
+    func calculateDateRange() -> (Date, Date, String) {
+        let calendar = Calendar.current
+        let endDate = calendar.startOfDay(for: selectedDate)
+
+        switch selectedTimeRange {
+        case .week:
+            // Show 7 days ending at today, daily granularity
+            let startDate = calendar.date(byAdding: .day, value: -6, to: endDate)!
+            return (startDate, endDate, "day")
+
+        case .month:
+            // Show 30 days ending at today, daily granularity
+            let startDate = calendar.date(byAdding: .day, value: -29, to: endDate)!
+            return (startDate, endDate, "day")
+
+        case .year:
+            // Show 12 months ending at today, monthly granularity
+            let startDate = calendar.date(byAdding: .month, value: -11, to: endDate)!
+            return (startDate, endDate, "month")
+
+        default:
+            // Default to month view
+            let startDate = calendar.date(byAdding: .day, value: -29, to: endDate)!
+            return (startDate, endDate, "day")
         }
     }
 
@@ -275,6 +390,96 @@ struct HomeView: View {
             // Log error but don't show alert - sync errors are already handled in AccountsView
             print("Failed to sync: \(error)")
         }
+    }
+}
+
+// MARK: - Net Worth Chart (Smooth Line)
+
+struct NetWorthChart: View {
+    let snapshots: [SnapshotData]
+
+    var minBalance: Double {
+        snapshots.map { $0.balance }.min() ?? 0
+    }
+
+    var maxBalance: Double {
+        snapshots.map { $0.balance }.max() ?? 0
+    }
+
+    var body: some View {
+        Chart(snapshots) { snapshot in
+            LineMark(
+                x: .value("Date", snapshot.dateValue),
+                y: .value("Balance", snapshot.balance)
+            )
+            .foregroundStyle(Theme.Colors.primary)
+            .interpolationMethod(.catmullRom) // Smooth curve
+            .lineStyle(StrokeStyle(lineWidth: 3))
+
+            // Area fill under the line
+            AreaMark(
+                x: .value("Date", snapshot.dateValue),
+                y: .value("Balance", snapshot.balance)
+            )
+            .foregroundStyle(
+                LinearGradient(
+                    colors: [
+                        Theme.Colors.primary.opacity(0.3),
+                        Theme.Colors.primary.opacity(0.05)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .interpolationMethod(.catmullRom)
+        }
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 5)) { value in
+                if let date = value.as(Date.self) {
+                    AxisValueLabel {
+                        Text(formatAxisDate(date))
+                            .font(.caption2)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                        .foregroundStyle(Color.gray.opacity(0.2))
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                if let balance = value.as(Double.self) {
+                    AxisValueLabel {
+                        Text(formatCurrency(balance))
+                            .font(.caption2)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                        .foregroundStyle(Color.gray.opacity(0.2))
+                }
+            }
+        }
+        .chartYScale(domain: (minBalance * 0.95)...(maxBalance * 1.05))
+    }
+
+    func formatAxisDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        if snapshots.count > 30 {
+            // Monthly view - show month
+            formatter.dateFormat = "MMM"
+        } else {
+            // Daily/weekly view - show day
+            formatter.dateFormat = "M/d"
+        }
+        return formatter.string(from: date)
+    }
+
+    func formatCurrency(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.maximumFractionDigits = 0
+        formatter.currencySymbol = "$"
+        return formatter.string(from: NSNumber(value: value)) ?? "$0"
     }
 }
 

@@ -29,9 +29,10 @@ A Mint-inspired personal finance tracker with bank account integration via Plaid
 
 3. **Run database migrations:**
    ```bash
-   # Apply migrations via Supabase dashboard SQL editor
-   # Use supabase/migrations/001_initial_schema.sql for new projects
-   # Or 00X_complete_rls_fix.sql to fix existing databases
+   # Apply migrations via Supabase dashboard SQL editor in order:
+   # 1. migrations/001_initial_schema.sql (core tables)
+   # 2. migrations/002_simplefin.sql (SimpleFin integration)
+   # 3. migrations/003_daily_snapshots.sql (net worth tracking)
    ```
 
 4. **Start the server:**
@@ -130,7 +131,7 @@ cashstate/
 
 ## Features
 
-### Backend API (14 endpoints)
+### Backend API (17 endpoints)
 
 **Authentication:**
 - POST `/app/v1/auth/register` - Create account
@@ -152,32 +153,59 @@ cashstate/
 - GET `/app/v1/sync/status` - Get sync status
 - GET `/app/v1/sync/status/{job_id}` - Get job status
 
+**Snapshots (Net Worth Tracking):**
+- GET `/app/v1/snapshots` - Get historical snapshots with flexible date ranges
+  - Query params: `start_date`, `end_date`, `granularity` (day/week/month/year)
+  - Example: `/snapshots?start_date=2024-01-01&end_date=2024-01-31&granularity=week`
+- POST `/app/v1/snapshots/calculate` - Calculate/recalculate snapshots
+  - Automatically called after transaction sync
+  - Can be triggered manually to rebuild history
+
 ### iOS App
 
 **Current Features:**
 - ✅ **Home Dashboard** (Mint-inspired design):
-  - Budget tracker with progress bar
-  - "Left to Spend" prominent display
-  - Spending trend line chart (daily view)
-  - Top 3 spending categories with color coding
-  - Smart category icons and amounts
+  - **Smooth net worth line chart** with interactive time periods (Week/Month/Year)
+  - Teal gradient hero card showing total balance
+  - Grouped accounts by type (Cash, Credit Cards, Investments)
+  - Color-coded account icons
+  - Sync button integrated in header
+- ✅ **Net Worth Tracking**:
+  - Daily snapshots stored for historical trends
+  - Flexible time ranges (week/month/year views)
+  - Smooth Catmull-Rom interpolation for line charts
+  - Automatic granularity adjustment (daily → weekly → monthly)
+- ✅ **Analytics View**:
+  - Donut chart for spending breakdown
+  - Toggle between chart and bar graph
+  - Top spending categories with colored segments
+  - Time period selector in toolbar
+- ✅ **Transactions View**:
+  - Clean list with circular icons
+  - Amount highlighting (red for expenses, green for income)
+  - Pending transaction indicators
+- ✅ **SimpleFin Integration**:
+  - Connect bank accounts via SimpleFin
+  - Automatic transaction sync
+  - Force sync with date range selection
 - ✅ **Authentication** (Login via backend API)
-- ✅ **Transaction List** with pull-to-refresh
-- ✅ **Tab Bar Navigation**: Home, Transactions, Budgets, Accounts
-- ✅ **Real-time Calculations**: Budget tracking from live transaction data
-- ✅ **Error Handling**: User-friendly messages and loading states
-- ⏳ Plaid Link integration (backend ready, iOS pending)
+- ✅ **Tab Bar Navigation**: Overview, Transactions, Insights, Settings
+- ✅ **Real-time Calculations**: All metrics calculated from live data
+- ✅ **Error Handling**: Graceful empty states and error messages
 - ⏳ Registration UI (backend ready, iOS pending)
 - ⏳ Budget configuration (currently hardcoded)
 
 **UI/UX:**
-- 🎨 Mint-inspired design (teal primary color #00D09C)
-- 📊 Visual spending trends with line charts
-- 🎯 Budget progress indicators
-- 🏷️ Smart category icons and color coding
+- 🎨 Mint-inspired design (teal primary color #00A699)
+- 📈 Smooth line charts with gradients (Swift Charts)
+- 🍩 Interactive donut charts for spending breakdown
+- 📊 Visual trends with flexible time periods
+- 🎯 Color-coded account types and categories
+- 🏷️ Circular icons with meaningful backgrounds
 - 📱 Native SwiftUI with async/await networking
 - 🔄 Pull-to-refresh on all data views
-- ⚡ Smooth animations and transitions
+- ⚡ Smooth animations and Catmull-Rom interpolation
+- 🎭 Graceful empty states (no scary error messages)
 
 ## Security
 
