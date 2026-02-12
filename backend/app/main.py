@@ -14,6 +14,7 @@ from app.routers import (
     sync_router,
     transactions_router,
 )
+from app.cron import sync_simplefin_transactions, update_daily_snapshots
 
 
 settings = get_settings()
@@ -24,7 +25,18 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     print(f"Starting {settings.app_name} API...")
+
+    # Start cron jobs
+    if settings.enable_cron_jobs:
+        print("[CRON] Starting scheduled tasks...")
+        await sync_simplefin_transactions()  # Run immediately on startup
+        await update_daily_snapshots()  # Run immediately on startup
+        print("[CRON] Scheduled tasks initialized")
+    else:
+        print("[CRON] Cron jobs disabled")
+
     yield
+
     # Shutdown
     print(f"Shutting down {settings.app_name} API...")
 

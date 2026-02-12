@@ -442,3 +442,73 @@ class TestCompleteSimplefinFlow:
                 assert isinstance(snapshot["balance"], (int, float))
 
             print(f"   ✅ {len(snapshots)} data points ready for line chart")
+
+    # =========================================
+    # Step 13: Test transaction snapshots (per-account)
+    # =========================================
+    def test_13_get_account_snapshots(self):
+        """Get transaction snapshots for a specific account."""
+        import datetime
+
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        # First, get an account ID
+        response = self.client.get(
+            f"{self.base_url}/simplefin/accounts/{self.simplefin_item_id}",
+            headers=self.get_headers(),
+        )
+
+        assert response.status_code == 200
+        accounts = response.json()
+
+        if not accounts:
+            pytest.skip("No accounts found to test transaction snapshots")
+
+        account_id = accounts[0]["id"]
+        account_name = accounts[0]["name"]
+
+        print(f"\n💳 Testing transaction snapshots for account: {account_name}")
+
+        # Get transaction snapshots for this account
+        end_date = datetime.date.today()
+        start_date = end_date - datetime.timedelta(days=6)
+
+        response = self.client.get(
+            f"{self.base_url}/snapshots/account/{account_id}",
+            params={
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "granularity": "day",
+            },
+            headers=self.get_headers(),
+        )
+
+        assert response.status_code == 200, f"Failed to get account snapshots: {response.json()}"
+
+        data = response.json()
+        assert "data" in data
+        assert data["granularity"] == "day"
+
+        snapshots = data["data"]
+        print(f"Found {len(snapshots)} transaction snapshot(s) for {account_name}")
+
+        if snapshots:
+            print("\nTransaction snapshots (last 7 days):")
+            for snapshot in snapshots:
+                date = snapshot["date"]
+                balance = snapshot["balance"]
+                spent = snapshot["spent"]
+                income = snapshot["income"]
+                txn_count = snapshot["transaction_count"]
+                print(f"  {date}: Balance=${balance:,.2f} | Spent=${spent:,.2f} | Income=${income:,.2f} | Txns={txn_count}")
+
+            # Verify data structure
+            for snapshot in snapshots:
+                assert "date" in snapshot
+                assert "balance" in snapshot
+                assert "spent" in snapshot
+                assert "income" in snapshot
+                assert isinstance(snapshot["balance"], (int, float))
+
+            print(f"   ✅ {len(snapshots)} data points ready for account chart")

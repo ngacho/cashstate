@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # SimpleFin (optional, for development/testing only)
     simplefin_access_url: str | None = None  # Pre-claimed access URL for dev/test
 
+    # Cron Jobs
+    enable_cron_jobs: bool = True  # Enable/disable scheduled background tasks
+
     @property
     def is_development(self) -> bool:
         """Check if running in development mode."""
