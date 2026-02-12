@@ -204,6 +204,26 @@ async def sync_item(
             detail="Not authorized to sync this item",
         )
 
+    # Rate limiting: Check last sync time (24 hour cooldown)
+    if item.get("last_synced_at"):
+        from datetime import datetime, timezone, timedelta
+
+        last_synced = item["last_synced_at"]
+        # Handle both string and datetime objects
+        if isinstance(last_synced, str):
+            last_synced = datetime.fromisoformat(last_synced.replace('Z', '+00:00'))
+
+        now = datetime.now(timezone.utc)
+        time_since_last_sync = now - last_synced
+
+        if time_since_last_sync < timedelta(hours=24):
+            hours_remaining = 24 - (time_since_last_sync.total_seconds() / 3600)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Rate limited. You can sync again in {hours_remaining:.1f} hours. "
+                       f"SimpleFin allows 24 syncs per day to prevent excessive API usage.",
+            )
+
     try:
         # Create SimpleFin sync job
         sync_job = db.create_simplefin_sync_job({
