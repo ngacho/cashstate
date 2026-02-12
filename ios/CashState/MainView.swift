@@ -523,8 +523,8 @@ struct AccountsView: View {
                 SimplefinSetupView(apiClient: apiClient) { itemId in
                     Task {
                         await loadSimplefinItems()
-                        // Auto-sync after setup
-                        await syncItem(itemId)
+                        // Auto-sync after setup with force_sync=true (new account)
+                        await syncItem(itemId, forceSync: true)
                     }
                 }
             }
@@ -547,7 +547,7 @@ struct AccountsView: View {
         }
     }
 
-    private func syncItem(_ itemId: String) async {
+    private func syncItem(_ itemId: String, forceSync: Bool = false) async {
         isSyncing = true
         defer { isSyncing = false }
 
@@ -560,7 +560,8 @@ struct AccountsView: View {
 
             let response = try await apiClient.syncSimplefin(
                 itemId: itemId,
-                startDate: startTimestamp
+                startDate: startTimestamp,
+                forceSync: forceSync
             )
             print("✅ Synced \(response.accountsSynced) accounts, \(response.transactionsAdded) transactions")
 

@@ -108,12 +108,64 @@ actor APIClient {
         return try await request(endpoint: "/simplefin/items")
     }
 
-    func syncSimplefin(itemId: String, startDate: Int? = nil) async throws -> SimplefinSyncResponse {
-        var endpoint = "/simplefin/sync/\(itemId)"
+    func syncSimplefin(itemId: String, startDate: Int? = nil, forceSync: Bool = false) async throws -> SimplefinSyncResponse {
+        var components = URLComponents(string: Config.apiBaseURL + "/simplefin/sync/\(itemId)")
+        var queryItems: [URLQueryItem] = []
+
         if let startDate = startDate {
-            endpoint += "?start_date=\(startDate)"
+            queryItems.append(URLQueryItem(name: "start_date", value: String(startDate)))
         }
-        return try await request(endpoint: endpoint, method: "POST")
+        if forceSync {
+            queryItems.append(URLQueryItem(name: "force_sync", value: "true"))
+        }
+
+        if !queryItems.isEmpty {
+            components?.queryItems = queryItems
+        }
+
+        guard let url = components?.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        if Config.debugMode {
+            print("→ POST /simplefin/sync/\(itemId)")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        if Config.debugMode {
+            print("← \(httpResponse.statusCode) /simplefin/sync/\(itemId)")
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 401 {
+                throw APIError.unauthorized
+            }
+
+            var errorMessage: String?
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let detail = json["detail"] as? String {
+                errorMessage = detail
+            }
+
+            throw APIError.serverError(httpResponse.statusCode, errorMessage)
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(SimplefinSyncResponse.self, from: data)
     }
 
     func deleteSimplefinItem(itemId: String) async throws {
