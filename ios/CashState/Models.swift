@@ -18,36 +18,34 @@ struct AuthResponse: Codable {
     }
 }
 
-// MARK: - Transaction (SimpleFin only)
+// MARK: - SimpleFin Transaction (matches backend SimplefinTransactionResponse)
 
 struct Transaction: Identifiable, Codable {
     let id: String
-    let simplefinItemId: String
+    let simplefinAccountId: String
     let simplefinTransactionId: String
-    let accountId: String
-    let accountName: String?
     let amount: Double
-    let currency: String?
-    let date: String
-    let posted: String?
+    let currency: String
+    let postedDate: Int          // Unix timestamp
+    let transactionDate: Int     // Unix timestamp
     let description: String
     let payee: String?
+    let memo: String?
     let pending: Bool
     let createdAt: String
     let updatedAt: String
 
     enum CodingKeys: String, CodingKey {
         case id
-        case simplefinItemId = "simplefin_item_id"
+        case simplefinAccountId = "simplefin_account_id"
         case simplefinTransactionId = "simplefin_transaction_id"
-        case accountId = "account_id"
-        case accountName = "account_name"
         case amount
         case currency
-        case date
-        case posted
+        case postedDate = "posted_date"
+        case transactionDate = "transaction_date"
         case description
         case payee
+        case memo
         case pending
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -61,36 +59,18 @@ struct Transaction: Identifiable, Codable {
     }
 
     var displayDate: String {
-        // Convert YYYY-MM-DD to readable format
-        let components = date.split(separator: "-")
-        guard components.count == 3,
-              let month = Int(components[1]),
-              let day = Int(components[2]) else {
-            return date
-        }
-        let monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        return "\(monthNames[month - 1]) \(day)"
+        // Convert Unix timestamp to readable format
+        let date = Date(timeIntervalSince1970: TimeInterval(postedDate))
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return formatter.string(from: date)
     }
 
-    // Use description as the name (SimpleFin doesn't separate these)
-    var name: String { description }
+    // Use payee as primary name, fall back to description
+    var name: String { payee ?? description }
 
-    // Use payee as merchant name if available
-    var merchantName: String? { payee }
-}
-
-// MARK: - Transaction List Response
-
-struct TransactionListResponse: Codable {
-    let items: [Transaction]
-    let total: Int
-    let limit: Int
-    let offset: Int
-
-    enum CodingKeys: String, CodingKey {
-        case items, total, limit, offset
-    }
+    // Use description as merchant name
+    var merchantName: String { description }
 }
 
 // MARK: - Time Range
@@ -136,6 +116,39 @@ struct SimplefinItem: Identifiable, Codable {
     }
 }
 
+struct SimplefinAccount: Identifiable, Codable {
+    let id: String
+    let simplefinAccountId: String
+    let name: String
+    let currency: String
+    let balance: Double?
+    let availableBalance: Double?
+    let balanceDate: Int?
+    let organizationName: String?
+    let organizationDomain: String?
+    let createdAt: String
+    let updatedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case simplefinAccountId = "simplefin_account_id"
+        case name
+        case currency
+        case balance
+        case availableBalance = "available_balance"
+        case balanceDate = "balance_date"
+        case organizationName = "organization_name"
+        case organizationDomain = "organization_domain"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    var displayBalance: String {
+        guard let balance = balance else { return "N/A" }
+        return String(format: "$%.2f", balance)
+    }
+}
+
 struct SimplefinSetupRequest: Codable {
     let setupToken: String
     let institutionName: String?
@@ -159,13 +172,17 @@ struct SimplefinSetupResponse: Codable {
 struct SimplefinSyncResponse: Codable {
     let success: Bool
     let syncJobId: String
+    let accountsSynced: Int
     let transactionsAdded: Int
+    let transactionsUpdated: Int
     let errors: [String]
 
     enum CodingKeys: String, CodingKey {
         case success
         case syncJobId = "sync_job_id"
+        case accountsSynced = "accounts_synced"
         case transactionsAdded = "transactions_added"
+        case transactionsUpdated = "transactions_updated"
         case errors
     }
 }

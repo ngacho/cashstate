@@ -61,11 +61,9 @@ struct TransactionsView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(transaction.name)
                                     .font(.headline)
-                                if let merchant = transaction.merchantName {
-                                    Text(merchant)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
+                                Text(transaction.merchantName)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                                 Text(transaction.displayDate)
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
@@ -106,11 +104,7 @@ struct TransactionsView: View {
         defer { isLoading = false }
 
         do {
-            let response: TransactionListResponse = try await apiClient.request(
-                endpoint: "/transactions?limit=200",
-                method: "GET"
-            )
-            transactions = response.items
+            transactions = try await apiClient.listSimplefinTransactions(limit: 200)
         } catch let error as APIError {
             errorMessage = error.localizedDescription
             showError = true
@@ -132,18 +126,8 @@ struct InsightsView: View {
         let now = Date()
 
         return transactions.filter { transaction in
-            // Parse date string (YYYY-MM-DD)
-            let components = transaction.date.split(separator: "-")
-            guard components.count == 3,
-                  let year = Int(components[0]),
-                  let month = Int(components[1]),
-                  let day = Int(components[2]) else {
-                return false
-            }
-
-            guard let transactionDate = calendar.date(from: DateComponents(year: year, month: month, day: day)) else {
-                return false
-            }
+            // Convert Unix timestamp to Date
+            let transactionDate = Date(timeIntervalSince1970: TimeInterval(transaction.postedDate))
 
             switch selectedRange {
             case .day:
@@ -182,14 +166,16 @@ struct InsightsView: View {
     }
 
     var categoryBreakdown: [CategorySpending] {
-        var categoryTotals: [String: Double] = [:]
+        // SimpleFin doesn't provide categories yet
+        // Group by payee/merchant for now
+        var merchantTotals: [String: Double] = [:]
 
         for transaction in filteredTransactions where transaction.amount < 0 {
-            let category = transaction.category?.first ?? "Other"
-            categoryTotals[category, default: 0] += abs(transaction.amount)
+            let merchant = transaction.payee ?? transaction.description
+            merchantTotals[merchant, default: 0] += abs(transaction.amount)
         }
 
-        return categoryTotals.map { CategorySpending(category: $0.key, amount: $0.value) }
+        return merchantTotals.map { CategorySpending(category: $0.key, amount: $0.value) }
             .sorted { $0.amount > $1.amount }
     }
 
@@ -204,9 +190,13 @@ struct InsightsView: View {
 
     var dailySpending: [DailySpending] {
         var dailyTotals: [String: Double] = [:]
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
 
         for transaction in filteredTransactions where transaction.amount < 0 {
-            dailyTotals[transaction.date, default: 0] += abs(transaction.amount)
+            let date = Date(timeIntervalSince1970: TimeInterval(transaction.postedDate))
+            let dateString = formatter.string(from: date)
+            dailyTotals[dateString, default: 0] += abs(transaction.amount)
         }
 
         return dailyTotals.map { DailySpending(date: $0.key, amount: $0.value) }
@@ -341,11 +331,7 @@ struct InsightsView: View {
         defer { isLoading = false }
 
         do {
-            let response: TransactionListResponse = try await apiClient.request(
-                endpoint: "/transactions?limit=200",
-                method: "GET"
-            )
-            transactions = response.items
+            transactions = try await apiClient.listSimplefinTransactions(limit: 200)
         } catch {
             // Silent fail for insights - user can refresh
             print("Failed to load transactions: \(error)")
@@ -455,6 +441,8 @@ struct AccountsView: View {
     @State private var showSimplefinSetup = false
     @State private var isLoading = false
     @State private var isSyncing = false
+    @State private var syncErrorMessage: String?
+    @State private var showSyncError = false
 
     var body: some View {
         NavigationView {
@@ -540,6 +528,11 @@ struct AccountsView: View {
                     }
                 }
             }
+            .alert("Sync Error", isPresented: $showSyncError) {
+                Button("OK") { }
+            } message: {
+                Text(syncErrorMessage ?? "Failed to sync transactions")
+            }
         }
     }
 
@@ -569,11 +562,21 @@ struct AccountsView: View {
                 itemId: itemId,
                 startDate: startTimestamp
             )
-            print("✅ Synced \(response.transactionsAdded) transactions")
+            print("✅ Synced \(response.accountsSynced) accounts, \(response.transactionsAdded) transactions")
 
             // Reload items to update last synced time
             await loadSimplefinItems()
+        } catch let error as APIError {
+            await MainActor.run {
+                syncErrorMessage = error.localizedDescription
+                showSyncError = true
+            }
+            print("Failed to sync: \(error)")
         } catch {
+            await MainActor.run {
+                syncErrorMessage = error.localizedDescription
+                showSyncError = true
+            }
             print("Failed to sync: \(error)")
         }
     }

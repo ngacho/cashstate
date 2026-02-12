@@ -126,4 +126,73 @@ actor APIClient {
             method: "DELETE"
         )
     }
+
+    func listSimplefinAccounts(itemId: String) async throws -> [SimplefinAccount] {
+        return try await request(endpoint: "/simplefin/accounts/\(itemId)")
+    }
+
+    func listSimplefinTransactions(
+        dateFrom: Int? = nil,
+        dateTo: Int? = nil,
+        limit: Int = 50,
+        offset: Int = 0
+    ) async throws -> [Transaction] {
+        var components = URLComponents(string: Config.apiBaseURL + "/simplefin/transactions")
+        var queryItems: [URLQueryItem] = []
+
+        if let dateFrom = dateFrom {
+            queryItems.append(URLQueryItem(name: "date_from", value: String(dateFrom)))
+        }
+        if let dateTo = dateTo {
+            queryItems.append(URLQueryItem(name: "date_to", value: String(dateTo)))
+        }
+        queryItems.append(URLQueryItem(name: "limit", value: String(limit)))
+        queryItems.append(URLQueryItem(name: "offset", value: String(offset)))
+
+        components?.queryItems = queryItems
+
+        guard let url = components?.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        if Config.debugMode {
+            print("→ GET /simplefin/transactions")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        if Config.debugMode {
+            print("← \(httpResponse.statusCode) /simplefin/transactions")
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 401 {
+                throw APIError.unauthorized
+            }
+
+            var errorMessage: String?
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let detail = json["detail"] as? String {
+                errorMessage = detail
+            }
+
+            throw APIError.serverError(httpResponse.statusCode, errorMessage)
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode([Transaction].self, from: data)
+    }
 }

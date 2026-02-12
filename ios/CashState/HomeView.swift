@@ -11,18 +11,8 @@ struct HomeView: View {
         let now = Date()
 
         return transactions.filter { transaction in
-            let components = transaction.date.split(separator: "-")
-            guard components.count == 3,
-                  let year = Int(components[0]),
-                  let month = Int(components[1]),
-                  let day = Int(components[2]) else {
-                return false
-            }
-
-            guard let transactionDate = calendar.date(from: DateComponents(year: year, month: month, day: day)) else {
-                return false
-            }
-
+            // Convert Unix timestamp to Date
+            let transactionDate = Date(timeIntervalSince1970: TimeInterval(transaction.postedDate))
             return calendar.isDate(transactionDate, equalTo: now, toGranularity: .month)
         }
     }
@@ -76,7 +66,8 @@ struct HomeView: View {
         ]
 
         for transaction in currentMonthTransactions where transaction.amount < 0 {
-            let category = transaction.category?.first ?? "Other"
+            // SimpleFin doesn't have categories, group by payee/merchant
+            let category = transaction.payee ?? transaction.description
             categoryTotals[category, default: 0] += abs(transaction.amount)
         }
 
@@ -104,11 +95,9 @@ struct HomeView: View {
         var dailyTotals: [Int: Double] = [:]
 
         for transaction in currentMonthTransactions where transaction.amount < 0 {
-            let components = transaction.date.split(separator: "-")
-            guard components.count == 3,
-                  let day = Int(components[2]) else {
-                continue
-            }
+            // Convert Unix timestamp to Date and extract day
+            let transactionDate = Date(timeIntervalSince1970: TimeInterval(transaction.postedDate))
+            let day = calendar.component(.day, from: transactionDate)
             dailyTotals[day, default: 0] += abs(transaction.amount)
         }
 
@@ -236,11 +225,7 @@ struct HomeView: View {
         defer { isLoading = false }
 
         do {
-            let response: TransactionListResponse = try await apiClient.request(
-                endpoint: "/transactions?limit=200",
-                method: "GET"
-            )
-            transactions = response.items
+            transactions = try await apiClient.listSimplefinTransactions(limit: 200)
         } catch {
             print("Failed to load transactions: \(error)")
         }
