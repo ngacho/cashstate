@@ -8,22 +8,22 @@ struct MainView: View {
         TabView {
             HomeView(apiClient: apiClient)
                 .tabItem {
-                    Label("Home", systemImage: "house.fill")
+                    Label("Overview", systemImage: "house.fill")
                 }
 
             TransactionsView(apiClient: apiClient)
                 .tabItem {
-                    Label("Transactions", systemImage: "list.bullet.rectangle")
+                    Label("Transactions", systemImage: "list.bullet")
                 }
 
-            BudgetsView(apiClient: apiClient)
+            InsightsView(apiClient: apiClient)
                 .tabItem {
-                    Label("Budgets", systemImage: "chart.pie.fill")
+                    Label("Insights", systemImage: "chart.pie.fill")
                 }
 
             AccountsView(isAuthenticated: $isAuthenticated, apiClient: apiClient)
                 .tabItem {
-                    Label("Accounts", systemImage: "wallet.pass.fill")
+                    Label("Accounts", systemImage: "person.crop.circle")
                 }
         }
         .tint(Theme.Colors.primary)
@@ -34,67 +34,59 @@ struct TransactionsView: View {
     let apiClient: APIClient
     @State private var transactions: [Transaction] = []
     @State private var isLoading = false
-    @State private var errorMessage = ""
-    @State private var showError = false
 
     var body: some View {
         NavigationView {
             Group {
                 if isLoading && transactions.isEmpty {
-                    ProgressView("Loading transactions...")
+                    VStack {
+                        ProgressView()
+                            .padding()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.Colors.background)
                 } else if transactions.isEmpty {
                     VStack(spacing: Theme.Spacing.md) {
-                        Image(systemName: "doc.text")
+                        Image(systemName: "list.bullet.rectangle")
                             .font(.system(size: 60))
-                            .foregroundColor(Theme.Colors.textSecondary)
+                            .foregroundColor(Theme.Colors.primary.opacity(0.6))
                         Text("No transactions yet")
-                            .foregroundColor(Theme.Colors.textSecondary)
+                            .font(.headline)
+                            .foregroundColor(Theme.Colors.textPrimary)
                         Text("Connect your bank in the Accounts tab to sync transactions")
-                            .font(.caption)
+                            .font(.subheadline)
                             .foregroundColor(Theme.Colors.textSecondary)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal)
+                            .padding(.horizontal, Theme.Spacing.xl)
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.Colors.background)
                 } else {
-                    List(transactions) { transaction in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(transaction.name)
-                                    .font(.headline)
-                                Text(transaction.merchantName)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Text(transaction.displayDate)
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            VStack(alignment: .trailing) {
-                                Text(transaction.displayAmount)
-                                    .font(.headline)
-                                    .foregroundColor(transaction.isExpense ? Theme.Colors.expense : Theme.Colors.income)
-                                if transaction.pending {
-                                    Text("Pending")
-                                        .font(.caption2)
-                                        .foregroundColor(.orange)
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(transactions) { transaction in
+                                MintTransactionRow(transaction: transaction)
+                                if transaction.id != transactions.last?.id {
+                                    Divider()
+                                        .padding(.leading, 60)
                                 }
                             }
                         }
-                        .padding(.vertical, 4)
+                        .background(Theme.Colors.cardBackground)
+                        .cornerRadius(Theme.CornerRadius.md)
+                        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                        .padding(Theme.Spacing.md)
                     }
+                    .background(Theme.Colors.background)
                 }
             }
             .navigationTitle("Transactions")
+            .navigationBarTitleDisplayMode(.inline)
             .refreshable {
                 await loadTransactions()
             }
             .task {
                 await loadTransactions()
-            }
-            .alert("Error", isPresented: $showError) {
-                Button("OK") { }
-            } message: {
-                Text(errorMessage)
             }
         }
     }
@@ -105,13 +97,69 @@ struct TransactionsView: View {
 
         do {
             transactions = try await apiClient.listSimplefinTransactions(limit: 200)
-        } catch let error as APIError {
-            errorMessage = error.localizedDescription
-            showError = true
         } catch {
-            errorMessage = error.localizedDescription
-            showError = true
+            // Silently fail and show empty state - no data synced yet
+            print("Failed to load transactions: \(error)")
         }
+    }
+}
+
+// MARK: - Mint Transaction Row
+
+struct MintTransactionRow: View {
+    let transaction: Transaction
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.md) {
+            // Icon
+            ZStack {
+                Circle()
+                    .fill(iconBackgroundColor)
+                    .frame(width: 44, height: 44)
+                Image(systemName: transaction.isExpense ? "arrow.up" : "arrow.down")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(iconColor)
+            }
+
+            // Transaction info
+            VStack(alignment: .leading, spacing: 4) {
+                Text(transaction.name)
+                    .font(.body)
+                    .fontWeight(.medium)
+                    .foregroundColor(Theme.Colors.textPrimary)
+                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(transaction.displayDate)
+                        .font(.caption)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                    if transaction.pending {
+                        Text("• Pending")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    }
+                }
+            }
+
+            Spacer()
+
+            // Amount
+            Text(transaction.isExpense ? "-\(transaction.displayAmount)" : "+\(transaction.displayAmount)")
+                .font(.body)
+                .fontWeight(.semibold)
+                .foregroundColor(transaction.isExpense ? Theme.Colors.expense : Theme.Colors.income)
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm)
+        .background(Theme.Colors.cardBackground)
+        .contentShape(Rectangle())
+    }
+
+    var iconBackgroundColor: Color {
+        transaction.isExpense ? Theme.Colors.expense.opacity(0.15) : Theme.Colors.income.opacity(0.15)
+    }
+
+    var iconColor: Color {
+        transaction.isExpense ? Theme.Colors.expense : Theme.Colors.income
     }
 }
 
@@ -120,6 +168,7 @@ struct InsightsView: View {
     @State private var selectedRange: TimeRange = .month
     @State private var transactions: [Transaction] = []
     @State private var isLoading = false
+    @State private var showChart = true // true = donut chart, false = bar graph
 
     var filteredTransactions: [Transaction] {
         let calendar = Calendar.current
@@ -210,29 +259,121 @@ struct InsightsView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: Theme.Spacing.lg) {
-                    // Time range picker
-                    Picker("Period", selection: $selectedRange) {
-                        ForEach([TimeRange.day, .week, .month, .year], id: \.self) { range in
-                            Text(range.rawValue).tag(range)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
 
                     if isLoading {
                         ProgressView()
+                            .padding(.top, 60)
                     } else if transactions.isEmpty {
                         VStack(spacing: Theme.Spacing.md) {
-                            Image(systemName: "chart.pie")
+                            Image(systemName: "chart.pie.fill")
                                 .font(.system(size: 60))
+                                .foregroundColor(Theme.Colors.primary.opacity(0.6))
+                            Text("No insights yet")
+                                .font(.headline)
+                                .foregroundColor(Theme.Colors.textPrimary)
+                            Text("Transaction data will appear here once you sync your accounts")
+                                .font(.subheadline)
                                 .foregroundColor(Theme.Colors.textSecondary)
-                            Text("No data yet")
-                                .foregroundColor(Theme.Colors.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, Theme.Spacing.xl)
                         }
                         .padding(.top, 60)
                     } else {
-                        // Summary cards
-                        VStack(spacing: Theme.Spacing.md) {
+                        // Chart type toggle
+                        HStack {
+                            Spacer()
+                            Picker("View", selection: $showChart) {
+                                Text("Chart").tag(true)
+                                Text("Graph").tag(false)
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 180)
+                        }
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.top, Theme.Spacing.sm)
+                        // Donut Chart or Bar Graph
+                        if showChart {
+                            // Donut Chart View
+                            VStack(spacing: Theme.Spacing.md) {
+                                ZStack {
+                                    // Donut chart
+                                    DonutChart(
+                                        categories: categoryBreakdown.prefix(5).map { $0 },
+                                        total: totalSpent
+                                    )
+                                    .frame(height: 240)
+
+                                    // Total in center
+                                    VStack(spacing: 4) {
+                                        Text("Total spent")
+                                            .font(.caption)
+                                            .foregroundColor(Theme.Colors.textSecondary)
+                                        Text("$\(String(format: "%.2f", totalSpent))")
+                                            .font(.system(size: 28, weight: .bold))
+                                            .foregroundColor(Theme.Colors.textPrimary)
+                                    }
+                                }
+                                .padding(.horizontal, Theme.Spacing.md)
+
+                                // Legend
+                                if !categoryBreakdown.isEmpty {
+                                    VStack(spacing: Theme.Spacing.xs) {
+                                        ForEach(Array(categoryBreakdown.prefix(5).enumerated()), id: \.element.category) { index, item in
+                                            HStack(spacing: Theme.Spacing.sm) {
+                                                Circle()
+                                                    .fill(categoryColor(for: index))
+                                                    .frame(width: 12, height: 12)
+                                                Text(item.category)
+                                                    .font(.subheadline)
+                                                    .foregroundColor(Theme.Colors.textPrimary)
+                                                    .lineLimit(1)
+                                                Spacer()
+                                                Text("\(Int((item.amount / totalSpent) * 100))%")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.semibold)
+                                                    .foregroundColor(Theme.Colors.textSecondary)
+                                            }
+                                            .padding(.horizontal, Theme.Spacing.md)
+                                        }
+                                    }
+                                    .padding(.vertical, Theme.Spacing.sm)
+                                }
+                            }
+                        } else {
+                            // Bar Graph View
+                            if !dailySpending.isEmpty {
+                                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                                    Text("Daily Activity")
+                                        .font(.headline)
+                                        .foregroundColor(Theme.Colors.textPrimary)
+                                        .padding(.horizontal, Theme.Spacing.md)
+
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(alignment: .bottom, spacing: 8) {
+                                            ForEach(dailySpending.sorted(by: { $0.date < $1.date }), id: \.date) { day in
+                                                VStack(spacing: 4) {
+                                                    RoundedRectangle(cornerRadius: 4)
+                                                        .fill(Theme.Colors.primary)
+                                                        .frame(width: 32, height: max(day.amount / maxDailySpending * 120, 6))
+                                                    Text("\(day.dayLabel)")
+                                                        .font(.caption2)
+                                                        .foregroundColor(Theme.Colors.textSecondary)
+                                                }
+                                            }
+                                        }
+                                        .padding()
+                                    }
+                                    .frame(height: 170)
+                                    .background(Theme.Colors.cardBackground)
+                                    .cornerRadius(Theme.CornerRadius.md)
+                                    .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                                    .padding(.horizontal, Theme.Spacing.md)
+                                }
+                            }
+                        }
+
+                        // Summary cards (always show)
+                        HStack(spacing: Theme.Spacing.sm) {
                             SummaryCard(
                                 title: "Income",
                                 amount: totalIncome,
@@ -240,83 +381,90 @@ struct InsightsView: View {
                                 icon: "arrow.down.circle.fill"
                             )
                             SummaryCard(
-                                title: "Expenses",
+                                title: "Spent",
                                 amount: totalSpent,
                                 color: Theme.Colors.expense,
                                 icon: "arrow.up.circle.fill"
                             )
-                            SummaryCard(
-                                title: "Net",
-                                amount: netAmount,
-                                color: netAmount >= 0 ? Theme.Colors.income : Theme.Colors.expense,
-                                icon: "equal.circle.fill"
-                            )
                         }
-                        .padding(.horizontal)
+                        .padding(.horizontal, Theme.Spacing.md)
 
-                        // Transaction count
-                        Text("\(filteredTransactions.count) transactions")
-                            .font(.caption)
-                            .foregroundColor(Theme.Colors.textSecondary)
-                            .padding(.top)
-
-                        // Category breakdown
-                        if !categoryBreakdown.isEmpty {
-                            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                                Text("Top Categories")
-                                    .font(.headline)
-                                    .foregroundColor(Theme.Colors.textPrimary)
-                                    .padding(.horizontal)
-
-                                ForEach(categoryBreakdown.prefix(5), id: \.category) { item in
-                                    CategoryRow(
-                                        category: item.category,
-                                        amount: item.amount,
-                                        percentage: totalSpent > 0 ? (item.amount / totalSpent) : 0
-                                    )
-                                }
+                        // Net amount card
+                        HStack(spacing: Theme.Spacing.md) {
+                            ZStack {
+                                Circle()
+                                    .fill((netAmount >= 0 ? Theme.Colors.income : Theme.Colors.expense).opacity(0.15))
+                                    .frame(width: 48, height: 48)
+                                Image(systemName: "equal.circle.fill")
+                                    .font(.title3)
+                                    .foregroundColor(netAmount >= 0 ? Theme.Colors.income : Theme.Colors.expense)
                             }
-                            .padding(.top)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Net")
+                                    .font(.subheadline)
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                                Text(String(format: "$%.2f", abs(netAmount)))
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(Theme.Colors.textPrimary)
+                            }
+
+                            Spacer()
+
+                            Text("\(filteredTransactions.count) transactions")
+                                .font(.caption)
+                                .foregroundColor(Theme.Colors.textSecondary)
                         }
+                        .padding(Theme.Spacing.md)
+                        .background(Theme.Colors.cardBackground)
+                        .cornerRadius(Theme.CornerRadius.md)
+                        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                        .padding(.horizontal, Theme.Spacing.md)
 
-                        // Daily spending chart
-                        if !dailySpending.isEmpty {
+                        // Transactions preview
+                        if !filteredTransactions.isEmpty {
                             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                                Text("Daily Spending")
-                                    .font(.headline)
-                                    .foregroundColor(Theme.Colors.textPrimary)
-                                    .padding(.horizontal)
-
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 8) {
-                                        ForEach(dailySpending.sorted(by: { $0.date < $1.date }), id: \.date) { day in
-                                            VStack(spacing: 4) {
-                                                Rectangle()
-                                                    .fill(Theme.Colors.expense)
-                                                    .frame(width: 30, height: max(day.amount / maxDailySpending * 100, 5))
-                                                Text("\(day.dayLabel)")
-                                                    .font(.caption2)
-                                                    .foregroundColor(Theme.Colors.textSecondary)
-                                            }
-                                        }
-                                    }
-                                    .padding()
+                                HStack {
+                                    Text("Transactions")
+                                        .font(.headline)
+                                        .foregroundColor(Theme.Colors.textPrimary)
+                                    Spacer()
+                                    Text("\(filteredTransactions.count) total")
+                                        .font(.caption)
+                                        .foregroundColor(Theme.Colors.textSecondary)
                                 }
-                                .frame(height: 150)
-                                .background(Color.white)
-                                .cornerRadius(12)
-                                .padding(.horizontal)
+                                .padding(.horizontal, Theme.Spacing.md)
                             }
-                            .padding(.top)
                         }
                     }
 
-                    Spacer()
+                    Spacer(minLength: Theme.Spacing.lg)
                 }
-                .padding(.top)
             }
-            .navigationTitle("Insights")
+            .navigationTitle("Analytics")
+            .navigationBarTitleDisplayMode(.inline)
             .background(Theme.Colors.background)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Picker("Period", selection: $selectedRange) {
+                            ForEach([TimeRange.day, .week, .month, .year], id: \.self) { range in
+                                Text(range.rawValue).tag(range)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(selectedRange.rawValue)
+                                .font(.subheadline)
+                                .foregroundColor(Theme.Colors.textPrimary)
+                            Image(systemName: "chevron.down")
+                                .font(.caption)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                    }
+                }
+            }
             .refreshable {
                 await loadTransactions()
             }
@@ -337,6 +485,102 @@ struct InsightsView: View {
             print("Failed to load transactions: \(error)")
         }
     }
+
+    func categoryColor(for index: Int) -> Color {
+        let colors = [
+            Theme.Colors.categoryBlue,
+            Theme.Colors.categoryPurple,
+            Theme.Colors.categoryPink,
+            Theme.Colors.categoryOrange,
+            Theme.Colors.categoryYellow
+        ]
+        return colors[index % colors.count]
+    }
+}
+
+// MARK: - Donut Chart
+
+struct DonutChart: View {
+    let categories: [InsightsView.CategorySpending]
+    let total: Double
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                ForEach(Array(categories.enumerated()), id: \.element.category) { index, category in
+                    DonutSlice(
+                        startAngle: startAngle(for: index),
+                        endAngle: endAngle(for: index),
+                        color: colorForIndex(index)
+                    )
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.width)
+        }
+        .aspectRatio(1, contentMode: .fit)
+    }
+
+    func startAngle(for index: Int) -> Angle {
+        let previousTotal = categories.prefix(index).reduce(0.0) { $0 + $1.amount }
+        return Angle(degrees: (previousTotal / total) * 360 - 90)
+    }
+
+    func endAngle(for index: Int) -> Angle {
+        let currentTotal = categories.prefix(index + 1).reduce(0.0) { $0 + $1.amount }
+        return Angle(degrees: (currentTotal / total) * 360 - 90)
+    }
+
+    func colorForIndex(_ index: Int) -> Color {
+        let colors = [
+            Theme.Colors.categoryBlue,
+            Theme.Colors.categoryPurple,
+            Theme.Colors.categoryPink,
+            Theme.Colors.categoryOrange,
+            Theme.Colors.categoryYellow
+        ]
+        return colors[index % colors.count]
+    }
+}
+
+struct DonutSlice: View {
+    let startAngle: Angle
+    let endAngle: Angle
+    let color: Color
+
+    var body: some View {
+        GeometryReader { geometry in
+            Path { path in
+                let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                let radius = min(geometry.size.width, geometry.size.height) / 2
+                let innerRadius = radius * 0.6 // Donut hole
+
+                path.addArc(
+                    center: center,
+                    radius: radius,
+                    startAngle: startAngle,
+                    endAngle: endAngle,
+                    clockwise: false
+                )
+
+                let endRad = endAngle.radians
+                path.addLine(to: CGPoint(
+                    x: center.x + innerRadius * CGFloat(cos(endRad)),
+                    y: center.y + innerRadius * CGFloat(sin(endRad))
+                ))
+
+                path.addArc(
+                    center: center,
+                    radius: innerRadius,
+                    startAngle: endAngle,
+                    endAngle: startAngle,
+                    clockwise: true
+                )
+
+                path.closeSubpath()
+            }
+            .fill(color)
+        }
+    }
 }
 
 struct SummaryCard: View {
@@ -346,14 +590,20 @@ struct SummaryCard: View {
     let icon: String
 
     var body: some View {
-        HStack {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundColor(color)
+        HStack(spacing: Theme.Spacing.md) {
+            // Icon circle
+            ZStack {
+                Circle()
+                    .fill(color.opacity(0.15))
+                    .frame(width: 48, height: 48)
+                Image(systemName: icon)
+                    .font(.title3)
+                    .foregroundColor(color)
+            }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundColor(Theme.Colors.textSecondary)
                 Text(String(format: "$%.2f", amount))
                     .font(.title2)
@@ -363,10 +613,10 @@ struct SummaryCard: View {
 
             Spacer()
         }
-        .padding()
-        .background(Color.white)
-        .cornerRadius(12)
-        .shadow(color: .gray.opacity(0.1), radius: 4, x: 0, y: 2)
+        .padding(Theme.Spacing.md)
+        .background(Theme.Colors.cardBackground)
+        .cornerRadius(Theme.CornerRadius.md)
+        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
     }
 }
 
@@ -376,35 +626,37 @@ struct CategoryRow: View {
     let percentage: Double
 
     var body: some View {
-        VStack(spacing: 4) {
-            HStack {
-                Text(category)
-                    .font(.subheadline)
-                    .foregroundColor(Theme.Colors.textPrimary)
-                Spacer()
-                Text(String(format: "$%.2f", amount))
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(Theme.Colors.textPrimary)
-            }
-
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(height: 6)
-                        .cornerRadius(3)
-
-                    Rectangle()
-                        .fill(Theme.Colors.expense)
-                        .frame(width: geometry.size.width * percentage, height: 6)
-                        .cornerRadius(3)
+        HStack(spacing: Theme.Spacing.md) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(category)
+                        .font(.body)
+                        .foregroundColor(Theme.Colors.textPrimary)
+                        .lineLimit(1)
+                    Spacer()
+                    Text(String(format: "$%.2f", amount))
+                        .font(.body)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.textPrimary)
                 }
+
+                // Progress bar
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.gray.opacity(0.15))
+                            .frame(height: 6)
+
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Theme.Colors.primary)
+                            .frame(width: geometry.size.width * percentage, height: 6)
+                    }
+                }
+                .frame(height: 6)
             }
-            .frame(height: 6)
         }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm)
     }
 }
 
@@ -446,73 +698,137 @@ struct AccountsView: View {
 
     var body: some View {
         NavigationView {
-            List {
-                Section {
-                    if simplefinItems.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Connect Your Banks")
-                                .font(.headline)
-                            Text("Set up your bank accounts at SimpleFin, then connect here to sync all your transactions.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 4)
+            ScrollView {
+                VStack(spacing: Theme.Spacing.lg) {
+                    // Connection Section
+                    VStack(spacing: Theme.Spacing.md) {
+                        if simplefinItems.isEmpty {
+                            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                                HStack {
+                                    ZStack {
+                                        Circle()
+                                            .fill(Theme.Colors.primary.opacity(0.15))
+                                            .frame(width: 48, height: 48)
+                                        Image(systemName: "building.columns.fill")
+                                            .font(.title3)
+                                            .foregroundColor(Theme.Colors.primary)
+                                    }
 
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Connect Your Banks")
+                                            .font(.headline)
+                                            .foregroundColor(Theme.Colors.textPrimary)
+                                        Text("Sync all your accounts and transactions")
+                                            .font(.caption)
+                                            .foregroundColor(Theme.Colors.textSecondary)
+                                    }
+                                    Spacer()
+                                }
+                                .padding(Theme.Spacing.md)
+
+                                Button {
+                                    showSimplefinSetup = true
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "link.circle.fill")
+                                            .font(.body)
+                                        Text("Connect SimpleFin")
+                                            .fontWeight(.semibold)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(Theme.Spacing.md)
+                                    .background(Theme.Colors.primary)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(Theme.CornerRadius.md)
+                                }
+                                .padding(.horizontal, Theme.Spacing.md)
+                                .padding(.bottom, Theme.Spacing.sm)
+                            }
+                            .background(Theme.Colors.cardBackground)
+                            .cornerRadius(Theme.CornerRadius.md)
+                            .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                        } else {
+                            // Connected status
+                            HStack(spacing: Theme.Spacing.md) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Theme.Colors.income.opacity(0.15))
+                                        .frame(width: 48, height: 48)
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.title3)
+                                        .foregroundColor(Theme.Colors.income)
+                                }
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("SimpleFin Connected")
+                                        .font(.body)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(Theme.Colors.textPrimary)
+                                    if let item = simplefinItems.first, let lastSynced = item.lastSyncedAt {
+                                        Text("Last synced: \(formatDate(lastSynced))")
+                                            .font(.caption)
+                                            .foregroundColor(Theme.Colors.textSecondary)
+                                    }
+                                }
+
+                                Spacer()
+
+                                if isSyncing {
+                                    ProgressView()
+                                } else {
+                                    Button {
+                                        if let item = simplefinItems.first {
+                                            Task {
+                                                await syncItem(item.id)
+                                            }
+                                        }
+                                    } label: {
+                                        Image(systemName: "arrow.clockwise")
+                                            .font(.body)
+                                            .foregroundColor(Theme.Colors.primary)
+                                            .padding(Theme.Spacing.sm)
+                                            .background(Theme.Colors.primary.opacity(0.1))
+                                            .clipShape(Circle())
+                                    }
+                                }
+                            }
+                            .padding(Theme.Spacing.md)
+                            .background(Theme.Colors.cardBackground)
+                            .cornerRadius(Theme.CornerRadius.md)
+                            .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                        }
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.top, Theme.Spacing.sm)
+
+                    // Settings Section
+                    VStack(spacing: 0) {
                         Button {
-                            showSimplefinSetup = true
+                            isAuthenticated = false
                         } label: {
                             HStack {
-                                Image(systemName: "link.circle.fill")
-                                Text("Connect SimpleFin")
+                                Image(systemName: "rectangle.portrait.and.arrow.right")
+                                    .foregroundColor(Theme.Colors.expense)
+                                Text("Sign Out")
+                                    .foregroundColor(Theme.Colors.expense)
+                                Spacer()
                             }
-                        }
-                    } else {
-                        // Show connected status
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("SimpleFin Connected")
-                                    .font(.body)
-                                    .fontWeight(.medium)
-                                if let item = simplefinItems.first, let lastSynced = item.lastSyncedAt {
-                                    Text("Last synced: \(formatDate(lastSynced))")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            Spacer()
-                            if isSyncing {
-                                ProgressView()
-                            } else {
-                                Button {
-                                    if let item = simplefinItems.first {
-                                        Task {
-                                            await syncItem(item.id)
-                                        }
-                                    }
-                                } label: {
-                                    Image(systemName: "arrow.clockwise")
-                                }
-                                .buttonStyle(.bordered)
-                                .tint(Theme.Colors.primary)
-                            }
+                            .padding(Theme.Spacing.md)
+                            .background(Theme.Colors.cardBackground)
+                            .contentShape(Rectangle())
                         }
                     }
-                } header: {
-                    Text("Connection")
-                }
+                    .cornerRadius(Theme.CornerRadius.md)
+                    .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                    .padding(.horizontal, Theme.Spacing.md)
 
-                Section("Settings") {
-                    Button(role: .destructive) {
-                        isAuthenticated = false
-                    } label: {
-                        HStack {
-                            Image(systemName: "rectangle.portrait.and.arrow.right")
-                            Text("Sign Out")
-                        }
-                    }
+                    Spacer()
                 }
+                .padding(.vertical, Theme.Spacing.sm)
             }
-            .navigationTitle("Accounts")
+            .background(Theme.Colors.background)
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
             .refreshable {
                 await loadSimplefinItems()
             }

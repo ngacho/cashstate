@@ -6,127 +6,210 @@ struct HomeView: View {
     @State private var accounts: [SimplefinAccount] = []
     @State private var isLoading = false
     @State private var isSyncing = false
-    @State private var errorMessage: String?
     @State private var showSyncSuccess = false
 
     var totalBalance: Double {
         accounts.compactMap { $0.balance }.reduce(0, +)
     }
 
+    // Group accounts by type (Mint style)
+    struct AccountGroup {
+        let type: String
+        let accounts: [SimplefinAccount]
+        let totalBalance: String
+
+        var total: Double {
+            accounts.compactMap { $0.balance }.reduce(0, +)
+        }
+    }
+
+    var accountGroups: [AccountGroup] {
+        // Categorize accounts
+        var cash: [SimplefinAccount] = []
+        var creditCards: [SimplefinAccount] = []
+        var investments: [SimplefinAccount] = []
+        var other: [SimplefinAccount] = []
+
+        for account in accounts {
+            let name = account.name.lowercased()
+            if name.contains("credit") || name.contains("card") {
+                creditCards.append(account)
+            } else if name.contains("investment") || name.contains("brokerage") || name.contains("401k") || name.contains("ira") {
+                investments.append(account)
+            } else if name.contains("checking") || name.contains("chequing") || name.contains("saving") || name.contains("cash") {
+                cash.append(account)
+            } else {
+                other.append(account)
+            }
+        }
+
+        var groups: [AccountGroup] = []
+
+        if !cash.isEmpty {
+            let total = cash.compactMap { $0.balance }.reduce(0, +)
+            groups.append(AccountGroup(
+                type: "Cash",
+                accounts: cash,
+                totalBalance: String(format: "$%.2f", total)
+            ))
+        }
+
+        if !creditCards.isEmpty {
+            let total = creditCards.compactMap { $0.balance }.reduce(0, +)
+            groups.append(AccountGroup(
+                type: "Credit cards",
+                accounts: creditCards,
+                totalBalance: String(format: "$%.2f", total)
+            ))
+        }
+
+        if !investments.isEmpty {
+            let total = investments.compactMap { $0.balance }.reduce(0, +)
+            groups.append(AccountGroup(
+                type: "Investments",
+                accounts: investments,
+                totalBalance: String(format: "$%.2f", total)
+            ))
+        }
+
+        if !other.isEmpty {
+            let total = other.compactMap { $0.balance }.reduce(0, +)
+            groups.append(AccountGroup(
+                type: "Other",
+                accounts: other,
+                totalBalance: String(format: "$%.2f", total)
+            ))
+        }
+
+        return groups
+    }
+
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: Theme.Spacing.lg) {
-                    // Total Balance Card
-                    VStack(spacing: Theme.Spacing.sm) {
-                        Text("Total Balance")
-                            .font(.subheadline)
-                            .foregroundColor(Theme.Colors.textSecondary)
+                    // Mint-style Hero Card
+                    VStack(spacing: Theme.Spacing.md) {
+                        // Header
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Net Worth")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(Theme.Colors.textOnPrimary.opacity(0.9))
+                            }
+                            Spacer()
+                            // Sync button in header
+                            if isSyncing {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .scaleEffect(0.8)
+                            } else {
+                                Button(action: {
+                                    Task { await resyncAllAccounts() }
+                                }) {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(Theme.Colors.textOnPrimary)
+                                }
+                                .disabled(simplefinItems.isEmpty)
+                            }
+                        }
+
+                        // Balance
                         Text("$\(String(format: "%.2f", totalBalance))")
-                            .font(.system(size: 40, weight: .bold))
-                            .foregroundColor(Theme.Colors.textPrimary)
+                            .font(.system(size: 48, weight: .bold))
+                            .foregroundColor(Theme.Colors.textOnPrimary)
+
+                        // Account count
                         Text("\(accounts.count) account\(accounts.count == 1 ? "" : "s")")
                             .font(.caption)
-                            .foregroundColor(Theme.Colors.textSecondary)
+                            .foregroundColor(Theme.Colors.textOnPrimary.opacity(0.8))
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, Theme.Spacing.lg)
+                    .padding(Theme.Spacing.lg)
                     .background(
                         LinearGradient(
-                            colors: [Theme.Colors.primary, Theme.Colors.primary.opacity(0.8)],
+                            colors: [Theme.Colors.primary, Theme.Colors.primaryDark],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
-                    .foregroundColor(.white)
-                    .cornerRadius(20)
-                    .shadow(color: Theme.Colors.primary.opacity(0.3), radius: 10, x: 0, y: 5)
-                    .padding(.horizontal)
+                    .cornerRadius(Theme.CornerRadius.xl)
+                    .shadow(color: Theme.Colors.primary.opacity(0.3), radius: 12, x: 0, y: 6)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.top, Theme.Spacing.sm)
 
                     // Accounts Section
-                    VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                        Text("Your Accounts")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .foregroundColor(Theme.Colors.textPrimary)
-                            .padding(.horizontal)
-
-                        if isLoading {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                        } else if accounts.isEmpty {
-                            VStack(spacing: Theme.Spacing.md) {
-                                Image(systemName: "creditcard")
-                                    .font(.system(size: 60))
-                                    .foregroundColor(Theme.Colors.textSecondary)
-                                Text("No accounts connected")
-                                    .font(.headline)
-                                    .foregroundColor(Theme.Colors.textSecondary)
-                                Text("Connect your bank in the Accounts tab")
-                                    .font(.caption)
-                                    .foregroundColor(Theme.Colors.textSecondary)
-                            }
+                    if isLoading {
+                        ProgressView()
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 40)
-                        } else {
-                            VStack(spacing: Theme.Spacing.sm) {
-                                ForEach(accounts) { account in
-                                    NavigationLink(destination: AccountDetailView(
-                                        apiClient: apiClient,
-                                        account: account
-                                    )) {
-                                        AccountCard(account: account)
+                            .padding()
+                    } else if accounts.isEmpty {
+                        VStack(spacing: Theme.Spacing.md) {
+                            Image(systemName: "creditcard.circle.fill")
+                                .font(.system(size: 60))
+                                .foregroundColor(Theme.Colors.primary.opacity(0.6))
+                            Text("No accounts connected")
+                                .font(.headline)
+                                .foregroundColor(Theme.Colors.textPrimary)
+                            Text("Connect your bank in the Accounts tab to get started")
+                                .font(.subheadline)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, Theme.Spacing.xl)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 60)
+                    } else {
+                        // Grouped Accounts (Mint style)
+                        VStack(spacing: Theme.Spacing.lg) {
+                            ForEach(accountGroups, id: \.type) { group in
+                                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                                    // Group header
+                                    HStack {
+                                        Text(group.type)
+                                            .font(.headline)
+                                            .foregroundColor(Theme.Colors.textPrimary)
+                                        Spacer()
+                                        Text(group.totalBalance)
+                                            .font(.headline)
+                                            .foregroundColor(Theme.Colors.textPrimary)
                                     }
-                                    .buttonStyle(PlainButtonStyle())
+                                    .padding(.horizontal, Theme.Spacing.md)
+                                    .padding(.bottom, 4)
+
+                                    // Accounts in group
+                                    VStack(spacing: 1) {
+                                        ForEach(group.accounts) { account in
+                                            NavigationLink(destination: AccountDetailView(
+                                                apiClient: apiClient,
+                                                account: account
+                                            )) {
+                                                MintAccountRow(account: account)
+                                            }
+                                            .buttonStyle(PlainButtonStyle())
+                                        }
+                                    }
+                                    .background(Theme.Colors.cardBackground)
+                                    .cornerRadius(Theme.CornerRadius.md)
+                                    .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
                                 }
+                                .padding(.horizontal, Theme.Spacing.md)
                             }
-                            .padding(.horizontal)
                         }
                     }
                 }
-                .padding(.vertical)
+                .padding(.vertical, Theme.Spacing.sm)
             }
             .background(Theme.Colors.background)
-            .navigationTitle("Home")
+            .navigationTitle("Overview")
+            .navigationBarTitleDisplayMode(.inline)
             .refreshable {
                 await loadAccounts()
             }
             .task {
                 await loadAccounts()
-            }
-            .overlay(alignment: .bottomTrailing) {
-                // Floating Resync Button
-                Button(action: {
-                    Task {
-                        await resyncAllAccounts()
-                    }
-                }) {
-                    ZStack {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [Theme.Colors.primary, Theme.Colors.primary.opacity(0.8)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 60, height: 60)
-                            .shadow(color: Theme.Colors.primary.opacity(0.4), radius: 8, x: 0, y: 4)
-
-                        if isSyncing {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        } else {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.title2)
-                                .foregroundColor(.white)
-                        }
-                    }
-                }
-                .disabled(isSyncing || simplefinItems.isEmpty)
-                .opacity(simplefinItems.isEmpty ? 0.5 : 1.0)
-                .padding()
             }
             .alert("Sync Complete", isPresented: $showSyncSuccess) {
                 Button("OK") { }
@@ -152,7 +235,7 @@ struct HomeView: View {
             }
             accounts = allAccounts
         } catch {
-            errorMessage = error.localizedDescription
+            // Silently fail and show empty state - no accounts connected yet
             print("Failed to load accounts: \(error)")
         }
     }
@@ -188,87 +271,112 @@ struct HomeView: View {
             await MainActor.run {
                 showSyncSuccess = true
             }
-        } catch let error as APIError {
-            await MainActor.run {
-                errorMessage = error.localizedDescription
-            }
-            print("Failed to sync: \(error)")
         } catch {
-            await MainActor.run {
-                errorMessage = error.localizedDescription
-            }
+            // Log error but don't show alert - sync errors are already handled in AccountsView
             print("Failed to sync: \(error)")
         }
     }
 }
 
-// MARK: - Account Card
+// MARK: - Mint-style Account Row
 
-struct AccountCard: View {
+struct MintAccountRow: View {
     let account: SimplefinAccount
 
     var body: some View {
         HStack(spacing: Theme.Spacing.md) {
-            // Account Icon
+            // Bank Icon (circular, colored background)
             ZStack {
                 Circle()
-                    .fill(Theme.Colors.primary.opacity(0.1))
-                    .frame(width: 50, height: 50)
+                    .fill(iconBackgroundColor)
+                    .frame(width: 44, height: 44)
                 Image(systemName: accountIcon)
-                    .font(.title3)
-                    .foregroundColor(Theme.Colors.primary)
+                    .font(.system(size: 18))
+                    .foregroundColor(iconColor)
             }
 
             // Account Info
             VStack(alignment: .leading, spacing: 4) {
                 Text(account.name)
-                    .font(.headline)
+                    .font(.body)
+                    .fontWeight(.medium)
                     .foregroundColor(Theme.Colors.textPrimary)
                 if let org = account.organizationName {
-                    Text(org)
-                        .font(.caption)
-                        .foregroundColor(Theme.Colors.textSecondary)
+                    HStack(spacing: 4) {
+                        Text(org)
+                            .font(.caption)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                        if account.balanceDate != nil {
+                            Text("• Just now")
+                                .font(.caption)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                    }
                 }
             }
 
             Spacer()
 
             // Balance
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(account.displayBalance)
-                    .font(.headline)
-                    .foregroundColor(balanceColor)
-                Text(account.currency)
-                    .font(.caption2)
-                    .foregroundColor(Theme.Colors.textSecondary)
-            }
-
-            Image(systemName: "chevron.right")
-                .font(.caption)
-                .foregroundColor(Theme.Colors.textSecondary)
+            Text(account.displayBalance)
+                .font(.body)
+                .fontWeight(.semibold)
+                .foregroundColor(balanceColor)
         }
-        .padding()
-        .background(Color.white)
-        .cornerRadius(12)
-        .shadow(color: .gray.opacity(0.1), radius: 4, x: 0, y: 2)
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm)
+        .background(Theme.Colors.cardBackground)
+        .contentShape(Rectangle())
     }
 
     var accountIcon: String {
         let name = account.name.lowercased()
-        if name.contains("credit") {
+        if name.contains("credit") || name.contains("card") {
             return "creditcard.fill"
         } else if name.contains("checking") || name.contains("chequing") {
-            return "dollarsign.circle.fill"
-        } else if name.contains("saving") {
             return "banknote.fill"
+        } else if name.contains("saving") {
+            return "dollarsign.circle.fill"
+        } else if name.contains("investment") || name.contains("brokerage") {
+            return "chart.line.uptrend.xyaxis.circle.fill"
         } else {
-            return "building.columns.fill"
+            return "building.columns.circle.fill"
+        }
+    }
+
+    var iconBackgroundColor: Color {
+        let name = account.name.lowercased()
+        if name.contains("credit") || name.contains("card") {
+            return Color(hex: "FEE2E2")
+        } else if name.contains("checking") || name.contains("chequing") {
+            return Color(hex: "DCFCE7")
+        } else if name.contains("saving") {
+            return Color(hex: "DBEAFE")
+        } else if name.contains("investment") {
+            return Color(hex: "F3E8FF")
+        } else {
+            return Theme.Colors.primary.opacity(0.1)
+        }
+    }
+
+    var iconColor: Color {
+        let name = account.name.lowercased()
+        if name.contains("credit") || name.contains("card") {
+            return Color(hex: "DC2626")
+        } else if name.contains("checking") || name.contains("chequing") {
+            return Color(hex: "16A34A")
+        } else if name.contains("saving") {
+            return Color(hex: "2563EB")
+        } else if name.contains("investment") {
+            return Color(hex: "9333EA")
+        } else {
+            return Theme.Colors.primary
         }
     }
 
     var balanceColor: Color {
         guard let balance = account.balance else { return Theme.Colors.textPrimary }
-        return balance < 0 ? Theme.Colors.expense : Theme.Colors.income
+        return balance < 0 ? Theme.Colors.expense : Theme.Colors.textPrimary
     }
 }
 
@@ -314,12 +422,12 @@ struct AccountDetailView: View {
                 return calendar.isDate(transactionDate, inSameDayAs: selectedDate)
 
             case .week:
-                // 7 days starting from selectedDate
-                guard let weekEnd = calendar.date(byAdding: .day, value: 6, to: calendar.startOfDay(for: selectedDate)) else {
+                // 7 days ending at selectedDate (past week)
+                guard let weekStart = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: selectedDate)) else {
                     return false
                 }
-                return transactionDate >= calendar.startOfDay(for: selectedDate) &&
-                       transactionDate <= calendar.startOfDay(for: weekEnd).addingTimeInterval(86399)
+                return transactionDate >= calendar.startOfDay(for: weekStart) &&
+                       transactionDate <= calendar.startOfDay(for: selectedDate).addingTimeInterval(86399)
 
             case .month:
                 // Same month and year as selectedDate
@@ -371,10 +479,10 @@ struct AccountDetailView: View {
         case .week:
             formatter.dateFormat = "MMM d"
             let calendar = Calendar.current
-            guard let weekEnd = calendar.date(byAdding: .day, value: 6, to: selectedDate) else {
+            guard let weekStart = calendar.date(byAdding: .day, value: -6, to: selectedDate) else {
                 return formatter.string(from: selectedDate)
             }
-            return "\(formatter.string(from: selectedDate)) - \(formatter.string(from: weekEnd))"
+            return "\(formatter.string(from: weekStart)) - \(formatter.string(from: selectedDate))"
 
         case .month:
             formatter.dateFormat = "MMMM yyyy"
@@ -572,7 +680,7 @@ struct AccountDetailView: View {
     }
 }
 
-// MARK: - Stat Card
+// MARK: - Stat Card (Mint style)
 
 struct StatCard: View {
     let title: String
@@ -581,23 +689,27 @@ struct StatCard: View {
     let icon: String
 
     var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundColor(color)
-            Text(title)
-                .font(.caption)
-                .foregroundColor(Theme.Colors.textSecondary)
+        VStack(spacing: Theme.Spacing.sm) {
+            HStack(spacing: Theme.Spacing.xs) {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundColor(color)
+                Text(title)
+                    .font(.caption)
+                    .foregroundColor(Theme.Colors.textSecondary)
+                Spacer()
+            }
             Text("$\(String(format: "%.2f", amount))")
-                .font(.headline)
+                .font(.title3)
                 .fontWeight(.bold)
                 .foregroundColor(Theme.Colors.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity)
-        .padding()
-        .background(Color.white)
-        .cornerRadius(12)
-        .shadow(color: .gray.opacity(0.1), radius: 4, x: 0, y: 2)
+        .background(Theme.Colors.cardBackground)
+        .cornerRadius(Theme.CornerRadius.md)
+        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
     }
 }
 
@@ -726,16 +838,16 @@ struct DateRangePickerView: View {
 
                     case .week:
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Select Week Start")
+                            Text("Select Week End")
                                 .font(.subheadline)
                                 .foregroundColor(Theme.Colors.textSecondary)
                             DatePicker(
-                                "Week Starting",
+                                "Week Ending",
                                 selection: $selectedDate,
                                 displayedComponents: .date
                             )
                             .datePickerStyle(.graphical)
-                            Text("Shows 7 days from selected date")
+                            Text("Shows 7 days ending on selected date")
                                 .font(.caption)
                                 .foregroundColor(Theme.Colors.textSecondary)
                         }
@@ -813,7 +925,7 @@ struct DateRangePickerView: View {
         case .day:
             return "Pick a specific day to view transactions"
         case .week:
-            return "Pick the first day of a 7-day period"
+            return "Pick the last day of a 7-day period"
         case .month:
             return "Pick a month to view transactions"
         case .year:
