@@ -171,20 +171,6 @@ class Database:
         )
         return result.data[0] if result.data else None
 
-    def _get_user_simplefin_item_ids(self, user_id: str) -> list[str]:
-        items = self.get_user_simplefin_items(user_id)
-        return [item["id"] for item in items]
-
-    def _get_user_simplefin_account_ids(self, user_id: str) -> list[str]:
-        """Get all account UUIDs for a user's SimpleFin items."""
-        result = (
-            self.client.table("simplefin_accounts")
-            .select("id")
-            .eq("user_id", user_id)
-            .execute()
-        )
-        return [acc["id"] for acc in result.data]
-
     def get_user_simplefin_transactions(
         self,
         user_id: str,
@@ -202,12 +188,8 @@ class Database:
             limit: Max number of results
             offset: Offset for pagination
         """
-        account_ids = self._get_user_simplefin_account_ids(user_id)
-        if not account_ids:
-            return []
-
         query = self.client.table("simplefin_transactions").select("*")
-        query = query.in_("simplefin_account_id", account_ids)
+        query = query.eq("user_id", user_id)
 
         if date_from:
             query = query.gte("posted_date", date_from)
@@ -227,12 +209,8 @@ class Database:
         date_to: int | None = None,
     ) -> int:
         """Count user's SimpleFin transactions."""
-        account_ids = self._get_user_simplefin_account_ids(user_id)
-        if not account_ids:
-            return 0
-
         query = self.client.table("simplefin_transactions").select("id", count="exact")
-        query = query.in_("simplefin_account_id", account_ids)
+        query = query.eq("user_id", user_id)
 
         if date_from:
             query = query.gte("posted_date", date_from)
@@ -254,14 +232,10 @@ class Database:
 
     def get_simplefin_sync_jobs_for_user(self, user_id: str, limit: int = 20) -> list[dict]:
         """Get user's SimpleFin sync jobs."""
-        simplefin_item_ids = self._get_user_simplefin_item_ids(user_id)
-        if not simplefin_item_ids:
-            return []
-
         result = (
             self.client.table("simplefin_sync_jobs")
             .select("*")
-            .in_("simplefin_item_id", simplefin_item_ids)
+            .eq("user_id", user_id)
             .order("created_at", desc=True)
             .limit(limit)
             .execute()

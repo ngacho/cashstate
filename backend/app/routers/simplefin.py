@@ -234,6 +234,7 @@ async def sync_item(
     try:
         # Create SimpleFin sync job
         sync_job = db.create_simplefin_sync_job({
+            "user_id": user["id"],
             "simplefin_item_id": item_id,
             "status": "running",
         })
@@ -267,6 +268,7 @@ async def sync_item(
         transactions = simplefin_service.parse_simplefin_transactions(
             accounts_data,
             account_id_map,
+            user["id"],
         )
         if transactions:
             db.upsert_simplefin_transactions(transactions)

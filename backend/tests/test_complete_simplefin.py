@@ -430,7 +430,7 @@ class TestCompleteSimplefinFlow:
             change = last_balance - first_balance
             change_pct = (change / first_balance * 100) if first_balance != 0 else 0
 
-            print(f"\n📈 Net Worth Trend (30 days):")
+            print("\n📈 Net Worth Trend (30 days):")
             print(f"   Start: ${first_balance:,.2f}")
             print(f"   End:   ${last_balance:,.2f}")
             print(f"   Change: ${change:+,.2f} ({change_pct:+.1f}%)")

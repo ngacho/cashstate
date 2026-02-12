@@ -146,6 +146,7 @@ def parse_simplefin_accounts(
 def parse_simplefin_transactions(
     accounts_data: dict[str, Any],
     account_id_map: dict[str, str],
+    user_id: str,
 ) -> list[dict[str, Any]]:
     """
     Parse SimpleFin transaction data into our transaction format.
@@ -154,6 +155,7 @@ def parse_simplefin_transactions(
         accounts_data: Raw data from SimpleFin fetch_accounts().
         account_id_map: Mapping of SimpleFin account IDs to our internal account UUIDs.
                        Format: {"ACT-xxx": "uuid-xxx"}
+        user_id: User UUID who owns these transactions.
 
     Returns:
         List of transaction dicts ready for database insertion.
@@ -174,6 +176,7 @@ def parse_simplefin_transactions(
             # SimpleFin provides clean merchant names in 'payee' field
             # Amount is already signed (negative = expense, positive = income)
             transaction = {
+                "user_id": user_id,
                 "simplefin_account_id": our_account_id,
                 "simplefin_transaction_id": txn.get("id"),
                 "amount": float(Decimal(txn.get("amount", "0"))),

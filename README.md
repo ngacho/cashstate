@@ -29,10 +29,13 @@ A Mint-inspired personal finance tracker with bank account integration via Plaid
 
 3. **Run database migrations:**
    ```bash
-   # Apply migrations via Supabase dashboard SQL editor in order:
-   # 1. migrations/001_initial_schema.sql (core tables)
-   # 2. migrations/002_simplefin.sql (SimpleFin integration)
-   # 3. migrations/003_daily_snapshots.sql (net worth tracking)
+   # Apply the complete schema via Supabase dashboard SQL editor:
+   # backend/migrations/001_complete_schema.sql (all tables: SimpleFin + Snapshots)
+
+   # This creates:
+   # - simplefin_items, simplefin_accounts, simplefin_transactions, simplefin_sync_jobs
+   # - daily_snapshots (for net worth tracking)
+   # All tables linked via user_id for simplicity
    ```
 
 4. **Start the server:**

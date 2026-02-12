@@ -782,15 +782,19 @@ struct AccountDetailView: View {
                 }
                 .padding(.horizontal)
 
-                // Spending Chart
+                // Balance Trend Chart
                 if !filteredTransactions.isEmpty {
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                        Text("Activity")
+                        Text("Balance Trend")
                             .font(.headline)
                             .foregroundColor(Theme.Colors.textPrimary)
                             .padding(.horizontal)
 
-                        TransactionChart(transactions: filteredTransactions, timeRange: selectedTimeRange)
+                        AccountBalanceChart(
+                            transactions: filteredTransactions,
+                            currentBalance: account.balance ?? 0,
+                            timeRange: selectedTimeRange
+                        )
                             .frame(height: 200)
                             .padding()
                             .background(Color.white)
@@ -1016,6 +1020,170 @@ struct TransactionChart: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+    }
+}
+
+// MARK: - Account Balance Chart
+
+struct AccountBalanceChart: View {
+    let transactions: [Transaction]
+    let currentBalance: Double
+    let timeRange: TimeRange
+
+    struct BalancePoint: Identifiable {
+        let id = UUID()
+        let date: Date
+        let balance: Double
+    }
+
+    var balancePoints: [BalancePoint] {
+        let calendar = Calendar.current
+
+        // Sort transactions by date (oldest first)
+        let sortedTransactions = transactions.sorted {
+            $0.postedDate < $1.postedDate
+        }
+
+        guard !sortedTransactions.isEmpty else { return [] }
+
+        // Calculate starting balance by working backwards from current balance
+        let totalChange = sortedTransactions.reduce(0.0) { $0 + $1.amount }
+        var runningBalance = currentBalance - totalChange
+
+        // Create data points for each transaction date
+        var points: [BalancePoint] = []
+        var dailyBalances: [Date: Double] = [:]
+
+        // Add starting point
+        if let firstDate = sortedTransactions.first?.postedDate {
+            let startDate = calendar.startOfDay(for: Date(timeIntervalSince1970: TimeInterval(firstDate)))
+            dailyBalances[startDate] = runningBalance
+        }
+
+        // Calculate balance after each transaction
+        for transaction in sortedTransactions {
+            let transactionDate = Date(timeIntervalSince1970: TimeInterval(transaction.postedDate))
+            let dayStart = calendar.startOfDay(for: transactionDate)
+
+            runningBalance += transaction.amount
+            dailyBalances[dayStart] = runningBalance
+        }
+
+        // Convert to sorted points
+        points = dailyBalances.map { BalancePoint(date: $0.key, balance: $0.value) }
+            .sorted { $0.date < $1.date }
+
+        // Add current balance as final point
+        if let lastTransaction = sortedTransactions.last {
+            let lastDate = Date(timeIntervalSince1970: TimeInterval(lastTransaction.postedDate))
+            let today = Date()
+
+            // Only add "today" point if it's different from last transaction date
+            if !calendar.isDate(lastDate, inSameDayAs: today) {
+                points.append(BalancePoint(date: today, balance: currentBalance))
+            }
+        }
+
+        return points
+    }
+
+    var minBalance: Double {
+        balancePoints.map { $0.balance }.min() ?? 0
+    }
+
+    var maxBalance: Double {
+        balancePoints.map { $0.balance }.max() ?? 0
+    }
+
+    var chartColor: Color {
+        // Use red if balance is negative, teal if positive
+        currentBalance < 0 ? Theme.Colors.expense : Theme.Colors.primary
+    }
+
+    var body: some View {
+        if balancePoints.isEmpty {
+            VStack(spacing: 8) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.system(size: 40))
+                    .foregroundColor(Theme.Colors.textSecondary)
+                Text("No balance data")
+                    .font(.subheadline)
+                    .foregroundColor(Theme.Colors.textSecondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            Chart(balancePoints) { point in
+                LineMark(
+                    x: .value("Date", point.date),
+                    y: .value("Balance", point.balance)
+                )
+                .foregroundStyle(chartColor)
+                .interpolationMethod(.catmullRom) // Smooth curve like NetWorthChart
+                .lineStyle(StrokeStyle(lineWidth: 3))
+
+                // Area fill under the line
+                AreaMark(
+                    x: .value("Date", point.date),
+                    y: .value("Balance", point.balance)
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [
+                            chartColor.opacity(0.3),
+                            chartColor.opacity(0.05)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .interpolationMethod(.catmullRom)
+            }
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 5)) { value in
+                    if let date = value.as(Date.self) {
+                        AxisValueLabel {
+                            Text(formatAxisDate(date))
+                                .font(.caption2)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                            .foregroundStyle(Color.gray.opacity(0.2))
+                    }
+                }
+            }
+            .chartYAxis {
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                    if let balance = value.as(Double.self) {
+                        AxisValueLabel {
+                            Text(formatCurrency(balance))
+                                .font(.caption2)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                            .foregroundStyle(Color.gray.opacity(0.2))
+                    }
+                }
+            }
+            .chartYScale(domain: (minBalance * 0.95)...(maxBalance * 1.05))
+        }
+    }
+
+    func formatAxisDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        if balancePoints.count > 30 {
+            formatter.dateFormat = "MMM"
+        } else {
+            formatter.dateFormat = "M/d"
+        }
+        return formatter.string(from: date)
+    }
+
+    func formatCurrency(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencySymbol = "$"
+        formatter.maximumFractionDigits = 0
+        return formatter.string(from: NSNumber(value: value)) ?? "$0"
     }
 }
 
