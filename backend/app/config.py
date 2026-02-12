@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # Encryption
     encryption_key: str  # Fernet key for encrypting sensitive data (Plaid tokens, etc.)
 
+    # SimpleFin (optional, for development/testing only)
+    simplefin_access_url: str | None = None  # Pre-claimed access URL for dev/test
+
     @property
     def is_development(self) -> bool:
         """Check if running in development mode."""

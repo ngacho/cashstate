@@ -1,13 +1,13 @@
 # CashState Backend
 
-Budget tracking with Plaid-powered financial data syncing.
+Budget tracking with financial data syncing via Plaid and SimpleFin.
 
 ## Tech Stack
 
 - **Framework**: FastAPI (Python 3.11+)
 - **Database**: Supabase (PostgreSQL)
 - **Auth**: Supabase Auth (JWT-based)
-- **Financial Data**: Plaid API
+- **Financial Data**: Plaid API & SimpleFin Bridge
 - **Package Manager**: uv
 
 ## Prerequisites
@@ -52,16 +52,22 @@ Required variables:
 - `PLAID_SECRET` - From Plaid Dashboard > Keys
 - `PLAID_ENV` - `sandbox`, `development`, or `production`
 - `ENCRYPTION_KEY` - Fernet encryption key (generate with: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`)
+- `SIMPLEFIN_ACCESS_URL` (optional) - Pre-claimed SimpleFin access URL for development/testing
 
 ### 3. Set Up Database
 
-Run the migration SQL in your Supabase SQL Editor:
+Run the migration SQL file in your Supabase SQL Editor:
 
 1. Go to Supabase Dashboard > SQL Editor
-2. Copy contents of `supabase/migrations/001_initial_schema.sql`
-3. Execute the SQL
+2. Copy contents of `supabase/migrations/001_simplefin_schema.sql` and execute
 
-This creates the `users`, `plaid_items`, `transactions`, and `sync_jobs` tables with RLS policies.
+This creates the following tables with RLS policies:
+- `simplefin_items` - SimpleFin connections (encrypted access URLs)
+- `simplefin_accounts` - Account details with balances and institution info
+- `simplefin_transactions` - Transactions with all SimpleFin fields
+- `simplefin_sync_jobs` - Sync operation tracking
+
+**Note:** This migration assumes the `users` table exists (created by Supabase Auth). If you need Plaid integration, see the Plaid migration files.
 
 ### 4. Activate Virtual Environment (Optional)
 
@@ -93,7 +99,8 @@ cp .env.example .env
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 # Add the output to .env as ENCRYPTION_KEY
 
-# 4. Set up database (run supabase/migrations/001_initial_schema.sql in Supabase SQL Editor)
+# 4. Set up database (run migration in Supabase SQL Editor)
+# - supabase/migrations/001_simplefin_schema.sql
 
 # 5. Run server
 uv run uvicorn app.main:app --reload
@@ -103,10 +110,11 @@ source .venv/bin/activate
 uvicorn app.main:app --reload
 ```
 
-## API Documentation
+## Documentation
 
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+- **API Docs (Swagger UI)**: `http://localhost:8000/docs`
+- **API Docs (ReDoc)**: `http://localhost:8000/redoc`
+- **SimpleFin Integration Guide**: [`SIMPLEFIN_INTEGRATION_GUIDE.md`](./SIMPLEFIN_INTEGRATION_GUIDE.md) - Complete SimpleFin setup, architecture, and API reference
 
 ## API Endpoints
 
@@ -120,7 +128,16 @@ Base URL: `/app/v1`
 ### Plaid
 - `POST /plaid/create-link-token` - Create Plaid Link token for frontend
 - `POST /plaid/exchange-token` - Exchange public token, store Plaid item
-- `GET /plaid/items` - List connected institutions
+- `GET /plaid/items` - List connected Plaid institutions
+
+### SimpleFin
+- `POST /simplefin/setup` - Exchange SimpleFin setup token for access URL
+- `GET /simplefin/items` - List connected SimpleFin institutions
+- `DELETE /simplefin/items/{item_id}` - Delete a SimpleFin connection (cascades to accounts & transactions)
+- `GET /simplefin/accounts/{item_id}` - List stored accounts for an item (with balances)
+- `GET /simplefin/transactions` - List all SimpleFin transactions (with filters)
+- `POST /simplefin/sync/{item_id}` - Sync accounts and transactions from SimpleFin
+- `GET /simplefin/raw-accounts/{item_id}` - Fetch raw SimpleFin API response (debug/preview)
 
 ### Sync
 - `POST /sync/trigger` - Sync all connected accounts
@@ -148,28 +165,39 @@ Configuration: `.flake8` (Google style, 88 char line length)
 
 ## Testing
 
-The integration test runs the full Plaid flow against the sandbox — no Link UI needed.
+Integration tests for both Plaid and SimpleFin flows.
 
 ### Prerequisites
 
-1. Complete the [Setup](#setup) steps (database migration, `.env` configured)
+1. Complete the [Setup](#setup) steps (database migrations, `.env` configured)
 2. Add test user credentials to `.env`:
    ```
    TEST_USER_EMAIL=your-email@example.com
    TEST_USER_PASSWORD=password
    ```
-3. `PLAID_ENV` must be `sandbox`
+3. For Plaid tests: `PLAID_ENV` must be `sandbox`
+4. For real SimpleFin integration tests: Add `SIMPLEFIN_TOKEN` or `SIMPLEFIN_ACCESS_URL` to `.env`
 
 ### Run all tests
 
 ```bash
+# Run all tests (Plaid + SimpleFin)
+uv run pytest tests/ -v -s
+
+# Run only Plaid tests
 uv run pytest tests/test_complete_run.py -v -s
+
+# Run only SimpleFin tests (mocked - no real SimpleFin account needed)
+uv run pytest tests/test_simplefin_flow.py -v -s
+
+# Run SimpleFin integration tests (requires real SimpleFin setup token)
+uv run pytest tests/test_complete_simplefin.py -v -s
 ```
 
 ### Run tests and stop at first failure
 
 ```bash
-uv run pytest tests/test_complete_run.py -v -s -x
+uv run pytest tests/ -v -s -x
 ```
 
 ### Run specific tests
@@ -188,7 +216,7 @@ uv run pytest tests/test_complete_run.py -v -s -k "test_01 or test_02 or test_03
 - `-x` — stop at first failure
 - `-k "expr"` — run only tests matching the expression
 
-### What the test does
+### Plaid Test Flow (`test_complete_run.py`)
 
 1. Logs in (or registers) the test user
 2. Creates a sandbox public token via Plaid SDK (bypasses Link UI)
@@ -198,6 +226,38 @@ uv run pytest tests/test_complete_run.py -v -s -k "test_01 or test_02 or test_03
 6. Fetches and validates transactions via `GET /transactions`
 7. Tests single transaction fetch and date filtering
 8. Triggers a sync-all via `POST /sync/trigger`
+
+### SimpleFin Test Flow (Mocked - `test_simplefin_flow.py`)
+
+Uses mocked SimpleFin API responses (no real SimpleFin account needed):
+
+1. Logs in (or registers) the test user
+2. Exchanges SimpleFin setup token via `POST /simplefin/setup` (mocked)
+3. Lists SimpleFin items via `GET /simplefin/items`
+4. Fetches raw account data via `GET /simplefin/accounts/{item_id}` (mocked)
+5. Triggers transaction sync via `POST /simplefin/sync/{item_id}` (mocked)
+6. Verifies sync job completed with transactions
+7. Fetches and validates transactions (mixed Plaid + SimpleFin)
+8. Tests single transaction fetch and date filtering
+9. Deletes SimpleFin item via `DELETE /simplefin/items/{item_id}`
+10. Verifies transactions were cascaded on delete
+
+### SimpleFin Integration Test (Real API - `test_complete_simplefin.py`)
+
+Tests the complete SimpleFin flow with a real SimpleFin account:
+
+1. Logs in (or registers) the test user
+2. Health check
+3. Exchanges SimpleFin setup token via `POST /simplefin/setup` (real API)
+4. Verifies SimpleFin item stored in DB
+5. Syncs accounts and transactions from 2025-12-31 via `POST /simplefin/sync/{item_id}`
+6. Lists and verifies accounts saved via `GET /simplefin/accounts/{item_id}`
+7. Lists and verifies transactions saved via `GET /simplefin/transactions`
+
+**Prerequisites for real SimpleFin tests:**
+- Add `SIMPLEFIN_TOKEN` or `SIMPLEFIN_ACCESS_URL` to `.env`
+- Get a setup token from [SimpleFin Bridge](https://beta-bridge.simplefin.org)
+- Setup tokens can only be claimed once (save the access URL for reuse)
 
 ## Project Structure
 
@@ -212,21 +272,32 @@ cashstate-backend/
 │   │   ├── auth.py
 │   │   ├── common.py
 │   │   ├── plaid.py
+│   │   ├── simplefin.py
 │   │   ├── sync.py
 │   │   └── transaction.py
 │   ├── routers/          # API routes
 │   │   ├── auth.py
 │   │   ├── plaid.py
+│   │   ├── simplefin.py
 │   │   ├── sync.py
 │   │   └── transactions.py
 │   ├── services/         # Business logic
 │   │   ├── auth_service.py
 │   │   ├── plaid_service.py
+│   │   ├── simplefin_service.py
 │   │   └── sync_service.py
+│   └── utils/
+│       └── encryption.py   # Fernet encryption for sensitive tokens
 │   └── utils/
 ├── supabase/
 │   └── migrations/
-│       └── 001_initial_schema.sql
+│       └── 001_simplefin_schema.sql
+├── tests/
+│   ├── conftest.py                 # Pytest configuration
+│   ├── test_complete_run.py        # Plaid integration tests (real sandbox)
+│   ├── test_simplefin_flow.py      # SimpleFin tests (mocked responses)
+│   └── test_complete_simplefin.py  # SimpleFin integration tests (real API)
+├── SIMPLEFIN_INTEGRATION_GUIDE.md  # Complete SimpleFin documentation
 ├── pyproject.toml
 ├── uv.lock
 └── .env.example

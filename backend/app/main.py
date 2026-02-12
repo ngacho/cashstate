@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.routers import (
     auth_router,
     plaid_router,
+    simplefin_router,
     sync_router,
     transactions_router,
 )
@@ -29,7 +30,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    description="Budget tracking with Plaid-powered financial data syncing",
+    description="Budget tracking with Plaid and SimpleFin financial data syncing",
     version="1.0.0",
     docs_url="/docs" if settings.debug else None,
     redoc_url="/redoc" if settings.debug else None,
@@ -84,6 +85,7 @@ api_prefix = settings.api_v1_prefix
 
 app.include_router(auth_router, prefix=api_prefix)
 app.include_router(plaid_router, prefix=api_prefix)
+app.include_router(simplefin_router, prefix=api_prefix)
 app.include_router(sync_router, prefix=api_prefix)
 app.include_router(transactions_router, prefix=api_prefix)
 

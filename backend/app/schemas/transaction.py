@@ -1,22 +1,23 @@
-"""Transaction schemas."""
+"""Transaction schemas - SimpleFin only."""
 
 from datetime import datetime
 from pydantic import BaseModel
 
 
 class TransactionResponse(BaseModel):
-    """Single transaction."""
+    """Single SimpleFin transaction."""
 
     id: str
-    plaid_item_id: str
-    plaid_transaction_id: str
+    simplefin_item_id: str
+    simplefin_transaction_id: str
     account_id: str
+    account_name: str | None
     amount: float
-    iso_currency_code: str | None
+    currency: str | None
     date: str
-    name: str
-    merchant_name: str | None
-    category: list[str] | None
+    posted: datetime | None
+    description: str
+    payee: str | None
     pending: bool
     created_at: datetime
     updated_at: datetime
@@ -29,4 +30,3 @@ class TransactionListResponse(BaseModel):
     total: int
     limit: int
     offset: int
-    has_more: bool

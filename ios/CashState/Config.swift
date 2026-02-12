@@ -6,7 +6,7 @@ enum Config {
 
     /// Your ngrok URL - UPDATE THIS!
     /// Example: "https://abc123.ngrok.io"
-    static let backendURL = "https://b163-136-27-22-198.ngrok-free.app"
+    static let backendURL = "http://localhost:8000"
 
     /// API version prefix
     static let apiVersion = "/app/v1"

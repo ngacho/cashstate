@@ -18,42 +18,48 @@ struct AuthResponse: Codable {
     }
 }
 
-// MARK: - Transaction
+// MARK: - Transaction (SimpleFin only)
 
 struct Transaction: Identifiable, Codable {
     let id: String
-    let plaidItemId: String
-    let plaidTransactionId: String
+    let simplefinItemId: String
+    let simplefinTransactionId: String
     let accountId: String
+    let accountName: String?
     let amount: Double
-    let isoCurrencyCode: String?
+    let currency: String?
     let date: String
-    let name: String
-    let merchantName: String?
-    let category: [String]?
+    let posted: String?
+    let description: String
+    let payee: String?
     let pending: Bool
     let createdAt: String
     let updatedAt: String
 
     enum CodingKeys: String, CodingKey {
         case id
-        case plaidItemId = "plaid_item_id"
-        case plaidTransactionId = "plaid_transaction_id"
+        case simplefinItemId = "simplefin_item_id"
+        case simplefinTransactionId = "simplefin_transaction_id"
         case accountId = "account_id"
+        case accountName = "account_name"
         case amount
-        case isoCurrencyCode = "iso_currency_code"
-        case date, name
-        case merchantName = "merchant_name"
-        case category, pending
+        case currency
+        case date
+        case posted
+        case description
+        case payee
+        case pending
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
 
     var isExpense: Bool { amount < 0 }
+
     var displayAmount: String {
         let value = abs(amount)
         return String(format: "$%.2f", value)
     }
+
     var displayDate: String {
         // Convert YYYY-MM-DD to readable format
         let components = date.split(separator: "-")
@@ -66,6 +72,12 @@ struct Transaction: Identifiable, Codable {
                           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
         return "\(monthNames[month - 1]) \(day)"
     }
+
+    // Use description as the name (SimpleFin doesn't separate these)
+    var name: String { description }
+
+    // Use payee as merchant name if available
+    var merchantName: String? { payee }
 }
 
 // MARK: - Transaction List Response
@@ -75,11 +87,9 @@ struct TransactionListResponse: Codable {
     let total: Int
     let limit: Int
     let offset: Int
-    let hasMore: Bool
 
     enum CodingKeys: String, CodingKey {
         case items, total, limit, offset
-        case hasMore = "has_more"
     }
 }
 
@@ -103,5 +113,59 @@ struct SpendingInsight {
 
     var netAmount: Decimal {
         totalIncome - abs(totalSpent)
+    }
+}
+
+// MARK: - SimpleFin Models
+
+struct SimplefinItem: Identifiable, Codable {
+    let id: String
+    let institutionName: String?
+    let status: String
+    let lastSyncedAt: String?
+    let createdAt: String
+    let updatedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case institutionName = "institution_name"
+        case status
+        case lastSyncedAt = "last_synced_at"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct SimplefinSetupRequest: Codable {
+    let setupToken: String
+    let institutionName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case setupToken = "setup_token"
+        case institutionName = "institution_name"
+    }
+}
+
+struct SimplefinSetupResponse: Codable {
+    let itemId: String
+    let institutionName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case itemId = "item_id"
+        case institutionName = "institution_name"
+    }
+}
+
+struct SimplefinSyncResponse: Codable {
+    let success: Bool
+    let syncJobId: String
+    let transactionsAdded: Int
+    let errors: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case syncJobId = "sync_job_id"
+        case transactionsAdded = "transactions_added"
+        case errors
     }
 }

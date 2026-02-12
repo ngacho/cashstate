@@ -4,6 +4,7 @@
 import os
 import base64
 import datetime
+import json
 import requests
 from dotenv import load_dotenv
 
@@ -51,7 +52,7 @@ def main():
             response.raise_for_status()
             access_url = response.text.strip()
             print(f"✅ Access URL: {access_url[:60]}...")
-            print(f"\n⚠️  SAVE THIS ACCESS URL! Add to your .env:")
+            print("\n⚠️  SAVE THIS ACCESS URL! Add to your .env:")
             print(f"SIMPLEFIN_ACCESS_URL='{access_url}'")
             print()
         except Exception as e:
@@ -62,13 +63,27 @@ def main():
     # Step 3: Parse access URL and fetch data
     print("\n[3] Fetching account data...")
     try:
+        # Get transactions from Dec 31 of previous year (beginning of current year)
+        year = datetime.datetime.now().year
+        prev_year_end = datetime.datetime(year - 1, 12, 31)
+        start_timestamp = int(prev_year_end.timestamp())
 
-        # Fetch accounts
-        response = requests.get(f"{access_url}/accounts")
+        print(f"   Fetching transactions from {prev_year_end.date()} (timestamp: {start_timestamp})")
+
+        # Fetch accounts with start-date parameter
+        response = requests.get(
+            f"{access_url}/accounts",
+            params={"start-date": start_timestamp}
+        )
         response.raise_for_status()
         data = response.json()
 
-        print(f"✅ Found {len(data.get('accounts', []))} accounts")
+        # JSON dump the raw data into a json file
+        with open("simplefin_response.json", "w") as f:
+            json.dump(data, f, indent=2)
+        print("\n✅ Raw JSON data saved to simplefin_response.json")
+
+        print(f"\n✅ Found {len(data.get('accounts', []))} accounts")
 
         # Display account data
         for account in data.get('accounts', []):

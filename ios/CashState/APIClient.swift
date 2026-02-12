@@ -89,4 +89,41 @@ actor APIClient {
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(T.self, from: data)
     }
+
+    // MARK: - SimpleFin Methods
+
+    func setupSimplefin(setupToken: String, institutionName: String?) async throws -> SimplefinSetupResponse {
+        let body = SimplefinSetupRequest(
+            setupToken: setupToken,
+            institutionName: institutionName
+        )
+        return try await request(
+            endpoint: "/simplefin/setup",
+            method: "POST",
+            body: body
+        )
+    }
+
+    func listSimplefinItems() async throws -> [SimplefinItem] {
+        return try await request(endpoint: "/simplefin/items")
+    }
+
+    func syncSimplefin(itemId: String, startDate: Int? = nil) async throws -> SimplefinSyncResponse {
+        var endpoint = "/simplefin/sync/\(itemId)"
+        if let startDate = startDate {
+            endpoint += "?start_date=\(startDate)"
+        }
+        return try await request(endpoint: endpoint, method: "POST")
+    }
+
+    func deleteSimplefinItem(itemId: String) async throws {
+        struct DeleteResponse: Codable {
+            let success: Bool
+            let message: String
+        }
+        let _: DeleteResponse = try await request(
+            endpoint: "/simplefin/items/\(itemId)",
+            method: "DELETE"
+        )
+    }
 }

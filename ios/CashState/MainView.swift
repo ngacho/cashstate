@@ -21,7 +21,7 @@ struct MainView: View {
                     Label("Budgets", systemImage: "chart.pie.fill")
                 }
 
-            AccountsView(isAuthenticated: $isAuthenticated)
+            AccountsView(isAuthenticated: $isAuthenticated, apiClient: apiClient)
                 .tabItem {
                     Label("Accounts", systemImage: "wallet.pass.fill")
                 }
@@ -49,9 +49,11 @@ struct TransactionsView: View {
                             .foregroundColor(Theme.Colors.textSecondary)
                         Text("No transactions yet")
                             .foregroundColor(Theme.Colors.textSecondary)
-                        Text("Connect your bank account to see transactions")
+                        Text("Connect your bank in the Accounts tab to sync transactions")
                             .font(.caption)
                             .foregroundColor(Theme.Colors.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
                     }
                 } else {
                     List(transactions) { transaction in
@@ -448,13 +450,67 @@ struct BudgetsView: View {
 
 struct AccountsView: View {
     @Binding var isAuthenticated: Bool
+    let apiClient: APIClient
+    @State private var simplefinItems: [SimplefinItem] = []
+    @State private var showSimplefinSetup = false
+    @State private var isLoading = false
+    @State private var isSyncing = false
 
     var body: some View {
         NavigationView {
             List {
-                Section("Connected Accounts") {
-                    Text("No accounts connected yet")
-                        .foregroundColor(Theme.Colors.textSecondary)
+                Section {
+                    if simplefinItems.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Connect Your Banks")
+                                .font(.headline)
+                            Text("Set up your bank accounts at SimpleFin, then connect here to sync all your transactions.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 4)
+
+                        Button {
+                            showSimplefinSetup = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "link.circle.fill")
+                                Text("Connect SimpleFin")
+                            }
+                        }
+                    } else {
+                        // Show connected status
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("SimpleFin Connected")
+                                    .font(.body)
+                                    .fontWeight(.medium)
+                                if let item = simplefinItems.first, let lastSynced = item.lastSyncedAt {
+                                    Text("Last synced: \(formatDate(lastSynced))")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            Spacer()
+                            if isSyncing {
+                                ProgressView()
+                            } else {
+                                Button {
+                                    if let item = simplefinItems.first {
+                                        Task {
+                                            await syncItem(item.id)
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: "arrow.clockwise")
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(Theme.Colors.primary)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Connection")
                 }
 
                 Section("Settings") {
@@ -469,6 +525,62 @@ struct AccountsView: View {
                 }
             }
             .navigationTitle("Accounts")
+            .refreshable {
+                await loadSimplefinItems()
+            }
+            .task {
+                await loadSimplefinItems()
+            }
+            .sheet(isPresented: $showSimplefinSetup) {
+                SimplefinSetupView(apiClient: apiClient) { itemId in
+                    Task {
+                        await loadSimplefinItems()
+                        // Auto-sync after setup
+                        await syncItem(itemId)
+                    }
+                }
+            }
         }
+    }
+
+    private func loadSimplefinItems() async {
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            simplefinItems = try await apiClient.listSimplefinItems()
+        } catch {
+            print("Failed to load SimpleFin items: \(error)")
+        }
+    }
+
+    private func syncItem(_ itemId: String) async {
+        isSyncing = true
+        defer { isSyncing = false }
+
+        do {
+            // Get Dec 31 of previous year (beginning of current year transactions)
+            let calendar = Calendar.current
+            let currentYear = calendar.component(.year, from: Date())
+            let prevYearEnd = calendar.date(from: DateComponents(year: currentYear - 1, month: 12, day: 31))!
+            let startTimestamp = Int(prevYearEnd.timeIntervalSince1970)
+
+            let response = try await apiClient.syncSimplefin(
+                itemId: itemId,
+                startDate: startTimestamp
+            )
+            print("✅ Synced \(response.transactionsAdded) transactions")
+
+            // Reload items to update last synced time
+            await loadSimplefinItems()
+        } catch {
+            print("Failed to sync: \(error)")
+        }
+    }
+
+    private func formatDate(_ dateString: String) -> String {
+        // Simple date formatting - could be improved
+        let components = dateString.split(separator: "T")
+        return String(components.first ?? "")
     }
 }
