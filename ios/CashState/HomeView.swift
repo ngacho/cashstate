@@ -136,13 +136,15 @@ struct HomeView: View {
                     .padding(Theme.Spacing.lg)
                     .background(
                         LinearGradient(
-                            colors: [Theme.Colors.primary, Theme.Colors.primaryDark],
+                            colors: totalBalance < 0
+                                ? [Theme.Colors.expense, Theme.Colors.expense.opacity(0.8)]
+                                : [Theme.Colors.income, Theme.Colors.income.opacity(0.8)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
                     .cornerRadius(Theme.CornerRadius.xl)
-                    .shadow(color: Theme.Colors.primary.opacity(0.3), radius: 12, x: 0, y: 6)
+                    .shadow(color: (totalBalance < 0 ? Theme.Colors.expense : Theme.Colors.income).opacity(0.3), radius: 12, x: 0, y: 6)
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.top, Theme.Spacing.sm)
 
@@ -382,6 +384,13 @@ struct HomeView: View {
             // Reload accounts to show updated balances
             await loadAccounts()
 
+            // Calculate snapshots from the synced transactions
+            print("Calculating snapshots...")
+            try? await apiClient.calculateSnapshots()
+
+            // Reload snapshots to show the chart
+            await loadSnapshots()
+
             // Show success message
             await MainActor.run {
                 showSyncSuccess = true
@@ -404,6 +413,15 @@ struct NetWorthChart: View {
 
     var maxBalance: Double {
         snapshots.map { $0.balance }.max() ?? 0
+    }
+
+    var currentBalance: Double {
+        snapshots.last?.balance ?? 0
+    }
+
+    var chartColor: Color {
+        // Use red if balance is negative, green if positive
+        currentBalance < 0 ? Theme.Colors.expense : Theme.Colors.income
     }
 
     var chartYDomain: ClosedRange<Double> {
@@ -442,31 +460,14 @@ struct NetWorthChart: View {
                     .foregroundColor(Theme.Colors.textSecondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if snapshots.count == 1 {
-            // Single data point - show as a point
-            VStack(spacing: Theme.Spacing.sm) {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(formatCurrency(snapshots[0].balance))
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(Theme.Colors.primary)
-                    Text("on \(formatAxisDate(snapshots[0].dateValue))")
-                        .font(.caption)
-                        .foregroundColor(Theme.Colors.textSecondary)
-                }
-                Text("Need more data for chart")
-                    .font(.caption2)
-                    .foregroundColor(Theme.Colors.textSecondary.opacity(0.7))
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            // Normal chart with 2+ points
+            // Chart with 1+ points
             Chart(snapshots) { snapshot in
                 LineMark(
                     x: .value("Date", snapshot.dateValue),
                     y: .value("Balance", snapshot.balance)
                 )
-                .foregroundStyle(Theme.Colors.primary)
+                .foregroundStyle(chartColor)
                 .interpolationMethod(.catmullRom) // Smooth curve
                 .lineStyle(StrokeStyle(lineWidth: 3))
 
@@ -478,8 +479,8 @@ struct NetWorthChart: View {
                 .foregroundStyle(
                     LinearGradient(
                         colors: [
-                            Theme.Colors.primary.opacity(0.3),
-                            Theme.Colors.primary.opacity(0.05)
+                            chartColor.opacity(0.3),
+                            chartColor.opacity(0.05)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -506,7 +507,7 @@ struct NetWorthChart: View {
                         AxisValueLabel {
                             Text(formatCurrency(balance))
                                 .font(.caption2)
-                                .foregroundColor(Theme.Colors.textSecondary)
+                                .foregroundColor(balance < 0 ? Theme.Colors.expense : (balance > 0 ? Theme.Colors.income : Theme.Colors.textSecondary))
                         }
                         AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                             .foregroundStyle(Color.gray.opacity(0.2))
