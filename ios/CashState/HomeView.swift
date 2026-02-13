@@ -1329,6 +1329,7 @@ struct SpendingCreditChart: View {
     struct BarData: Identifiable {
         let id = UUID()
         let date: Date
+        let dateLabel: String
         let type: String
         let amount: Double
     }
@@ -1360,8 +1361,9 @@ struct SpendingCreditChart: View {
         // Flatten to create individual bars
         var result: [BarData] = []
         for (date, totals) in dailyTotals {
-            result.append(BarData(date: date, type: "Spent", amount: totals.spent))
-            result.append(BarData(date: date, type: "Credit", amount: totals.credit))
+            let label = formatAxisDate(date)
+            result.append(BarData(date: date, dateLabel: label, type: "Spent", amount: totals.spent))
+            result.append(BarData(date: date, dateLabel: label, type: "Credit", amount: totals.credit))
         }
 
         return result.sorted { $0.date < $1.date }
@@ -1371,9 +1373,32 @@ struct SpendingCreditChart: View {
         barData.map { $0.amount }.max() ?? 1
     }
 
-    var uniqueDates: [Date] {
-        let dates = barData.map { $0.date }
-        return Array(Set(dates)).sorted()
+    var uniqueLabels: [String] {
+        // Get unique date labels in chronological order
+        let sortedData = barData.sorted { $0.date < $1.date }
+        var seen = Set<String>()
+        var labels: [String] = []
+        for bar in sortedData {
+            if !seen.contains(bar.dateLabel) {
+                seen.insert(bar.dateLabel)
+                labels.append(bar.dateLabel)
+            }
+        }
+        return labels
+    }
+
+    var barWidth: MarkDimension {
+        let count = uniqueLabels.count
+        switch count {
+        case 0...2:
+            return .ratio(0.7)  // Wide bars for very little data
+        case 3...5:
+            return .ratio(0.6)  // Medium-wide bars
+        case 6...8:
+            return .ratio(0.5)  // Medium bars
+        default:
+            return .ratio(0.4)  // Narrow bars for lots of data
+        }
     }
 
     var body: some View {
@@ -1396,32 +1421,34 @@ struct SpendingCreditChart: View {
             Chart {
                 ForEach(barData.filter { $0.type == "Spent" }) { bar in
                     BarMark(
-                        x: .value("Date", bar.date, unit: .day),
-                        y: .value("Amount", bar.amount)
+                        x: .value("Date", bar.dateLabel),
+                        y: .value("Amount", bar.amount),
+                        width: barWidth
                     )
                     .foregroundStyle(Theme.Colors.expense)
                     .position(by: .value("Type", "Spent"))
                 }
                 ForEach(barData.filter { $0.type == "Credit" }) { bar in
                     BarMark(
-                        x: .value("Date", bar.date, unit: .day),
-                        y: .value("Amount", bar.amount)
+                        x: .value("Date", bar.dateLabel),
+                        y: .value("Amount", bar.amount),
+                        width: barWidth
                     )
                     .foregroundStyle(Theme.Colors.income)
                     .position(by: .value("Type", "Credit"))
                 }
             }
             .chartXAxis {
-                AxisMarks(values: uniqueDates) { value in
-                    if let date = value.as(Date.self) {
-                        AxisValueLabel {
-                            Text(formatAxisDate(date))
+                AxisMarks { value in
+                    AxisValueLabel {
+                        if let label = value.as(String.self) {
+                            Text(label)
                                 .font(.caption2)
                                 .foregroundColor(Theme.Colors.textSecondary)
                         }
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                            .foregroundStyle(Color.gray.opacity(0.2))
                     }
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                        .foregroundStyle(Color.gray.opacity(0.2))
                 }
             }
             .chartYAxis {
