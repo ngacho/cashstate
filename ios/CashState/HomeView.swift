@@ -660,6 +660,13 @@ struct AccountDetailView: View {
     enum ChartType: String, CaseIterable {
         case balance = "Balance Trend"
         case transactions = "Spending vs Credit"
+
+        var displayName: String {
+            switch self {
+            case .balance: return "Balance"
+            case .transactions: return "Spending"
+            }
+        }
     }
 
     enum TransactionTab: String, CaseIterable {
@@ -673,6 +680,26 @@ struct AccountDetailView: View {
             case .spent: return "arrow.up.circle.fill"
             case .credit: return "arrow.down.circle.fill"
             }
+        }
+    }
+
+    // Smart granularity: determine how to visualize custom ranges
+    var effectiveTimeRange: TimeRange {
+        guard selectedTimeRange == .custom else {
+            return selectedTimeRange
+        }
+
+        let calendar = Calendar.current
+        let daysDiff = calendar.dateComponents([.day], from: customStartDate, to: customEndDate).day ?? 0
+
+        if daysDiff <= 7 {
+            return .week  // Show daily like week view
+        } else if daysDiff <= 30 {
+            return .month  // Show daily like month view
+        } else if daysDiff <= 365 {
+            return .year  // Show monthly like year view
+        } else {
+            return .year  // Show annually (treat as year for now)
         }
     }
 
@@ -846,29 +873,13 @@ struct AccountDetailView: View {
                 // Chart Section with Dropdown
                 if !filteredTransactions.isEmpty {
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                        // Header with dropdown
-                        HStack {
-                            Text(selectedChartType.rawValue)
-                                .font(.headline)
-                                .foregroundColor(Theme.Colors.textPrimary)
-                            Spacer()
-                            Menu {
-                                Picker("Chart Type", selection: $selectedChartType) {
-                                    ForEach(ChartType.allCases, id: \.self) { type in
-                                        Text(type.rawValue).tag(type)
-                                    }
-                                }
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "chart.bar.fill")
-                                        .font(.caption)
-                                        .foregroundColor(Theme.Colors.primary)
-                                    Image(systemName: "chevron.down")
-                                        .font(.caption)
-                                        .foregroundColor(Theme.Colors.textSecondary)
-                                }
+                        // Chart type toggle
+                        Picker("Chart Type", selection: $selectedChartType) {
+                            ForEach(ChartType.allCases, id: \.self) { type in
+                                Text(type.displayName).tag(type)
                             }
                         }
+                        .pickerStyle(.segmented)
                         .padding(.horizontal)
 
                         // Chart content
@@ -878,12 +889,12 @@ struct AccountDetailView: View {
                                 AccountBalanceChart(
                                     transactions: filteredTransactions,
                                     currentBalance: account.balance ?? 0,
-                                    timeRange: selectedTimeRange
+                                    timeRange: effectiveTimeRange
                                 )
                             case .transactions:
                                 SpendingCreditChart(
                                     transactions: filteredTransactions,
-                                    timeRange: selectedTimeRange
+                                    timeRange: effectiveTimeRange
                                 )
                             }
                         }
@@ -1148,17 +1159,37 @@ struct AccountBalanceChart: View {
 
         // Add starting point
         if let firstDate = sortedTransactions.first?.postedDate {
-            let startDate = calendar.startOfDay(for: Date(timeIntervalSince1970: TimeInterval(firstDate)))
+            let transactionDate = Date(timeIntervalSince1970: TimeInterval(firstDate))
+            let startDate: Date
+
+            if timeRange == .year {
+                // For year view, group by month
+                startDate = calendar.date(from: calendar.dateComponents([.year, .month], from: transactionDate)) ?? calendar.startOfDay(for: transactionDate)
+            } else {
+                // For other views, group by day
+                startDate = calendar.startOfDay(for: transactionDate)
+            }
+
             dailyBalances[startDate] = runningBalance
         }
 
         // Calculate balance after each transaction
         for transaction in sortedTransactions {
             let transactionDate = Date(timeIntervalSince1970: TimeInterval(transaction.postedDate))
-            let dayStart = calendar.startOfDay(for: transactionDate)
+            let key: Date
+
+            // Group by day or month depending on time range
+            if timeRange == .year {
+                // For year view, group by month
+                key = calendar.date(from: calendar.dateComponents([.year, .month], from: transactionDate)) ?? calendar.startOfDay(for: transactionDate)
+            } else {
+                // For other views, group by day
+                key = calendar.startOfDay(for: transactionDate)
+            }
 
             runningBalance += transaction.amount
-            dailyBalances[dayStart] = runningBalance
+            // Keep the latest balance for each period (day or month)
+            dailyBalances[key] = runningBalance
         }
 
         // Convert to sorted points

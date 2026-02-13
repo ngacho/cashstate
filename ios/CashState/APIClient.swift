@@ -33,6 +33,24 @@ actor APIClient {
 
     func setAccessToken(_ token: String) {
         self.accessToken = token
+        // DEV ONLY: Persist token for auto-login (NOT production-ready!)
+        UserDefaults.standard.set(token, forKey: "dev_access_token")
+    }
+
+    func loadStoredToken() {
+        // DEV ONLY: Load persisted token for auto-login
+        if let token = UserDefaults.standard.string(forKey: "dev_access_token") {
+            self.accessToken = token
+        }
+    }
+
+    func hasStoredToken() -> Bool {
+        return UserDefaults.standard.string(forKey: "dev_access_token") != nil
+    }
+
+    func clearStoredToken() {
+        UserDefaults.standard.removeObject(forKey: "dev_access_token")
+        self.accessToken = nil
     }
 
     func request<T: Decodable>(

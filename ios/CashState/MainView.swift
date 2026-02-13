@@ -804,7 +804,10 @@ struct AccountsView: View {
                     // Settings Section
                     VStack(spacing: 0) {
                         Button {
-                            isAuthenticated = false
+                            Task {
+                                await apiClient.clearStoredToken()
+                                isAuthenticated = false
+                            }
                         } label: {
                             HStack {
                                 Image(systemName: "rectangle.portrait.and.arrow.right")
