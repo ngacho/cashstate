@@ -406,60 +406,115 @@ struct NetWorthChart: View {
         snapshots.map { $0.balance }.max() ?? 0
     }
 
-    var body: some View {
-        Chart(snapshots) { snapshot in
-            LineMark(
-                x: .value("Date", snapshot.dateValue),
-                y: .value("Balance", snapshot.balance)
-            )
-            .foregroundStyle(Theme.Colors.primary)
-            .interpolationMethod(.catmullRom) // Smooth curve
-            .lineStyle(StrokeStyle(lineWidth: 3))
+    var chartYDomain: ClosedRange<Double> {
+        guard !snapshots.isEmpty else {
+            return 0...100 // Default range for empty data
+        }
 
-            // Area fill under the line
-            AreaMark(
-                x: .value("Date", snapshot.dateValue),
-                y: .value("Balance", snapshot.balance)
-            )
-            .foregroundStyle(
-                LinearGradient(
-                    colors: [
-                        Theme.Colors.primary.opacity(0.3),
-                        Theme.Colors.primary.opacity(0.05)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
+        // If all values are the same, add padding
+        if minBalance == maxBalance {
+            let value = minBalance
+            if value == 0 {
+                return -10...10
+            } else if value > 0 {
+                return 0...(value * 1.2)
+            } else {
+                return (value * 1.2)...0
+            }
+        }
+
+        // Calculate padding (5% of range)
+        let range = maxBalance - minBalance
+        let padding = range * 0.05
+
+        return (minBalance - padding)...(maxBalance + padding)
+    }
+
+    var body: some View {
+        if snapshots.isEmpty {
+            // Empty state
+            VStack {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.largeTitle)
+                    .foregroundColor(Theme.Colors.textSecondary.opacity(0.5))
+                Text("No snapshot data")
+                    .font(.caption)
+                    .foregroundColor(Theme.Colors.textSecondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if snapshots.count == 1 {
+            // Single data point - show as a point
+            VStack(spacing: Theme.Spacing.sm) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(formatCurrency(snapshots[0].balance))
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(Theme.Colors.primary)
+                    Text("on \(formatAxisDate(snapshots[0].dateValue))")
+                        .font(.caption)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                }
+                Text("Need more data for chart")
+                    .font(.caption2)
+                    .foregroundColor(Theme.Colors.textSecondary.opacity(0.7))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            // Normal chart with 2+ points
+            Chart(snapshots) { snapshot in
+                LineMark(
+                    x: .value("Date", snapshot.dateValue),
+                    y: .value("Balance", snapshot.balance)
                 )
-            )
-            .interpolationMethod(.catmullRom)
-        }
-        .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 5)) { value in
-                if let date = value.as(Date.self) {
-                    AxisValueLabel {
-                        Text(formatAxisDate(date))
-                            .font(.caption2)
-                            .foregroundColor(Theme.Colors.textSecondary)
+                .foregroundStyle(Theme.Colors.primary)
+                .interpolationMethod(.catmullRom) // Smooth curve
+                .lineStyle(StrokeStyle(lineWidth: 3))
+
+                // Area fill under the line
+                AreaMark(
+                    x: .value("Date", snapshot.dateValue),
+                    y: .value("Balance", snapshot.balance)
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [
+                            Theme.Colors.primary.opacity(0.3),
+                            Theme.Colors.primary.opacity(0.05)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .interpolationMethod(.catmullRom)
+            }
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 5)) { value in
+                    if let date = value.as(Date.self) {
+                        AxisValueLabel {
+                            Text(formatAxisDate(date))
+                                .font(.caption2)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                            .foregroundStyle(Color.gray.opacity(0.2))
                     }
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                        .foregroundStyle(Color.gray.opacity(0.2))
                 }
             }
-        }
-        .chartYAxis {
-            AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
-                if let balance = value.as(Double.self) {
-                    AxisValueLabel {
-                        Text(formatCurrency(balance))
-                            .font(.caption2)
-                            .foregroundColor(Theme.Colors.textSecondary)
+            .chartYAxis {
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                    if let balance = value.as(Double.self) {
+                        AxisValueLabel {
+                            Text(formatCurrency(balance))
+                                .font(.caption2)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                            .foregroundStyle(Color.gray.opacity(0.2))
                     }
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                        .foregroundStyle(Color.gray.opacity(0.2))
                 }
             }
+            .chartYScale(domain: chartYDomain)
         }
-        .chartYScale(domain: (minBalance * 0.95)...(maxBalance * 1.05))
     }
 
     func formatAxisDate(_ date: Date) -> String {
@@ -581,6 +636,7 @@ struct MintAccountRow: View {
 
     var balanceColor: Color {
         guard let balance = account.balance else { return Theme.Colors.textPrimary }
+        // Transactions are already signed correctly: negative = bad, positive = good
         return balance < 0 ? Theme.Colors.expense : Theme.Colors.textPrimary
     }
 }
@@ -719,7 +775,7 @@ struct AccountDetailView: View {
                     }
                     Text(account.displayBalance)
                         .font(.system(size: 32, weight: .bold))
-                        .foregroundColor(Theme.Colors.primary)
+                        .foregroundColor((account.balance ?? 0) < 0 ? Theme.Colors.expense : Theme.Colors.primary)
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
@@ -730,7 +786,6 @@ struct AccountDetailView: View {
 
                 // Time Range Picker
                 Picker("Period", selection: $selectedTimeRange) {
-                    Text("Day").tag(TimeRange.day)
                     Text("Week").tag(TimeRange.week)
                     Text("Month").tag(TimeRange.month)
                     Text("Year").tag(TimeRange.year)
@@ -911,7 +966,7 @@ struct StatCard: View {
             Text("$\(String(format: "%.2f", amount))")
                 .font(.title3)
                 .fontWeight(.bold)
-                .foregroundColor(Theme.Colors.textPrimary)
+                .foregroundColor(color)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(Theme.Spacing.md)
@@ -1100,15 +1155,56 @@ struct AccountBalanceChart: View {
         currentBalance < 0 ? Theme.Colors.expense : Theme.Colors.primary
     }
 
+    var chartYDomain: ClosedRange<Double> {
+        guard !balancePoints.isEmpty else {
+            return 0...100 // Default range for empty data
+        }
+
+        let min = minBalance
+        let max = maxBalance
+
+        // If all values are the same, add padding
+        if min == max {
+            let value = min
+            if value == 0 {
+                return -10...10
+            } else if value > 0 {
+                return 0...(value * 1.2)
+            } else {
+                return (value * 1.2)...0
+            }
+        }
+
+        // Calculate padding based on the range
+        let range = max - min
+        let padding = range * 0.1
+
+        // Extend the domain in both directions
+        let lowerBound = min < 0 ? min - padding : min * 0.95
+        let upperBound = max > 0 ? max + padding : max * 1.05
+
+        // Ensure we include zero if balances cross it
+        if min < 0 && max > 0 {
+            return lowerBound...upperBound
+        }
+
+        return lowerBound...upperBound
+    }
+
     var body: some View {
         if balancePoints.isEmpty {
-            VStack(spacing: 8) {
+            VStack(spacing: 12) {
                 Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.system(size: 40))
-                    .foregroundColor(Theme.Colors.textSecondary)
-                Text("No balance data")
+                    .font(.system(size: 48))
+                    .foregroundColor(Theme.Colors.textSecondary.opacity(0.5))
+                Text("Not enough data yet")
+                    .font(.headline)
+                    .foregroundColor(Theme.Colors.textPrimary)
+                Text("Complete more transactions to see your balance trend")
                     .font(.subheadline)
                     .foregroundColor(Theme.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -1164,7 +1260,7 @@ struct AccountBalanceChart: View {
                     }
                 }
             }
-            .chartYScale(domain: (minBalance * 0.95)...(maxBalance * 1.05))
+            .chartYScale(domain: chartYDomain)
         }
     }
 

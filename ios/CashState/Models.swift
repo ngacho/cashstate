@@ -192,21 +192,8 @@ struct SimplefinSyncResponse: Codable {
 struct SnapshotData: Codable, Identifiable {
     let date: String
     let balance: Double
-    let spent: Double
-    let income: Double
-    let net: Double
-    let transactionCount: Int
 
     var id: String { date }
-
-    enum CodingKeys: String, CodingKey {
-        case date
-        case balance
-        case spent
-        case income
-        case net
-        case transactionCount = "transaction_count"
-    }
 
     var dateValue: Date {
         let formatter = ISO8601DateFormatter()

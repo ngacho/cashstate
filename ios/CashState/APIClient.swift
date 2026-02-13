@@ -358,4 +358,72 @@ actor APIClient {
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode([Transaction].self, from: data)
     }
+
+    // MARK: - Account Snapshots (per-account balance history)
+
+    func getAccountSnapshots(
+        accountId: String,
+        startDate: Date? = nil,
+        endDate: Date? = nil,
+        granularity: String = "day"
+    ) async throws -> SnapshotsResponse {
+        var components = URLComponents(string: Config.apiBaseURL + "/snapshots/account/\(accountId)")
+        var queryItems: [URLQueryItem] = []
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+
+        if let startDate = startDate {
+            queryItems.append(URLQueryItem(name: "start_date", value: formatter.string(from: startDate)))
+        }
+        if let endDate = endDate {
+            queryItems.append(URLQueryItem(name: "end_date", value: formatter.string(from: endDate)))
+        }
+        queryItems.append(URLQueryItem(name: "granularity", value: granularity))
+
+        components?.queryItems = queryItems
+
+        guard let url = components?.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        if Config.debugMode {
+            print("→ GET /snapshots/account/\(accountId)?granularity=\(granularity)")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        if Config.debugMode {
+            print("← \(httpResponse.statusCode) /snapshots/account/\(accountId)")
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 401 {
+                throw APIError.unauthorized
+            }
+
+            var errorMessage: String?
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let detail = json["detail"] as? String {
+                errorMessage = detail
+            }
+
+            throw APIError.serverError(httpResponse.statusCode, errorMessage)
+        }
+
+        let decoder = JSONDecoder()
+        return try decoder.decode(SnapshotsResponse.self, from: data)
+    }
 }
