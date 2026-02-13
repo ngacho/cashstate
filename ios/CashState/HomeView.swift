@@ -763,6 +763,25 @@ struct AccountDetailView: View {
         filteredTransactions.reduce(0) { $0 + $1.amount }
     }
 
+    // Spending breakdown by merchant
+    struct MerchantSpending: Identifiable {
+        let id = UUID()
+        let merchant: String
+        let amount: Double
+    }
+
+    var merchantBreakdown: [MerchantSpending] {
+        var merchantTotals: [String: Double] = [:]
+
+        for transaction in filteredTransactions where transaction.amount < 0 {
+            let merchant = transaction.payee ?? transaction.description
+            merchantTotals[merchant, default: 0] += abs(transaction.amount)
+        }
+
+        return merchantTotals.map { MerchantSpending(merchant: $0.key, amount: $0.value) }
+            .sorted { $0.amount > $1.amount }
+    }
+
     var dateRangeText: String {
         let formatter = DateFormatter()
 
@@ -848,29 +867,6 @@ struct AccountDetailView: View {
                 }
                 .padding(.horizontal)
 
-                // Summary Stats
-                HStack(spacing: Theme.Spacing.md) {
-                    StatCard(
-                        title: "Spent",
-                        amount: totalSpent,
-                        color: Theme.Colors.expense,
-                        icon: "arrow.up.circle.fill"
-                    )
-                    StatCard(
-                        title: "Credit",
-                        amount: totalCredit,
-                        color: Theme.Colors.income,
-                        icon: "arrow.down.circle.fill"
-                    )
-                    StatCard(
-                        title: "Net",
-                        amount: abs(netAmount),
-                        color: netAmount >= 0 ? Theme.Colors.income : Theme.Colors.expense,
-                        icon: "equal.circle.fill"
-                    )
-                }
-                .padding(.horizontal)
-
                 // Chart Section with Dropdown
                 if !filteredTransactions.isEmpty {
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
@@ -907,6 +903,93 @@ struct AccountDetailView: View {
                         .padding(.horizontal)
                     }
                 }
+
+                // Spending Breakdown Section
+                if !filteredTransactions.isEmpty && totalSpent > 0 {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                        Text("Spending Breakdown")
+                            .font(.headline)
+                            .foregroundColor(Theme.Colors.textPrimary)
+                            .padding(.horizontal)
+
+                        // Donut Chart
+                        ZStack {
+                            DonutChart(
+                                categories: merchantBreakdown.prefix(5).map {
+                                    InsightsView.CategorySpending(category: $0.merchant, amount: $0.amount)
+                                },
+                                total: totalSpent
+                            )
+                            .frame(height: 200)
+
+                            // Total in center
+                            VStack(spacing: 4) {
+                                Text("Total spent")
+                                    .font(.caption)
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                                Text("$\(String(format: "%.2f", totalSpent))")
+                                    .font(.system(size: 24, weight: .bold))
+                                    .foregroundColor(Theme.Colors.textPrimary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal)
+
+                        // Top Merchants Legend
+                        if !merchantBreakdown.isEmpty {
+                            VStack(spacing: Theme.Spacing.xs) {
+                                ForEach(Array(merchantBreakdown.prefix(5).enumerated()), id: \.element.id) { index, item in
+                                    HStack(spacing: Theme.Spacing.sm) {
+                                        Circle()
+                                            .fill(categoryColor(for: index))
+                                            .frame(width: 12, height: 12)
+                                        Text(item.merchant)
+                                            .font(.subheadline)
+                                            .foregroundColor(Theme.Colors.textPrimary)
+                                            .lineLimit(1)
+                                        Spacer()
+                                        Text("\(Int((item.amount / totalSpent) * 100))%")
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                            .foregroundColor(Theme.Colors.textSecondary)
+                                        Text("$\(String(format: "%.2f", item.amount))")
+                                            .font(.subheadline)
+                                            .foregroundColor(Theme.Colors.textPrimary)
+                                    }
+                                    .padding(.horizontal)
+                                }
+                            }
+                            .padding(.vertical, Theme.Spacing.sm)
+                            .background(Color.white)
+                            .cornerRadius(16)
+                            .shadow(color: .gray.opacity(0.1), radius: 4, x: 0, y: 2)
+                            .padding(.horizontal)
+                        }
+                    }
+                }
+
+                // Summary Cards
+                HStack(spacing: Theme.Spacing.md) {
+                    StatCard(
+                        title: "Spent",
+                        amount: totalSpent,
+                        color: Theme.Colors.expense,
+                        icon: "arrow.up.circle.fill"
+                    )
+                    StatCard(
+                        title: "Credit",
+                        amount: totalCredit,
+                        color: Theme.Colors.income,
+                        icon: "arrow.down.circle.fill"
+                    )
+                    StatCard(
+                        title: "Net",
+                        amount: abs(netAmount),
+                        color: netAmount >= 0 ? Theme.Colors.income : Theme.Colors.expense,
+                        icon: "equal.circle.fill"
+                    )
+                }
+                .padding(.horizontal)
 
                 // Transaction Tabs
                 Picker("Type", selection: $selectedTab) {
@@ -990,6 +1073,17 @@ struct AccountDetailView: View {
         } catch {
             print("Failed to load transactions: \(error)")
         }
+    }
+
+    func categoryColor(for index: Int) -> Color {
+        let colors = [
+            Theme.Colors.categoryBlue,
+            Theme.Colors.categoryPurple,
+            Theme.Colors.categoryPink,
+            Theme.Colors.categoryOrange,
+            Theme.Colors.categoryYellow
+        ]
+        return colors[index % colors.count]
     }
 }
 
