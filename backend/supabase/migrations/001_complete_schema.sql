@@ -1,5 +1,5 @@
 -- CashState - Complete Database Schema
--- SimpleFin + Daily Snapshots - All tables linked via user_id for simplicity
+-- SimpleFin + Daily Account Balance History
 -- Run this after ensuring auth.users table exists
 
 -- ============================================================================
@@ -170,39 +170,11 @@ CREATE INDEX idx_simplefin_sync_jobs_status ON public.simplefin_sync_jobs(status
 CREATE INDEX idx_simplefin_sync_jobs_created_at ON public.simplefin_sync_jobs(created_at DESC);
 
 -- ============================================================================
--- Net Snapshots Table (Overview Page - Overall Net Worth Tracking)
+-- Account Balance History Table
 -- ============================================================================
--- Tracks overall net worth across all accounts for the overview/home page
-CREATE TABLE IF NOT EXISTS public.net_snapshots (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    snapshot_date DATE NOT NULL,
-    total_balance NUMERIC(12, 2) NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    UNIQUE(user_id, snapshot_date)
-);
-
-ALTER TABLE public.net_snapshots ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.net_snapshots TO authenticated;
-
-CREATE POLICY "Users can manage own user snapshots"
-    ON public.net_snapshots FOR ALL
-    USING ((SELECT auth.uid()) = user_id)
-    WITH CHECK ((SELECT auth.uid()) = user_id);
-
-CREATE INDEX idx_net_snapshots_user_date ON public.net_snapshots(user_id, snapshot_date DESC);
-
-CREATE TRIGGER net_snapshots_updated_at
-    BEFORE UPDATE ON public.net_snapshots
-    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
-
--- ============================================================================
--- Transaction Snapshots Table (Individual Account Page - Per-Account Balance History)
--- ============================================================================
--- Tracks balance history for each individual account for detail pages
-CREATE TABLE IF NOT EXISTS public.transaction_snapshots (
+-- Stores daily balance snapshots for each account
+-- Net worth is calculated on-the-fly by summing all account balances per date
+CREATE TABLE IF NOT EXISTS public.account_balance_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     simplefin_account_id UUID NOT NULL REFERENCES public.simplefin_accounts(id) ON DELETE CASCADE,
@@ -214,17 +186,18 @@ CREATE TABLE IF NOT EXISTS public.transaction_snapshots (
     UNIQUE(user_id, simplefin_account_id, snapshot_date)
 );
 
-ALTER TABLE public.transaction_snapshots ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.transaction_snapshots TO authenticated;
+ALTER TABLE public.account_balance_history ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.account_balance_history TO authenticated;
 
-CREATE POLICY "Users can manage own account snapshots"
-    ON public.transaction_snapshots FOR ALL
+CREATE POLICY "Users can manage own account balance history"
+    ON public.account_balance_history FOR ALL
     USING ((SELECT auth.uid()) = user_id)
     WITH CHECK ((SELECT auth.uid()) = user_id);
 
-CREATE INDEX idx_transaction_snapshots_user_account_date ON public.transaction_snapshots(user_id, simplefin_account_id, snapshot_date DESC);
-CREATE INDEX idx_transaction_snapshots_account_date ON public.transaction_snapshots(simplefin_account_id, snapshot_date DESC);
+CREATE INDEX idx_account_balance_history_user_account_date ON public.account_balance_history(user_id, simplefin_account_id, snapshot_date DESC);
+CREATE INDEX idx_account_balance_history_account_date ON public.account_balance_history(simplefin_account_id, snapshot_date DESC);
+CREATE INDEX idx_account_balance_history_user_date ON public.account_balance_history(user_id, snapshot_date DESC);
 
-CREATE TRIGGER transaction_snapshots_updated_at
-    BEFORE UPDATE ON public.transaction_snapshots
+CREATE TRIGGER account_balance_history_updated_at
+    BEFORE UPDATE ON public.account_balance_history
     FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();

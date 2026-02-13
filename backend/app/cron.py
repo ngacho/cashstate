@@ -136,13 +136,10 @@ async def sync_simplefin_transactions():
 @repeat_every(seconds=60 * 60 * 24)  # Run every 24 hours
 async def update_daily_snapshots():
     """
-    Update daily snapshots for all users.
+    Store daily account balance snapshots for all users.
 
-    Calculates both:
-    - User-level snapshots (net worth)
-    - Account-level snapshots (per-account balance history)
-
-    Updates yesterday and today to ensure data is current.
+    Snapshots current balances from simplefin_accounts table.
+    Net worth is calculated on-the-fly when requested.
     """
     print("[CRON] Starting daily snapshots update...")
 
@@ -172,22 +169,10 @@ async def update_daily_snapshots():
             try:
                 snapshot_service = SnapshotService(db)
 
-                # Calculate snapshots for yesterday and today
-                today = date.today()
-                yesterday = today - timedelta(days=1)
-
-                # Calculate user-level snapshots (net worth)
-                await snapshot_service.calculate_snapshots(
+                # Store account balance snapshots for today
+                await snapshot_service.store_daily_account_balances(
                     user_id=user_id,
-                    start_date=yesterday,
-                    end_date=today
-                )
-
-                # Calculate account-level snapshots (per-account balance history)
-                await snapshot_service.calculate_transaction_snapshots(
-                    user_id=user_id,
-                    start_date=yesterday,
-                    end_date=today
+                    snapshot_date=date.today()
                 )
 
                 print(f"[CRON] Updated snapshots for user {user_id}")
