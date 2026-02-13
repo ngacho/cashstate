@@ -655,6 +655,12 @@ struct AccountDetailView: View {
     @State private var customStartDate = Date()
     @State private var customEndDate = Date()
     @State private var showDatePicker = false
+    @State private var selectedChartType: ChartType = .balance
+
+    enum ChartType: String, CaseIterable {
+        case balance = "Balance Trend"
+        case transactions = "Spending vs Credit"
+    }
 
     enum TransactionTab: String, CaseIterable {
         case all = "All"
@@ -837,25 +843,56 @@ struct AccountDetailView: View {
                 }
                 .padding(.horizontal)
 
-                // Balance Trend Chart
+                // Chart Section with Dropdown
                 if !filteredTransactions.isEmpty {
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                        Text("Balance Trend")
-                            .font(.headline)
-                            .foregroundColor(Theme.Colors.textPrimary)
-                            .padding(.horizontal)
+                        // Header with dropdown
+                        HStack {
+                            Text(selectedChartType.rawValue)
+                                .font(.headline)
+                                .foregroundColor(Theme.Colors.textPrimary)
+                            Spacer()
+                            Menu {
+                                Picker("Chart Type", selection: $selectedChartType) {
+                                    ForEach(ChartType.allCases, id: \.self) { type in
+                                        Text(type.rawValue).tag(type)
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "chart.bar.fill")
+                                        .font(.caption)
+                                        .foregroundColor(Theme.Colors.primary)
+                                    Image(systemName: "chevron.down")
+                                        .font(.caption)
+                                        .foregroundColor(Theme.Colors.textSecondary)
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
 
-                        AccountBalanceChart(
-                            transactions: filteredTransactions,
-                            currentBalance: account.balance ?? 0,
-                            timeRange: selectedTimeRange
-                        )
-                            .frame(height: 200)
-                            .padding()
-                            .background(Color.white)
-                            .cornerRadius(16)
-                            .shadow(color: .gray.opacity(0.1), radius: 4, x: 0, y: 2)
-                            .padding(.horizontal)
+                        // Chart content
+                        Group {
+                            switch selectedChartType {
+                            case .balance:
+                                AccountBalanceChart(
+                                    transactions: filteredTransactions,
+                                    currentBalance: account.balance ?? 0,
+                                    timeRange: selectedTimeRange
+                                )
+                            case .transactions:
+                                SpendingCreditChart(
+                                    transactions: filteredTransactions,
+                                    timeRange: selectedTimeRange
+                                )
+                            }
+                        }
+                        .frame(height: 200)
+                        .padding()
+                        .background(Color.white)
+                        .cornerRadius(16)
+                        .shadow(color: .gray.opacity(0.1), radius: 4, x: 0, y: 2)
+                        .padding(.horizontal)
                     }
                 }
 
@@ -1267,6 +1304,160 @@ struct AccountBalanceChart: View {
     func formatAxisDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         if balancePoints.count > 30 {
+            formatter.dateFormat = "MMM"
+        } else {
+            formatter.dateFormat = "M/d"
+        }
+        return formatter.string(from: date)
+    }
+
+    func formatCurrency(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencySymbol = "$"
+        formatter.maximumFractionDigits = 0
+        return formatter.string(from: NSNumber(value: value)) ?? "$0"
+    }
+}
+
+// MARK: - Spending vs Credit Chart
+
+struct SpendingCreditChart: View {
+    let transactions: [Transaction]
+    let timeRange: TimeRange
+
+    struct BarData: Identifiable {
+        let id = UUID()
+        let date: Date
+        let type: String
+        let amount: Double
+    }
+
+    var barData: [BarData] {
+        let calendar = Calendar.current
+        var dailyTotals: [Date: (spent: Double, credit: Double)] = [:]
+
+        for transaction in transactions {
+            let date = Date(timeIntervalSince1970: TimeInterval(transaction.postedDate))
+            let key: Date
+
+            // Group by day or month depending on time range
+            if timeRange == .year {
+                // For year view, group by month
+                key = calendar.date(from: calendar.dateComponents([.year, .month], from: date)) ?? calendar.startOfDay(for: date)
+            } else {
+                // For other views, group by day
+                key = calendar.startOfDay(for: date)
+            }
+
+            if transaction.amount < 0 {
+                dailyTotals[key, default: (0, 0)].spent += abs(transaction.amount)
+            } else {
+                dailyTotals[key, default: (0, 0)].credit += transaction.amount
+            }
+        }
+
+        // Flatten to create individual bars
+        var result: [BarData] = []
+        for (date, totals) in dailyTotals {
+            result.append(BarData(date: date, type: "Spent", amount: totals.spent))
+            result.append(BarData(date: date, type: "Credit", amount: totals.credit))
+        }
+
+        return result.sorted { $0.date < $1.date }
+    }
+
+    var maxValue: Double {
+        barData.map { $0.amount }.max() ?? 1
+    }
+
+    var body: some View {
+        if barData.isEmpty {
+            VStack(spacing: 12) {
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: 48))
+                    .foregroundColor(Theme.Colors.textSecondary.opacity(0.5))
+                Text("No transaction data")
+                    .font(.headline)
+                    .foregroundColor(Theme.Colors.textPrimary)
+                Text("Complete transactions to see spending trends")
+                    .font(.subheadline)
+                    .foregroundColor(Theme.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            Chart {
+                ForEach(barData.filter { $0.type == "Spent" }) { bar in
+                    BarMark(
+                        x: .value("Date", bar.date, unit: .day),
+                        y: .value("Amount", bar.amount)
+                    )
+                    .foregroundStyle(Theme.Colors.expense)
+                    .position(by: .value("Type", "Spent"))
+                }
+                ForEach(barData.filter { $0.type == "Credit" }) { bar in
+                    BarMark(
+                        x: .value("Date", bar.date, unit: .day),
+                        y: .value("Amount", bar.amount)
+                    )
+                    .foregroundStyle(Theme.Colors.income)
+                    .position(by: .value("Type", "Credit"))
+                }
+            }
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 5)) { value in
+                    if let date = value.as(Date.self) {
+                        AxisValueLabel {
+                            Text(formatAxisDate(date))
+                                .font(.caption2)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                            .foregroundStyle(Color.gray.opacity(0.2))
+                    }
+                }
+            }
+            .chartYAxis {
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                    if let amount = value.as(Double.self) {
+                        AxisValueLabel {
+                            Text(formatCurrency(amount))
+                                .font(.caption2)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                            .foregroundStyle(Color.gray.opacity(0.2))
+                    }
+                }
+            }
+            .chartLegend(position: .top, alignment: .trailing) {
+                HStack(spacing: 16) {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Theme.Colors.expense)
+                            .frame(width: 8, height: 8)
+                        Text("Spent")
+                            .font(.caption)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Theme.Colors.income)
+                            .frame(width: 8, height: 8)
+                        Text("Credit")
+                            .font(.caption)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                }
+            }
+        }
+    }
+
+    func formatAxisDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        if timeRange == .year {
             formatter.dateFormat = "MMM"
         } else {
             formatter.dateFormat = "M/d"
