@@ -968,8 +968,8 @@ struct AccountDetailView: View {
                     }
                 }
 
-                // Summary Cards
-                HStack(spacing: Theme.Spacing.md) {
+                // Summary Cards - fixed size and centered
+                HStack(spacing: 12) {
                     StatCard(
                         title: "Spent",
                         amount: totalSpent,
@@ -1096,24 +1096,24 @@ struct StatCard: View {
     let icon: String
 
     var body: some View {
-        VStack(spacing: Theme.Spacing.sm) {
-            HStack(spacing: Theme.Spacing.xs) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 16))
+                    .font(.system(size: 14))
                     .foregroundColor(color)
                 Text(title)
                     .font(.caption)
                     .foregroundColor(Theme.Colors.textSecondary)
-                Spacer()
             }
-            Text("$\(String(format: "%.2f", amount))")
-                .font(.title3)
-                .fontWeight(.bold)
+            Text("$\(String(format: "%.0f", amount))")
+                .font(.system(size: 20, weight: .bold))
                 .foregroundColor(color)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
         }
-        .padding(Theme.Spacing.md)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 14)
         .background(Theme.Colors.cardBackground)
         .cornerRadius(Theme.CornerRadius.md)
         .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
