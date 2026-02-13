@@ -1371,6 +1371,11 @@ struct SpendingCreditChart: View {
         barData.map { $0.amount }.max() ?? 1
     }
 
+    var uniqueDates: [Date] {
+        let dates = barData.map { $0.date }
+        return Array(Set(dates)).sorted()
+    }
+
     var body: some View {
         if barData.isEmpty {
             VStack(spacing: 12) {
@@ -1407,7 +1412,7 @@ struct SpendingCreditChart: View {
                 }
             }
             .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 5)) { value in
+                AxisMarks(values: uniqueDates) { value in
                     if let date = value.as(Date.self) {
                         AxisValueLabel {
                             Text(formatAxisDate(date))
