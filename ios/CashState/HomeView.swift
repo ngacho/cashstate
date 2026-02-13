@@ -11,7 +11,7 @@ struct HomeView: View {
     @State private var isSyncing = false
     @State private var isLoadingSnapshots = false
     @State private var showSyncSuccess = false
-    @State private var selectedTimeRange: TimeRange = .month
+    @State private var selectedTimeRange: TimeRange = .week
     @State private var selectedDate = Date()
 
     var totalBalance: Double {
@@ -974,13 +974,13 @@ struct AccountDetailView: View {
                         title: "Spent",
                         amount: totalSpent,
                         color: Theme.Colors.expense,
-                        icon: "arrow.up.circle.fill"
+                        icon: "arrow.down.circle.fill"
                     )
                     StatCard(
                         title: "Credit",
                         amount: totalCredit,
                         color: Theme.Colors.income,
-                        icon: "arrow.down.circle.fill"
+                        icon: "arrow.up.circle.fill"
                     )
                     StatCard(
                         title: "Net",
