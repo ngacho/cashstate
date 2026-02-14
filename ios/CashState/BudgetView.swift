@@ -13,6 +13,9 @@ struct BudgetView: View {
     @State private var showManualCategorization = false
     @State private var showAICategorization = false
 
+    // Quick add category
+    @State private var showAddCategory = false
+
     var totalBudget: Double {
         categories.compactMap { $0.budgetAmount }.reduce(0, +)
     }
@@ -167,6 +170,32 @@ struct BudgetView: View {
                             ForEach($categories) { $category in
                                 ExpandableCategoryCard(category: $category)
                             }
+
+                            // Add Category button
+                            Button {
+                                showAddCategory = true
+                            } label: {
+                                HStack(spacing: Theme.Spacing.sm) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.title3)
+                                        .foregroundColor(Theme.Colors.primary)
+
+                                    Text("Add Category")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(Theme.Colors.textPrimary)
+
+                                    Spacer()
+
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(Theme.Colors.textSecondary)
+                                }
+                                .padding(.vertical, Theme.Spacing.md)
+                                .padding(.horizontal, Theme.Spacing.sm)
+                                .background(Theme.Colors.background)
+                                .cornerRadius(Theme.CornerRadius.sm)
+                            }
                         }
                     }
                     .padding(Theme.Spacing.md)
@@ -220,6 +249,11 @@ struct BudgetView: View {
                     transactions: $uncategorizedTransactions,
                     categories: categories
                 )
+            }
+            .sheet(isPresented: $showAddCategory) {
+                AddCategoryView(isPresented: $showAddCategory) { newCategory in
+                    categories.append(newCategory)
+                }
             }
         }
     }
@@ -508,6 +542,7 @@ struct ExpandableCategoryCard: View {
     @State private var isExpanded: Bool = false
     @State private var showEditCategoryBudget: Bool = false
     @State private var showAllTransactions: Bool = false
+    @State private var showAddSubcategory: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -640,7 +675,7 @@ struct ExpandableCategoryCard: View {
 
                     // Add subcategory button
                     Button {
-                        // Add new subcategory
+                        showAddSubcategory = true
                     } label: {
                         HStack(spacing: Theme.Spacing.xs) {
                             Image(systemName: "plus.circle.fill")
@@ -684,6 +719,15 @@ struct ExpandableCategoryCard: View {
                 subcategory: nil,
                 isPresented: $showAllTransactions
             )
+            .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showAddSubcategory) {
+            AddSubcategoryView(
+                parentCategory: category,
+                isPresented: $showAddSubcategory
+            ) { newSubcategory in
+                category.subcategories.append(newSubcategory)
+            }
         }
     }
 }
@@ -817,6 +861,7 @@ struct SubcategoryRow: View {
                 subcategory: subcategory,
                 isPresented: $showTransactions
             )
+            .presentationDetents([.large])
         }
     }
 }

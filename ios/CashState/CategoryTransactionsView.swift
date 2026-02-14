@@ -26,7 +26,7 @@ struct CategoryTransactionsView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: Theme.Spacing.lg) {
                     // Header with icon and stats
@@ -58,6 +58,7 @@ struct CategoryTransactionsView: View {
                                     .font(.caption)
                                     .foregroundColor(Theme.Colors.textSecondary)
                             }
+                            .frame(maxWidth: .infinity)
 
                             Divider()
                                 .frame(height: 40)
@@ -71,8 +72,10 @@ struct CategoryTransactionsView: View {
                                     .font(.caption)
                                     .foregroundColor(Theme.Colors.textSecondary)
                             }
+                            .frame(maxWidth: .infinity)
                         }
                         .padding()
+                        .frame(maxWidth: .infinity)
                         .background(Theme.Colors.cardBackground)
                         .cornerRadius(Theme.CornerRadius.md)
                         .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)

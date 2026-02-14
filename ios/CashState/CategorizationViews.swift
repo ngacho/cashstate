@@ -655,7 +655,7 @@ struct WrappingHStack: Layout {
 
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
-            result.add(width: size.width, height: size.height)
+            _ = result.add(width: size.width, height: size.height)
         }
 
         return result.size
