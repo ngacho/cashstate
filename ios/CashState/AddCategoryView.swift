@@ -9,32 +9,10 @@ struct AddCategoryView: View {
     @State private var selectedIcon: String = "🎨"
     @State private var selectedColor: BudgetCategory.CategoryColor = .blue
     @State private var isMainCategory: Bool = true
-    // @State private var selectedSubcategories: [String] = [] // Future: for creating subcategories
+    @State private var subcategories: [SubcategoryItem] = []
+    @State private var showAddSubcategory = false
     @State private var showSubcategoryInfo = false
 
-    // Predefined subcategory suggestions
-    let subcategorySuggestions: [String: [SubcategorySuggestion]] = [
-        "Drinks": [
-            SubcategorySuggestion(name: "Coffee", icon: "☕"),
-            SubcategorySuggestion(name: "Bubble Tea", icon: "🧋"),
-            SubcategorySuggestion(name: "Soda", icon: "🥤")
-        ],
-        "Entertainment": [
-            SubcategorySuggestion(name: "Movies", icon: "🍿"),
-            SubcategorySuggestion(name: "Music", icon: "🎵"),
-            SubcategorySuggestion(name: "Activities", icon: "🎳")
-        ],
-        "Transport": [
-            SubcategorySuggestion(name: "Gas", icon: "⛽"),
-            SubcategorySuggestion(name: "Public Transit", icon: "🚊"),
-            SubcategorySuggestion(name: "Rideshare", icon: "🚕")
-        ],
-        "Personal & Medical": [
-            SubcategorySuggestion(name: "Healthcare", icon: "💊"),
-            SubcategorySuggestion(name: "Fitness", icon: "🏃"),
-            SubcategorySuggestion(name: "Personal Care", icon: "💇")
-        ]
-    ]
 
     let availableIcons = [
         "🍿", "🍔", "🚗", "🏠", "❤️", "🛍️", "✈️", "🎮",
@@ -177,9 +155,7 @@ struct AddCategoryView: View {
                     // Subcategory Section
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                         HStack {
-                            Image(systemName: "arrow.down.to.line.compact")
-                                .foregroundColor(Theme.Colors.textSecondary)
-                            Text("Subcategory")
+                            Text("Subcategories (Optional)")
                                 .font(.headline)
                                 .foregroundColor(Theme.Colors.textPrimary)
                             Button {
@@ -192,31 +168,68 @@ struct AddCategoryView: View {
                         }
                         .padding(.horizontal)
 
-                        // Example subcategories
-                        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                            Text("Examples")
-                                .font(.headline)
-                                .foregroundColor(Theme.Colors.textPrimary)
+                        // Current subcategories
+                        if !subcategories.isEmpty {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: Theme.Spacing.sm) {
+                                    ForEach(subcategories) { subcategory in
+                                        HStack(spacing: 4) {
+                                            Text(subcategory.icon)
+                                                .font(.caption)
+                                            Text(subcategory.name)
+                                                .font(.caption)
+                                                .fontWeight(.medium)
+                                        }
+                                        .padding(.horizontal, Theme.Spacing.sm)
+                                        .padding(.vertical, 6)
+                                        .background(selectedColor.color.opacity(0.15))
+                                        .cornerRadius(Theme.CornerRadius.sm)
+                                    }
+                                }
                                 .padding(.horizontal)
-
-                            ForEach(Array(subcategorySuggestions.keys.sorted()), id: \.self) { categoryName in
-                                SubcategoryExampleCard(
-                                    categoryName: categoryName,
-                                    suggestions: subcategorySuggestions[categoryName] ?? []
-                                )
                             }
                         }
-                        .padding()
-                        .background(Theme.Colors.cardBackground.opacity(0.5))
-                        .cornerRadius(Theme.CornerRadius.md)
+
+                        // Add subcategory button
+                        Button {
+                            showAddSubcategory = true
+                        } label: {
+                            HStack(spacing: Theme.Spacing.sm) {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(selectedColor.color)
+                                Text("Add Subcategory")
+                                    .fontWeight(.medium)
+                                    .foregroundColor(Theme.Colors.textPrimary)
+                                Spacer()
+                            }
+                            .padding()
+                            .background(Theme.Colors.cardBackground)
+                            .cornerRadius(Theme.CornerRadius.md)
+                        }
                         .padding(.horizontal)
+
+                        // Single example
+                        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                            Text("Example: Entertainment → Movies, Music, Activities")
+                                .font(.caption)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                                .padding(.horizontal)
+                        }
+                    }
+                    .sheet(isPresented: $showAddSubcategory) {
+                        AddSubcategoryToNewCategoryView(
+                            categoryColor: selectedColor,
+                            isPresented: $showAddSubcategory
+                        ) { newSubcategory in
+                            subcategories.append(newSubcategory)
+                        }
                     }
 
-                    // Set Name Button
+                    // Add Category Button
                     Button {
                         saveCategory()
                     } label: {
-                        Text("Set Name")
+                        Text("Add Category")
                             .fontWeight(.semibold)
                             .frame(maxWidth: .infinity)
                             .padding()
@@ -253,13 +266,24 @@ struct AddCategoryView: View {
     private func saveCategory() {
         guard !categoryName.isEmpty else { return }
 
+        let budgetSubcategories = subcategories.map { item in
+            BudgetSubcategory(
+                id: UUID().uuidString,
+                name: item.name,
+                icon: item.icon,
+                budgetAmount: nil,
+                spentAmount: 0.0,
+                transactionCount: 0
+            )
+        }
+
         let newCategory = BudgetCategory(
             id: UUID().uuidString,
             name: categoryName,
             icon: selectedIcon,
             color: selectedColor,
             type: selectedType,
-            subcategories: [],
+            subcategories: budgetSubcategories,
             budgetAmount: nil,
             spentAmount: 0.0
         )
@@ -269,71 +293,122 @@ struct AddCategoryView: View {
     }
 }
 
-// MARK: - Subcategory Suggestion
+// MARK: - Subcategory Item
 
-struct SubcategorySuggestion: Identifiable {
+struct SubcategoryItem: Identifiable {
     let id = UUID()
     let name: String
     let icon: String
 }
 
-// MARK: - Subcategory Example Card
+// MARK: - Add Subcategory to New Category View
 
-struct SubcategoryExampleCard: View {
-    let categoryName: String
-    let suggestions: [SubcategorySuggestion]
+struct AddSubcategoryToNewCategoryView: View {
+    let categoryColor: BudgetCategory.CategoryColor
+    @Binding var isPresented: Bool
+    var onSave: ((SubcategoryItem) -> Void)?
 
-    var categoryIcon: String {
-        switch categoryName {
-        case "Drinks": return "☕"
-        case "Entertainment": return "🎭"
-        case "Transport": return "🚊"
-        case "Personal & Medical": return "❤️"
-        default: return "📁"
-        }
-    }
+    @State private var subcategoryName: String = ""
+    @State private var selectedIcon: String = "📁"
+
+    let availableIcons = [
+        "☕", "🧋", "🥤", "🍿", "🎵", "🎳", "⛽", "🚊", "🚕",
+        "💊", "🏃", "💇", "🍔", "🍕", "🍜", "🎮", "📱", "✈️"
+    ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            // Category header
-            HStack(spacing: Theme.Spacing.sm) {
-                Text(categoryIcon)
-                    .font(.title3)
-                Text(categoryName)
-                    .font(.body)
-                    .fontWeight(.semibold)
+        VStack(spacing: Theme.Spacing.md) {
+            // Header
+            HStack {
+                Text("Add Subcategory")
+                    .font(.headline)
                     .foregroundColor(Theme.Colors.textPrimary)
-            }
-            .padding(.horizontal)
-
-            // Subcategory grid
-            LazyVGrid(columns: [
-                GridItem(.flexible()),
-                GridItem(.flexible()),
-                GridItem(.flexible())
-            ], spacing: Theme.Spacing.sm) {
-                ForEach(suggestions) { suggestion in
-                    VStack(spacing: 4) {
-                        Text(suggestion.icon)
-                            .font(.title3)
-                            .frame(width: 50, height: 50)
-                            .background(Theme.Colors.cardBackground)
-                            .cornerRadius(Theme.CornerRadius.sm)
-
-                        Text(suggestion.name)
-                            .font(.caption2)
-                            .foregroundColor(Theme.Colors.textPrimary)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                            .frame(height: 30)
-                    }
+                Spacer()
+                Button {
+                    isPresented = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .font(.title3)
                 }
             }
+            .padding()
+
+            // Name and emoji
+            HStack(spacing: Theme.Spacing.sm) {
+                Text(selectedIcon)
+                    .font(.system(size: 32))
+                    .frame(width: 60, height: 60)
+                    .background(categoryColor.color.opacity(0.15))
+                    .cornerRadius(Theme.CornerRadius.sm)
+
+                TextField("Name", text: $subcategoryName)
+                    .font(.body)
+                    .padding()
+                    .background(Theme.Colors.cardBackground)
+                    .cornerRadius(Theme.CornerRadius.sm)
+            }
             .padding(.horizontal)
+
+            // Emoji selector
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    ForEach(availableIcons, id: \.self) { icon in
+                        Button {
+                            selectedIcon = icon
+                        } label: {
+                            Text(icon)
+                                .font(.title2)
+                                .frame(width: 44, height: 44)
+                                .background(
+                                    selectedIcon == icon
+                                    ? categoryColor.color.opacity(0.2)
+                                    : Theme.Colors.cardBackground
+                                )
+                                .cornerRadius(8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(
+                                            selectedIcon == icon ? categoryColor.color : Color.clear,
+                                            lineWidth: 2
+                                        )
+                                )
+                        }
+                    }
+                }
+                .padding(.horizontal)
+            }
+
+            // Add button
+            Button {
+                saveSubcategory()
+            } label: {
+                Text("Add")
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(subcategoryName.isEmpty ? Color.gray.opacity(0.3) : categoryColor.color)
+                    .foregroundColor(.white)
+                    .cornerRadius(Theme.CornerRadius.md)
+            }
+            .disabled(subcategoryName.isEmpty)
+            .padding(.horizontal)
+            .padding(.bottom)
         }
-        .padding(.vertical, Theme.Spacing.sm)
-        .background(Theme.Colors.cardBackground)
-        .cornerRadius(Theme.CornerRadius.md)
+        .background(Theme.Colors.background)
+        .presentationDetents([.height(280)])
+    }
+
+    private func saveSubcategory() {
+        guard !subcategoryName.isEmpty else { return }
+
+        let newSubcategory = SubcategoryItem(
+            name: subcategoryName,
+            icon: selectedIcon
+        )
+
+        onSave?(newSubcategory)
+        isPresented = false
     }
 }
 
