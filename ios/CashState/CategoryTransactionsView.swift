@@ -34,8 +34,14 @@ struct CategoryTransactionsView: View {
                         Text(subcategory?.icon ?? category.icon)
                             .font(.system(size: 50))
                             .frame(width: 80, height: 80)
-                            .background(category.color.color.opacity(0.15))
-                            .clipShape(Circle())
+                            .background(
+                                Circle()
+                                    .fill(category.color.color.opacity(0.1))
+                                    .overlay(
+                                        Circle()
+                                            .strokeBorder(category.color.color.opacity(0.2), lineWidth: 2)
+                                    )
+                            )
 
                         Text(title)
                             .font(.title2)

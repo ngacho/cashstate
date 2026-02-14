@@ -8,6 +8,11 @@ struct BudgetView: View {
     @State private var showEditBudget = false
     @State private var selectedCategory: BudgetCategory?
 
+    // Categorization state
+    @State private var uncategorizedTransactions: [CategorizableTransaction] = CategorizableTransaction.mockUncategorized
+    @State private var showManualCategorization = false
+    @State private var showAICategorization = false
+
     var totalBudget: Double {
         categories.compactMap { $0.budgetAmount }.reduce(0, +)
     }
@@ -60,6 +65,16 @@ struct BudgetView: View {
                     }
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.top, Theme.Spacing.sm)
+
+                    // Uncategorized Transactions Card
+                    if !uncategorizedTransactions.isEmpty {
+                        UncategorizedTransactionsCard(
+                            uncategorizedCount: uncategorizedTransactions.count,
+                            showManualCategorization: $showManualCategorization,
+                            showAICategorization: $showAICategorization
+                        )
+                        .padding(.horizontal, Theme.Spacing.md)
+                    }
 
                     // Budget Overview Card
                     VStack(spacing: Theme.Spacing.md) {
@@ -191,6 +206,20 @@ struct BudgetView: View {
                     get: { selectedCategory != nil },
                     set: { if !$0 { selectedCategory = nil } }
                 ))
+            }
+            .sheet(isPresented: $showManualCategorization) {
+                SwipeableCategorization(
+                    isPresented: $showManualCategorization,
+                    transactions: $uncategorizedTransactions,
+                    categories: categories
+                )
+            }
+            .sheet(isPresented: $showAICategorization) {
+                AICategorization(
+                    isPresented: $showAICategorization,
+                    transactions: $uncategorizedTransactions,
+                    categories: categories
+                )
             }
         }
     }
