@@ -11,9 +11,9 @@ struct MainView: View {
                     Label("Overview", systemImage: "house.fill")
                 }
 
-            TransactionsView(apiClient: apiClient)
+            BudgetView(apiClient: apiClient)
                 .tabItem {
-                    Label("Transactions", systemImage: "list.bullet")
+                    Label("Budget", systemImage: "chart.pie.fill")
                 }
 
             InsightsView(apiClient: apiClient)
