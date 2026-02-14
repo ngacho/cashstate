@@ -199,7 +199,8 @@ extension Array where Element: Hashable {
             name: "Movies",
             icon: "🍿",
             budgetAmount: 100.00,
-            spentAmount: 45.00
+            spentAmount: 45.00,
+            transactionCount: 3
         )),
         categoryColor: .blue,
         isPresented: .constant(true)

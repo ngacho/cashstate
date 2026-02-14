@@ -2,13 +2,14 @@ import SwiftUI
 
 struct AddCategoryView: View {
     @Binding var isPresented: Bool
+    var onSave: ((BudgetCategory) -> Void)?
 
     @State private var categoryName: String = ""
     @State private var selectedType: BudgetCategory.CategoryType = .expense
     @State private var selectedIcon: String = "🎨"
     @State private var selectedColor: BudgetCategory.CategoryColor = .blue
     @State private var isMainCategory: Bool = true
-    @State private var selectedSubcategories: [String] = []
+    // @State private var selectedSubcategories: [String] = [] // Future: for creating subcategories
     @State private var showSubcategoryInfo = false
 
     // Predefined subcategory suggestions
@@ -250,8 +251,20 @@ struct AddCategoryView: View {
     }
 
     private func saveCategory() {
-        // Save category logic here
-        print("Saving category: \(categoryName)")
+        guard !categoryName.isEmpty else { return }
+
+        let newCategory = BudgetCategory(
+            id: UUID().uuidString,
+            name: categoryName,
+            icon: selectedIcon,
+            color: selectedColor,
+            type: selectedType,
+            subcategories: [],
+            budgetAmount: nil,
+            spentAmount: 0.0
+        )
+
+        onSave?(newCategory)
         isPresented = false
     }
 }

@@ -306,7 +306,7 @@ struct EditBudgetView: View {
             }
             .sheet(isPresented: $showCategorySelection) {
                 CategorySelectionView(
-                    categories: categories,
+                    categories: $categories,
                     includedCategories: $includedCategories,
                     excludedCategories: $excludedCategories,
                     isPresented: $showCategorySelection

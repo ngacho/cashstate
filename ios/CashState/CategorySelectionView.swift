@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct CategorySelectionView: View {
-    let categories: [BudgetCategory]
+    @Binding var categories: [BudgetCategory]
     @Binding var includedCategories: Set<String>
     @Binding var excludedCategories: Set<String>
     @Binding var isPresented: Bool
@@ -146,7 +146,10 @@ struct CategorySelectionView: View {
                 }
             }
             .sheet(isPresented: $showAddCategory) {
-                AddCategoryView(isPresented: $showAddCategory)
+                AddCategoryView(isPresented: $showAddCategory) { newCategory in
+                    categories.append(newCategory)
+                    includedCategories.insert(newCategory.id)
+                }
             }
         }
     }
@@ -232,7 +235,7 @@ struct CategorySelectButton: View {
 
 #Preview {
     CategorySelectionView(
-        categories: BudgetCategory.mockCategories,
+        categories: .constant(BudgetCategory.mockCategories),
         includedCategories: .constant(Set(["1", "2"])),
         excludedCategories: .constant(Set(["3"])),
         isPresented: .constant(true)

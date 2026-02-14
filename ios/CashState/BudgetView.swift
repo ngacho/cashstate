@@ -261,7 +261,7 @@ struct BudgetCategoryRow: View {
             Spacer()
 
             // Percentage or amount
-            if let budget = category.budgetAmount {
+            if category.budgetAmount != nil {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("\(Int(category.percentageUsed))%")
                         .font(.body)
@@ -478,6 +478,7 @@ struct ExpandableCategoryCard: View {
     @Binding var category: BudgetCategory
     @State private var isExpanded: Bool = false
     @State private var showEditCategoryBudget: Bool = false
+    @State private var showAllTransactions: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -522,7 +523,7 @@ struct ExpandableCategoryCard: View {
 
                     // Percentage or amount with edit button
                     HStack(spacing: Theme.Spacing.xs) {
-                        if let budget = category.budgetAmount {
+                        if category.budgetAmount != nil {
                             VStack(alignment: .trailing, spacing: 2) {
                                 Text("\(Int(category.percentageUsed))%")
                                     .font(.body)
@@ -563,7 +564,7 @@ struct ExpandableCategoryCard: View {
             .buttonStyle(.plain)
 
             // Progress bar
-            if let budget = category.budgetAmount {
+            if category.budgetAmount != nil {
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 2)
@@ -602,6 +603,7 @@ struct ExpandableCategoryCard: View {
                     // Subcategory list
                     ForEach($category.subcategories) { $subcategory in
                         SubcategoryRow(
+                            category: category,
                             subcategory: $subcategory,
                             categoryColor: category.color.color
                         )
@@ -621,6 +623,21 @@ struct ExpandableCategoryCard: View {
                         .foregroundColor(category.color.color)
                         .padding(.vertical, Theme.Spacing.xs)
                     }
+
+                    // View all transactions button
+                    Button {
+                        showAllTransactions = true
+                    } label: {
+                        HStack(spacing: Theme.Spacing.xs) {
+                            Image(systemName: "list.bullet.rectangle")
+                                .font(.caption)
+                            Text("View All Transactions")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                        }
+                        .foregroundColor(Theme.Colors.primary)
+                        .padding(.vertical, Theme.Spacing.xs)
+                    }
                 }
                 .padding(.top, Theme.Spacing.sm)
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -632,15 +649,24 @@ struct ExpandableCategoryCard: View {
                 isPresented: $showEditCategoryBudget
             )
         }
+        .sheet(isPresented: $showAllTransactions) {
+            CategoryTransactionsView(
+                category: category,
+                subcategory: nil,
+                isPresented: $showAllTransactions
+            )
+        }
     }
 }
 
 // MARK: - Subcategory Row
 
 struct SubcategoryRow: View {
+    let category: BudgetCategory
     @Binding var subcategory: BudgetSubcategory
     let categoryColor: Color
     @State private var showEditBudget = false
+    @State private var showTransactions = false
 
     var percentageUsed: Double {
         guard let budget = subcategory.budgetAmount, budget > 0 else { return 0 }
@@ -654,10 +680,11 @@ struct SubcategoryRow: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            Button {
-                showEditBudget = true
-            } label: {
-                HStack(spacing: Theme.Spacing.sm) {
+            HStack(spacing: Theme.Spacing.sm) {
+                Button {
+                    showTransactions = true
+                } label: {
+                    HStack(spacing: Theme.Spacing.sm) {
                     // Icon
                     Text(subcategory.icon)
                         .font(.body)
@@ -671,20 +698,37 @@ struct SubcategoryRow: View {
                             .font(.subheadline)
                             .foregroundColor(Theme.Colors.textPrimary)
 
-                        if let budget = subcategory.budgetAmount {
-                            Text("$\(String(format: "%.0f", subcategory.spentAmount)) of $\(String(format: "%.0f", budget))")
+                        HStack(spacing: 4) {
+                            if let budget = subcategory.budgetAmount {
+                                Text("$\(String(format: "%.0f", subcategory.spentAmount)) of $\(String(format: "%.0f", budget))")
+                                    .font(.caption2)
+                                    .foregroundColor(isOverBudget ? Theme.Colors.expense : Theme.Colors.textSecondary)
+                            } else {
+                                Text("$\(String(format: "%.2f", subcategory.spentAmount)) spent")
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                            }
+
+                            Text("•")
                                 .font(.caption2)
-                                .foregroundColor(isOverBudget ? Theme.Colors.expense : Theme.Colors.textSecondary)
-                        } else {
-                            Text("$\(String(format: "%.2f", subcategory.spentAmount)) spent")
+                                .foregroundColor(Theme.Colors.textSecondary)
+
+                            Text("\(subcategory.transactionCount) transaction\(subcategory.transactionCount == 1 ? "" : "s")")
                                 .font(.caption2)
                                 .foregroundColor(Theme.Colors.textSecondary)
                         }
                     }
 
-                    Spacer()
+                    }
+                }
+                .buttonStyle(.plain)
 
-                    // Budget indicator
+                Spacer()
+
+                // Budget edit button
+                Button {
+                    showEditBudget = true
+                } label: {
                     if subcategory.budgetAmount != nil {
                         VStack(alignment: .trailing, spacing: 2) {
                             Text("\(Int(percentageUsed))%")
@@ -702,18 +746,18 @@ struct SubcategoryRow: View {
                             .font(.caption)
                             .foregroundColor(categoryColor)
                     }
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .foregroundColor(Theme.Colors.textSecondary)
                 }
-                .padding(.horizontal, Theme.Spacing.xs)
-                .padding(.vertical, 4)
+                .buttonStyle(.plain)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundColor(Theme.Colors.textSecondary)
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, Theme.Spacing.xs)
+            .padding(.vertical, 4)
 
             // Progress bar for subcategory
-            if let budget = subcategory.budgetAmount {
+            if subcategory.budgetAmount != nil {
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 2)
@@ -736,6 +780,13 @@ struct SubcategoryRow: View {
                 subcategory: $subcategory,
                 categoryColor: categoryColor,
                 isPresented: $showEditBudget
+            )
+        }
+        .sheet(isPresented: $showTransactions) {
+            CategoryTransactionsView(
+                category: category,
+                subcategory: subcategory,
+                isPresented: $showTransactions
             )
         }
     }
