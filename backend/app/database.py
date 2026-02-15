@@ -245,3 +245,96 @@ class Database:
     def update_simplefin_sync_job(self, job_id: str, data: dict) -> dict:
         result = self.client.table("simplefin_sync_jobs").update(data).eq("id", job_id).execute()
         return result.data[0] if result.data else None
+
+    # --- Categories ---
+
+    def get_categories(self, user_id: str) -> list[dict]:
+        """Get all categories visible to user (system + user's own)."""
+        result = (
+            self.client.table("categories")
+            .select("*")
+            .order("display_order")
+            .order("name")
+            .execute()
+        )
+        return result.data
+
+    def get_category_by_id(self, category_id: str) -> dict | None:
+        """Get category by ID."""
+        result = (
+            self.client.table("categories")
+            .select("*")
+            .eq("id", category_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def create_category(self, category_data: dict) -> dict:
+        """Create a new user category."""
+        result = self.client.table("categories").insert(category_data).execute()
+        return result.data[0]
+
+    def update_category(self, category_id: str, data: dict) -> dict | None:
+        """Update a category."""
+        result = (
+            self.client.table("categories")
+            .update(data)
+            .eq("id", category_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def delete_category(self, category_id: str) -> None:
+        """Delete a category."""
+        self.client.table("categories").delete().eq("id", category_id).execute()
+
+    # --- Subcategories ---
+
+    def get_subcategories(self, category_id: str | None = None) -> list[dict]:
+        """Get subcategories, optionally filtered by category."""
+        query = self.client.table("subcategories").select("*")
+        if category_id:
+            query = query.eq("category_id", category_id)
+        result = query.order("display_order").order("name").execute()
+        return result.data
+
+    def get_subcategory_by_id(self, subcategory_id: str) -> dict | None:
+        """Get subcategory by ID."""
+        result = (
+            self.client.table("subcategories")
+            .select("*")
+            .eq("id", subcategory_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def create_subcategory(self, subcategory_data: dict) -> dict:
+        """Create a new user subcategory."""
+        result = self.client.table("subcategories").insert(subcategory_data).execute()
+        return result.data[0]
+
+    def update_subcategory(self, subcategory_id: str, data: dict) -> dict | None:
+        """Update a subcategory."""
+        result = (
+            self.client.table("subcategories")
+            .update(data)
+            .eq("id", subcategory_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def delete_subcategory(self, subcategory_id: str) -> None:
+        """Delete a subcategory."""
+        self.client.table("subcategories").delete().eq("id", subcategory_id).execute()
+
+    def update_transaction_category(
+        self, transaction_id: str, category_id: str | None, subcategory_id: str | None
+    ) -> dict | None:
+        """Update transaction categorization."""
+        result = (
+            self.client.table("simplefin_transactions")
+            .update({"category_id": category_id, "subcategory_id": subcategory_id})
+            .eq("id", transaction_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None

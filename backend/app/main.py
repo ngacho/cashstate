@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from app.config import get_settings
 from app.routers import (
     auth_router,
+    categories_router,
     plaid_router,
     simplefin_router,
     snapshots_router,
@@ -97,6 +98,7 @@ async def health_check():
 api_prefix = settings.api_v1_prefix
 
 app.include_router(auth_router, prefix=api_prefix)
+app.include_router(categories_router, prefix=api_prefix)
 app.include_router(plaid_router, prefix=api_prefix)
 app.include_router(simplefin_router, prefix=api_prefix)
 app.include_router(snapshots_router, prefix=api_prefix)

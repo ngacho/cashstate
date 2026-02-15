@@ -19,6 +19,8 @@ class TransactionResponse(BaseModel):
     description: str
     payee: str | None
     pending: bool
+    category_id: str | None = None
+    subcategory_id: str | None = None
     created_at: datetime
     updated_at: datetime
 

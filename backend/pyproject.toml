@@ -25,6 +25,10 @@ dependencies = [
     "httpx",
     "python-dateutil",
     "pytz",
+    # AI / Anthropic
+    "anthropic",
+    "openrouter>=0.1.0",
+    "cryptography",
     # Development
     "python-dotenv",
     "gotrue>=2.12.4",
