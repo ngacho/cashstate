@@ -9,6 +9,9 @@ struct CategoryTransactionsView: View {
     @State private var transactions: [Transaction] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var selectedTransaction: Transaction?
+    @State private var showTransactionDetail = false
+    @State private var allCategories: [BudgetCategory] = []
 
     var title: String {
         if let sub = subcategory {
@@ -56,6 +59,23 @@ struct CategoryTransactionsView: View {
             }
             .task {
                 await loadTransactions()
+                await loadCategories()
+            }
+            .sheet(isPresented: $showTransactionDetail) {
+                if let transaction = selectedTransaction {
+                    TransactionDetailView(
+                        transaction: transaction,
+                        categories: allCategories,
+                        apiClient: apiClient,
+                        isPresented: $showTransactionDetail,
+                        onCategoryUpdated: .constant({ newCategoryId, newSubcategoryId in
+                            // Reload transactions to reflect changes
+                            Task {
+                                await loadTransactions()
+                            }
+                        })
+                    )
+                }
             }
         }
     }
@@ -147,6 +167,10 @@ struct CategoryTransactionsView: View {
                                         showSubcategoryChip: subcategory == nil,
                                         categoryColor: category.color.color
                                     )
+                                    .onTapGesture {
+                                        selectedTransaction = transaction
+                                        showTransactionDetail = true
+                                    }
                                     if transaction.id != transactions.last?.id {
                                         Divider()
                                             .padding(.leading, 60)
@@ -165,6 +189,39 @@ struct CategoryTransactionsView: View {
             }
             .background(Theme.Colors.background)
         }
+
+    private func loadCategories() async {
+        do {
+            // Fetch the category tree (includes all categories and subcategories)
+            let treeResponse = try await apiClient.fetchCategoriesTree()
+
+            // Convert to BudgetCategory model
+            allCategories = treeResponse.map { item in
+                BudgetCategory(
+                    id: item.id,
+                    name: item.name,
+                    icon: item.icon,
+                    color: BudgetCategory.CategoryColor(rawValue: item.color) ?? .blue,
+                    type: (item.type == "income") ? .income : .expense,
+                    subcategories: item.subcategories.map { sub in
+                        BudgetSubcategory(
+                            id: sub.id,
+                            name: sub.name,
+                            icon: sub.icon,
+                            budgetAmount: nil,
+                            spentAmount: 0,
+                            transactionCount: 0
+                        )
+                    },
+                    budgetAmount: nil,
+                    spentAmount: 0
+                )
+            }
+        } catch {
+            // Silently fail - we can still show transactions without category options
+            print("Failed to load categories: \(error)")
+        }
+    }
 
     private func loadTransactions() async {
         isLoading = true

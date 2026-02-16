@@ -46,6 +46,7 @@ struct CategoryWithSubcategories: Identifiable, Codable {
     let name: String
     let icon: String
     let color: String
+    let type: String?  // "income" or "expense", defaults to "expense" if nil
     let subcategories: [Subcategory]
 }
 

@@ -651,6 +651,9 @@ struct AccountDetailView: View {
     @State private var transactions: [Transaction] = []
     @State private var isLoading = false
     @State private var selectedTab: TransactionTab = .all
+    @State private var selectedTransaction: Transaction?
+    @State private var showTransactionDetail = false
+    @State private var allCategories: [BudgetCategory] = []
     @State private var selectedTimeRange: TimeRange = .month
     @State private var selectedDate = Date()
     @State private var customStartDate = Date()
@@ -1028,6 +1031,10 @@ struct AccountDetailView: View {
                         VStack(spacing: 0) {
                             ForEach(filteredTransactions) { transaction in
                                 TransactionRow(transaction: transaction)
+                                    .onTapGesture {
+                                        selectedTransaction = transaction
+                                        showTransactionDetail = true
+                                    }
                                 if transaction.id != filteredTransactions.last?.id {
                                     Divider()
                                         .padding(.leading, 60)
@@ -1051,6 +1058,23 @@ struct AccountDetailView: View {
         }
         .task {
             await loadTransactions()
+            await loadCategories()
+        }
+        .sheet(isPresented: $showTransactionDetail) {
+            if let transaction = selectedTransaction {
+                TransactionDetailView(
+                    transaction: transaction,
+                    categories: allCategories,
+                    apiClient: apiClient,
+                    isPresented: $showTransactionDetail,
+                    onCategoryUpdated: .constant({ _, _ in
+                        // Reload transactions after category update
+                        Task {
+                            await loadTransactions()
+                        }
+                    })
+                )
+            }
         }
         .sheet(isPresented: $showDatePicker) {
             DateRangePickerView(
@@ -1059,6 +1083,39 @@ struct AccountDetailView: View {
                 customStartDate: $customStartDate,
                 customEndDate: $customEndDate
             )
+        }
+    }
+
+    func loadCategories() async {
+        do {
+            // Fetch the category tree (includes all categories and subcategories)
+            let treeResponse = try await apiClient.fetchCategoriesTree()
+
+            // Convert to BudgetCategory model
+            allCategories = treeResponse.map { item in
+                BudgetCategory(
+                    id: item.id,
+                    name: item.name,
+                    icon: item.icon,
+                    color: BudgetCategory.CategoryColor(rawValue: item.color) ?? .blue,
+                    type: (item.type == "income") ? .income : .expense,
+                    subcategories: item.subcategories.map { sub in
+                        BudgetSubcategory(
+                            id: sub.id,
+                            name: sub.name,
+                            icon: sub.icon,
+                            budgetAmount: nil,
+                            spentAmount: 0,
+                            transactionCount: 0
+                        )
+                    },
+                    budgetAmount: nil,
+                    spentAmount: 0
+                )
+            }
+        } catch {
+            // Silently fail - we can still show transactions without category options
+            print("Failed to load categories: \(error)")
         }
     }
 
