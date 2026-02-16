@@ -2,19 +2,22 @@ import SwiftUI
 
 struct BudgetView: View {
     let apiClient: APIClient
-    @State private var categories: [BudgetCategory] = BudgetCategory.mockCategories
-    @State private var currentBudget: Budget = Budget.mockBudgets[0]
+    @State private var categories: [BudgetCategory] = []
     @State private var showAllBudgets = false
     @State private var showEditBudget = false
     @State private var selectedCategory: BudgetCategory?
 
     // Categorization state
-    @State private var uncategorizedTransactions: [CategorizableTransaction] = CategorizableTransaction.mockUncategorized
+    @State private var uncategorizedTransactions: [CategorizableTransaction] = []
     @State private var showManualCategorization = false
     @State private var showAICategorization = false
 
     // Quick add category
     @State private var showAddCategory = false
+
+    // Loading state
+    @State private var isLoading = true
+    @State private var loadError: String?
 
     var totalBudget: Double {
         categories.compactMap { $0.budgetAmount }.reduce(0, +)
@@ -35,10 +38,78 @@ struct BudgetView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(spacing: Theme.Spacing.lg) {
-                    // Budget Header with date navigation
-                    HStack {
+            Group {
+                if isLoading {
+                    ProgressView("Loading...")
+                } else if categories.isEmpty {
+                    // Show empty state for new users
+                    BudgetEmptyStateView(
+                        apiClient: apiClient,
+                        isLoading: $isLoading,
+                        error: $loadError
+                    ) {
+                        Task { await loadData() }
+                    }
+                } else {
+                    // Show main budget UI
+                    budgetContentView
+                }
+            }
+            .navigationTitle("Budget")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if !categories.isEmpty {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            showEditBudget = true
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .foregroundColor(Theme.Colors.primary)
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showAllBudgets) {
+                AllBudgetsView(isPresented: $showAllBudgets)
+            }
+            .sheet(item: $selectedCategory) { category in
+                CategoryDetailView(category: category, isPresented: .init(
+                    get: { selectedCategory != nil },
+                    set: { if !$0 { selectedCategory = nil } }
+                ))
+            }
+            .sheet(isPresented: $showManualCategorization) {
+                SwipeableCategorization(
+                    isPresented: $showManualCategorization,
+                    transactions: $uncategorizedTransactions,
+                    categories: categories,
+                    apiClient: apiClient
+                )
+            }
+            .sheet(isPresented: $showAICategorization) {
+                AICategorization(
+                    isPresented: $showAICategorization,
+                    transactions: $uncategorizedTransactions,
+                    categories: categories,
+                    apiClient: apiClient
+                )
+            }
+            .sheet(isPresented: $showAddCategory) {
+                AddCategoryView(isPresented: $showAddCategory) { newCategory in
+                    categories.append(newCategory)
+                }
+            }
+        }
+        .task {
+            await loadData()
+        }
+    }
+
+    private var budgetContentView: some View {
+        ScrollView {
+            VStack(spacing: Theme.Spacing.lg) {
+                // Budget Header with date navigation
+                HStack {
                         Button {
                             // Previous month
                         } label: {
@@ -208,53 +279,115 @@ struct BudgetView: View {
                 }
             }
             .background(Theme.Colors.background)
-            .navigationTitle("Budget")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showEditBudget = true
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                            .foregroundColor(Theme.Colors.primary)
+        }
+
+    private func loadData() async {
+        isLoading = true
+        loadError = nil
+
+        do {
+            // Fetch categories tree
+            let categoriesTree = try await apiClient.fetchCategoriesTree()
+
+            // Fetch budgets
+            let budgets = try await apiClient.fetchBudgets()
+
+            // Fetch transactions for the current month to calculate spending
+            let calendar = Calendar.current
+            let now = Date()
+            let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
+            let startTimestamp = Int(startOfMonth.timeIntervalSince1970)
+
+            let transactions = try await apiClient.listSimplefinTransactions(
+                dateFrom: startTimestamp,
+                dateTo: nil,
+                limit: 1000,
+                offset: 0
+            )
+
+            // Build category spending map
+            var categorySpending: [String: Double] = [:]
+            var subcategorySpending: [String: Double] = [:]
+            var subcategoryTransactionCount: [String: Int] = [:]
+
+            for transaction in transactions {
+                let amount = abs(transaction.amount)
+
+                if let categoryId = transaction.categoryId {
+                    categorySpending[categoryId, default: 0] += amount
+
+                    if let subcategoryId = transaction.subcategoryId {
+                        subcategorySpending[subcategoryId, default: 0] += amount
+                        subcategoryTransactionCount[subcategoryId, default: 0] += 1
                     }
                 }
             }
-            .sheet(isPresented: $showEditBudget) {
-                EditBudgetView(
-                    budget: $currentBudget,
-                    categories: $categories,
-                    isPresented: $showEditBudget
-                )
+
+            // Build budget map
+            var budgetMap: [String: Double] = [:]
+            for budget in budgets {
+                budgetMap[budget.categoryId] = budget.amount
             }
-            .sheet(isPresented: $showAllBudgets) {
-                AllBudgetsView(isPresented: $showAllBudgets)
-            }
-            .sheet(item: $selectedCategory) { category in
-                CategoryDetailView(category: category, isPresented: .init(
-                    get: { selectedCategory != nil },
-                    set: { if !$0 { selectedCategory = nil } }
-                ))
-            }
-            .sheet(isPresented: $showManualCategorization) {
-                SwipeableCategorization(
-                    isPresented: $showManualCategorization,
-                    transactions: $uncategorizedTransactions,
-                    categories: categories
-                )
-            }
-            .sheet(isPresented: $showAICategorization) {
-                AICategorization(
-                    isPresented: $showAICategorization,
-                    transactions: $uncategorizedTransactions,
-                    categories: categories
-                )
-            }
-            .sheet(isPresented: $showAddCategory) {
-                AddCategoryView(isPresented: $showAddCategory) { newCategory in
-                    categories.append(newCategory)
+
+            // Convert to BudgetCategory
+            self.categories = categoriesTree.map { cat in
+                let subcategories = cat.subcategories.map { sub in
+                    BudgetSubcategory(
+                        id: sub.id,
+                        name: sub.name,
+                        icon: sub.icon,
+                        budgetAmount: nil, // Subcategories don't have budgets yet
+                        spentAmount: subcategorySpending[sub.id] ?? 0,
+                        transactionCount: subcategoryTransactionCount[sub.id] ?? 0
+                    )
                 }
+
+                return BudgetCategory(
+                    id: cat.id,
+                    name: cat.name,
+                    icon: cat.icon,
+                    color: mapColor(cat.color),
+                    type: .expense, // Default to expense for now
+                    subcategories: subcategories,
+                    budgetAmount: budgetMap[cat.id],
+                    spentAmount: categorySpending[cat.id] ?? 0
+                )
             }
+
+            // Load uncategorized transactions (transactions without category_id)
+            self.uncategorizedTransactions = transactions
+                .filter { $0.categoryId == nil }
+                .map { tx in
+                    CategorizableTransaction(
+                        id: tx.id,
+                        merchantName: tx.payee ?? tx.description,
+                        amount: tx.amount,
+                        date: Date(timeIntervalSince1970: TimeInterval(tx.postedDate)),
+                        description: tx.description,
+                        categoryId: nil,
+                        subcategoryId: nil
+                    )
+                }
+
+            isLoading = false
+        } catch {
+            loadError = error.localizedDescription
+            isLoading = false
+        }
+    }
+
+    private func mapColor(_ hexColor: String) -> BudgetCategory.CategoryColor {
+        // Simple mapping from hex colors to enum values
+        switch hexColor.lowercased() {
+        case "#007aff", "#0066cc": return .blue
+        case "#af52de", "#8e44ad": return .purple
+        case "#ff2d55", "#e91e63": return .pink
+        case "#ff9500", "#ff6b00": return .orange
+        case "#ffcc00", "#ffd700": return .yellow
+        case "#34c759", "#28a745": return .green
+        case "#5ac8fa", "#00bcd4": return .teal
+        case "#ff3b30", "#dc3545": return .red
+        default: return .blue
         }
     }
 
@@ -265,7 +398,10 @@ struct BudgetView: View {
     }
 
     private var daysRemainingText: String {
-        let remaining = currentBudget.daysRemaining
+        let calendar = Calendar.current
+        let now = Date()
+        let endOfMonth = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: calendar.date(from: calendar.dateComponents([.year, .month], from: now))!)!
+        let remaining = calendar.dateComponents([.day], from: now, to: endOfMonth).day ?? 0
         return remaining > 0 ? "\(remaining) days left" : "Period ended"
     }
 }
@@ -424,21 +560,20 @@ struct BudgetDonutSlice: View {
 
 struct AllBudgetsView: View {
     @Binding var isPresented: Bool
-    @State private var budgets: [Budget] = Budget.mockBudgets
 
     var body: some View {
         NavigationView {
-            List {
-                ForEach(budgets) { budget in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(budget.name)
-                            .font(.headline)
-                        Text("$\(String(format: "%.2f", budget.amount)) / \(budget.period.rawValue)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.vertical, 4)
-                }
+            VStack(spacing: 20) {
+                Image(systemName: "chart.bar.doc.horizontal")
+                    .font(.system(size: 60))
+                    .foregroundColor(.secondary)
+                Text("Budget history coming soon")
+                    .font(.headline)
+                Text("You'll be able to view and compare past budgets here")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
             }
             .navigationTitle("All Budgets")
             .navigationBarTitleDisplayMode(.inline)

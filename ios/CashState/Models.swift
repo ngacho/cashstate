@@ -32,6 +32,8 @@ struct Transaction: Identifiable, Codable {
     let payee: String?
     let memo: String?
     let pending: Bool
+    let categoryId: String?      // Category assignment
+    let subcategoryId: String?   // Subcategory assignment
     let createdAt: String
     let updatedAt: String
 
@@ -47,6 +49,8 @@ struct Transaction: Identifiable, Codable {
         case payee
         case memo
         case pending
+        case categoryId = "category_id"
+        case subcategoryId = "subcategory_id"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }

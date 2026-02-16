@@ -106,6 +106,7 @@ struct SwipeableCategorization: View {
     @Binding var isPresented: Bool
     @Binding var transactions: [CategorizableTransaction]
     let categories: [BudgetCategory]
+    let apiClient: APIClient
     let allowEditingCategorized: Bool // Allow editing already categorized transactions
 
     @State private var currentIndex = 0
@@ -114,11 +115,14 @@ struct SwipeableCategorization: View {
     @State private var selectedSubcategory: BudgetSubcategory?
     @State private var showSubcategories = false
     @State private var categorizedCount = 0
+    @State private var pendingUpdates: [(transactionId: String, categoryId: String?, subcategoryId: String?)] = []
+    @State private var isSaving = false
 
-    init(isPresented: Binding<Bool>, transactions: Binding<[CategorizableTransaction]>, categories: [BudgetCategory], allowEditingCategorized: Bool = false) {
+    init(isPresented: Binding<Bool>, transactions: Binding<[CategorizableTransaction]>, categories: [BudgetCategory], apiClient: APIClient, allowEditingCategorized: Bool = false) {
         self._isPresented = isPresented
         self._transactions = transactions
         self.categories = categories
+        self.apiClient = apiClient
         self.allowEditingCategorized = allowEditingCategorized
 
         // Count already categorized transactions
@@ -370,6 +374,12 @@ struct SwipeableCategorization: View {
                     }
                 }
             }
+            .onDisappear {
+                // Save any remaining pending updates when view is dismissed
+                Task {
+                    await savePendingUpdates()
+                }
+            }
         }
     }
 
@@ -434,8 +444,23 @@ struct SwipeableCategorization: View {
         // Track if this was previously uncategorized
         let wasUncategorized = transactions[currentIndex].categoryId == nil
 
+        let transaction = transactions[currentIndex]
         transactions[currentIndex].categoryId = category.id
         transactions[currentIndex].subcategoryId = subcategory?.id
+
+        // Add to pending updates for batch saving
+        pendingUpdates.append((
+            transactionId: transaction.id,
+            categoryId: category.id,
+            subcategoryId: subcategory?.id
+        ))
+
+        // Batch save every 10 transactions
+        if pendingUpdates.count >= 10 {
+            Task {
+                await savePendingUpdates()
+            }
+        }
 
         withAnimation(.spring()) {
             offset = CGSize(width: 500, height: 0)
@@ -450,6 +475,29 @@ struct SwipeableCategorization: View {
             selectedCategory = nil
             selectedSubcategory = nil
             showSubcategories = false
+        }
+    }
+
+    private func savePendingUpdates() async {
+        guard !pendingUpdates.isEmpty, !isSaving else { return }
+
+        isSaving = true
+        let updates = pendingUpdates
+        pendingUpdates = []
+
+        do {
+            let _ = try await apiClient.batchUpdateTransactions(updates)
+            // Success - updates are saved
+        } catch {
+            // On error, add them back to retry later
+            await MainActor.run {
+                pendingUpdates.append(contentsOf: updates)
+                isSaving = false
+            }
+        }
+
+        await MainActor.run {
+            isSaving = false
         }
     }
 
@@ -917,11 +965,13 @@ struct AICategorization: View {
     @Binding var isPresented: Bool
     @Binding var transactions: [CategorizableTransaction]
     let categories: [BudgetCategory]
+    let apiClient: APIClient
 
     @State private var isProcessing = false
     @State private var progress: Double = 0
     @State private var categorizedTransactions: [(transaction: CategorizableTransaction, category: BudgetCategory, subcategory: BudgetSubcategory?)] = []
     @State private var showReview = false
+    @State private var errorMessage: String?
 
     var body: some View {
         NavigationView {
@@ -963,62 +1013,94 @@ struct AICategorization: View {
 
     private func startAICategorization() {
         isProcessing = true
+        errorMessage = nil
 
-        // Simulate AI processing with animation
-        Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
-            if progress < 1.0 {
-                progress += 0.02
-            } else {
-                timer.invalidate()
-                // Simulate AI categorization results
-                categorizedTransactions = mockAICategorization()
-                isProcessing = false
-                showReview = true
+        Task {
+            do {
+                // Call backend AI categorization
+                let transactionIds = transactions.map { $0.id }
+                let response = try await apiClient.categorizeWithAI(transactionIds: transactionIds, force: false)
+
+                // Create category lookup map
+                var categoryMap: [String: BudgetCategory] = [:]
+                for category in categories {
+                    categoryMap[category.id] = category
+                }
+
+                // Map results to UI model
+                var results: [(transaction: CategorizableTransaction, category: BudgetCategory, subcategory: BudgetSubcategory?)] = []
+
+                for result in response.results {
+                    guard let transaction = transactions.first(where: { $0.id == result.transactionId }),
+                          let categoryId = result.categoryId,
+                          let category = categoryMap[categoryId] else {
+                        continue
+                    }
+
+                    var subcategory: BudgetSubcategory?
+                    if let subcategoryId = result.subcategoryId {
+                        subcategory = category.subcategories.first { $0.id == subcategoryId }
+                    }
+
+                    results.append((transaction, category, subcategory))
+                }
+
+                await MainActor.run {
+                    categorizedTransactions = results
+                    progress = 1.0
+                    isProcessing = false
+                    showReview = true
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isProcessing = false
+                }
             }
         }
-    }
 
-    private func mockAICategorization() -> [(CategorizableTransaction, BudgetCategory, BudgetSubcategory?)] {
-        // Simple rule-based categorization for demo
-        return transactions.map { transaction in
-            let merchantLower = transaction.merchantName.lowercased()
-
-            // Find matching category
-            let category: BudgetCategory
-            let subcategory: BudgetSubcategory?
-
-            if merchantLower.contains("coffee") || merchantLower.contains("starbucks") {
-                category = categories.first { $0.name == "Food" }!
-                subcategory = category.subcategories.first { $0.name == "Coffee" }
-            } else if merchantLower.contains("grocery") || merchantLower.contains("market") {
-                category = categories.first { $0.name == "Food" }!
-                subcategory = category.subcategories.first { $0.name == "Groceries" }
-            } else if merchantLower.contains("gas") || merchantLower.contains("fuel") {
-                category = categories.first { $0.name == "Transport" }!
-                subcategory = category.subcategories.first { $0.name == "Gas" }
-            } else if merchantLower.contains("rent") || transaction.amount <= -1000 {
-                category = categories.first { $0.name == "Home & Utilities" }!
-                subcategory = category.subcategories.first { $0.name == "Rent" }
+        // Animate progress while waiting for API
+        Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
+            if !isProcessing || progress >= 0.95 {
+                timer.invalidate()
             } else {
-                // Default to Entertainment
-                category = categories.first { $0.name == "Entertainment" }!
-                subcategory = nil
+                progress += 0.02
             }
-
-            return (transaction, category, subcategory)
         }
     }
 
     private func applyCategorizationsAndDismiss() {
-        // Apply categorizations
-        for (index, item) in categorizedTransactions.enumerated() {
-            if index < transactions.count {
-                transactions[index].categoryId = item.category.id
-                transactions[index].subcategoryId = item.subcategory?.id
+        isProcessing = true
+
+        Task {
+            // Build batch updates
+            let updates = categorizedTransactions.map { item in
+                (transactionId: item.transaction.id,
+                 categoryId: item.category.id,
+                 subcategoryId: item.subcategory?.id)
+            }
+
+            do {
+                // Save to backend
+                let _ = try await apiClient.batchUpdateTransactions(updates)
+
+                // Update local state
+                await MainActor.run {
+                    for (index, item) in categorizedTransactions.enumerated() {
+                        if index < transactions.count {
+                            transactions[index].categoryId = item.category.id
+                            transactions[index].subcategoryId = item.subcategory?.id
+                        }
+                    }
+                    isPresented = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isProcessing = false
+                }
             }
         }
-
-        isPresented = false
     }
 }
 
@@ -1286,7 +1368,8 @@ extension CategorizableTransaction {
     return SwipeableCategorization(
         isPresented: $isPresented,
         transactions: $transactions,
-        categories: BudgetCategory.mockCategories
+        categories: BudgetCategory.mockCategories,
+        apiClient: APIClient()
     )
 }
 
@@ -1297,6 +1380,7 @@ extension CategorizableTransaction {
     return AICategorization(
         isPresented: $isPresented,
         transactions: $transactions,
-        categories: BudgetCategory.mockCategories
+        categories: BudgetCategory.mockCategories,
+        apiClient: APIClient()
     )
 }

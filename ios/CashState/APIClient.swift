@@ -444,4 +444,441 @@ actor APIClient {
         let decoder = JSONDecoder()
         return try decoder.decode(SnapshotsResponse.self, from: data)
     }
+
+    // MARK: - Categories
+
+    func seedDefaultCategories(monthlyBudget: Double) async throws -> SeedDefaultsResponse {
+        guard let url = URL(string: Config.apiBaseURL + "/categories/seed-defaults") else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let body = ["monthly_budget": monthlyBudget]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        if Config.debugMode {
+            print("→ POST /categories/seed-defaults")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        if Config.debugMode {
+            print("← \(httpResponse.statusCode) /categories/seed-defaults")
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 401 {
+                throw APIError.unauthorized
+            }
+
+            var errorMessage: String?
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let detail = json["detail"] as? String {
+                errorMessage = detail
+            }
+
+            throw APIError.serverError(httpResponse.statusCode, errorMessage)
+        }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(SeedDefaultsResponse.self, from: data)
+    }
+
+    func fetchCategories() async throws -> [Category] {
+        guard let url = URL(string: Config.apiBaseURL + "/categories") else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        if Config.debugMode {
+            print("→ GET /categories")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        if Config.debugMode {
+            print("← \(httpResponse.statusCode) /categories")
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 401 {
+                throw APIError.unauthorized
+            }
+
+            var errorMessage: String?
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let detail = json["detail"] as? String {
+                errorMessage = detail
+            }
+
+            throw APIError.serverError(httpResponse.statusCode, errorMessage)
+        }
+
+        let decoder = JSONDecoder()
+        let listResponse = try decoder.decode(CategoryListResponse.self, from: data)
+        return listResponse.items
+    }
+
+    func fetchCategoriesTree() async throws -> [CategoryWithSubcategories] {
+        guard let url = URL(string: Config.apiBaseURL + "/categories/tree") else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        if Config.debugMode {
+            print("→ GET /categories/tree")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        if Config.debugMode {
+            print("← \(httpResponse.statusCode) /categories/tree")
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 401 {
+                throw APIError.unauthorized
+            }
+
+            var errorMessage: String?
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let detail = json["detail"] as? String {
+                errorMessage = detail
+            }
+
+            throw APIError.serverError(httpResponse.statusCode, errorMessage)
+        }
+
+        let decoder = JSONDecoder()
+        let treeResponse = try decoder.decode(CategoriesTreeResponse.self, from: data)
+        return treeResponse.items
+    }
+
+    func createCategory(name: String, icon: String, color: String) async throws -> Category {
+        guard let url = URL(string: Config.apiBaseURL + "/categories") else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let body = [
+            "name": name,
+            "icon": icon,
+            "color": color,
+            "display_order": 0
+        ] as [String : Any]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        if Config.debugMode {
+            print("→ POST /categories")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        if Config.debugMode {
+            print("← \(httpResponse.statusCode) /categories")
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 401 {
+                throw APIError.unauthorized
+            }
+
+            var errorMessage: String?
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let detail = json["detail"] as? String {
+                errorMessage = detail
+            }
+
+            throw APIError.serverError(httpResponse.statusCode, errorMessage)
+        }
+
+        let decoder = JSONDecoder()
+        return try decoder.decode(Category.self, from: data)
+    }
+
+    // MARK: - Budgets
+
+    func fetchBudgets(categoryId: String? = nil) async throws -> [BudgetItem] {
+        var urlString = Config.apiBaseURL + "/budgets"
+        if let categoryId = categoryId {
+            urlString += "?category_id=\(categoryId)"
+        }
+
+        guard let url = URL(string: urlString) else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        if Config.debugMode {
+            print("→ GET /budgets")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        if Config.debugMode {
+            print("← \(httpResponse.statusCode) /budgets")
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 401 {
+                throw APIError.unauthorized
+            }
+
+            var errorMessage: String?
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let detail = json["detail"] as? String {
+                errorMessage = detail
+            }
+
+            throw APIError.serverError(httpResponse.statusCode, errorMessage)
+        }
+
+        let decoder = JSONDecoder()
+        let listResponse = try decoder.decode(BudgetListResponse.self, from: data)
+        return listResponse.items
+    }
+
+    func createBudget(categoryId: String, amount: Double, period: String = "monthly") async throws -> BudgetItem {
+        guard let url = URL(string: Config.apiBaseURL + "/budgets") else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let body = [
+            "category_id": categoryId,
+            "amount": amount,
+            "period": period
+        ] as [String : Any]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        if Config.debugMode {
+            print("→ POST /budgets")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        if Config.debugMode {
+            print("← \(httpResponse.statusCode) /budgets")
+        }
+
+        guard httpResponse.statusCode == 201 else {
+            if httpResponse.statusCode == 401 {
+                throw APIError.unauthorized
+            }
+
+            var errorMessage: String?
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let detail = json["detail"] as? String {
+                errorMessage = detail
+            }
+
+            throw APIError.serverError(httpResponse.statusCode, errorMessage)
+        }
+
+        let decoder = JSONDecoder()
+        return try decoder.decode(BudgetItem.self, from: data)
+    }
+
+    // MARK: - Transaction Categorization
+
+    func batchUpdateTransactions(_ updates: [(transactionId: String, categoryId: String?, subcategoryId: String?)]) async throws -> BatchUpdateResponse {
+        guard let url = URL(string: Config.apiBaseURL + "/transactions/batch/categorize") else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let updatesArray = updates.map { update in
+            [
+                "transaction_id": update.transactionId,
+                "category_id": update.categoryId as Any,
+                "subcategory_id": update.subcategoryId as Any
+            ]
+        }
+
+        let body = ["updates": updatesArray]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        if Config.debugMode {
+            print("→ PATCH /transactions/batch/categorize (\(updates.count) transactions)")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        if Config.debugMode {
+            print("← \(httpResponse.statusCode) /transactions/batch/categorize")
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 401 {
+                throw APIError.unauthorized
+            }
+
+            var errorMessage: String?
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let detail = json["detail"] as? String {
+                errorMessage = detail
+            }
+
+            throw APIError.serverError(httpResponse.statusCode, errorMessage)
+        }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(BatchUpdateResponse.self, from: data)
+    }
+
+    func categorizeWithAI(transactionIds: [String]? = nil, force: Bool = false) async throws -> AICategorizationResponse {
+        guard let url = URL(string: Config.apiBaseURL + "/categories/ai/categorize") else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        var body: [String: Any] = ["force": force]
+        if let transactionIds = transactionIds {
+            body["transaction_ids"] = transactionIds
+        }
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        if Config.debugMode {
+            print("→ POST /categories/ai/categorize")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        if Config.debugMode {
+            print("← \(httpResponse.statusCode) /categories/ai/categorize")
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 401 {
+                throw APIError.unauthorized
+            }
+
+            var errorMessage: String?
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let detail = json["detail"] as? String {
+                errorMessage = detail
+            }
+
+            throw APIError.serverError(httpResponse.statusCode, errorMessage)
+        }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(AICategorizationResponse.self, from: data)
+    }
+}
+
+// MARK: - Transaction Categorization Response Models
+
+struct BatchUpdateResponse: Codable {
+    let updatedCount: Int
+    let failedCount: Int
+    let failedIds: [String]
+}
+
+struct AICategorizationResponse: Codable {
+    let categorizedCount: Int
+    let failedCount: Int
+    let results: [AICategorizationResult]
+}
+
+struct AICategorizationResult: Codable {
+    let transactionId: String
+    let categoryId: String?
+    let subcategoryId: String?
+    let confidence: Double
+    let reasoning: String?
 }
