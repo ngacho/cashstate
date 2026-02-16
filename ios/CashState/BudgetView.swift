@@ -86,6 +86,12 @@ struct BudgetView: View {
                     apiClient: apiClient
                 )
             }
+            .onChange(of: showManualCategorization) { oldValue, newValue in
+                // Reload data when categorization sheet is dismissed
+                if oldValue == true && newValue == false {
+                    Task { await loadData() }
+                }
+            }
             .sheet(isPresented: $showAICategorization) {
                 AICategorization(
                     isPresented: $showAICategorization,
@@ -93,6 +99,12 @@ struct BudgetView: View {
                     categories: categories,
                     apiClient: apiClient
                 )
+            }
+            .onChange(of: showAICategorization) { oldValue, newValue in
+                // Reload data when AI categorization sheet is dismissed
+                if oldValue == true && newValue == false {
+                    Task { await loadData() }
+                }
             }
             .sheet(isPresented: $showAddCategory) {
                 AddCategoryView(isPresented: $showAddCategory) { newCategory in
