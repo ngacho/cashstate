@@ -235,6 +235,34 @@ CREATE TRIGGER budgets_updated_at
     BEFORE UPDATE ON public.budgets
     FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
+-- ============================================================================
+-- Budget Accounts Table
+-- ============================================================================
+-- Links budgets to specific accounts for tracking
+-- Empty = track all accounts
+CREATE TABLE IF NOT EXISTS public.budget_accounts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    budget_id UUID NOT NULL REFERENCES public.budgets(id) ON DELETE CASCADE,
+    account_id UUID NOT NULL REFERENCES public.simplefin_accounts(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    UNIQUE(budget_id, account_id)
+);
+
+ALTER TABLE public.budget_accounts ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, DELETE ON public.budget_accounts TO authenticated;
+
+CREATE POLICY "Users can manage own budget accounts"
+    ON public.budget_accounts FOR ALL
+    USING (
+        budget_id IN (
+            SELECT id FROM public.budgets WHERE user_id = (SELECT auth.uid())
+        )
+    );
+
+CREATE INDEX idx_budget_accounts_budget_id ON public.budget_accounts(budget_id);
+CREATE INDEX idx_budget_accounts_account_id ON public.budget_accounts(account_id);
+
 -- SimpleFin Transactions Table
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS public.simplefin_transactions (
