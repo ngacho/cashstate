@@ -12,6 +12,9 @@ struct TransactionDetailView: View {
     @State private var isSaving = false
     @State private var saveError: String?
     @State private var showSuccessAnimation = false
+    @State private var isLoadingCategories = false
+    @State private var loadedCategories: [BudgetCategory] = []
+    @State private var categoryLoadError: String?
 
     init(
         transaction: Transaction,
@@ -26,6 +29,9 @@ struct TransactionDetailView: View {
         self._isPresented = isPresented
         self._onCategoryUpdated = onCategoryUpdated
 
+        // Initialize loadedCategories with passed categories
+        self._loadedCategories = State(initialValue: categories)
+
         // Initialize selected category and subcategory based on transaction
         if let categoryId = transaction.categoryId,
            let category = categories.first(where: { $0.id == categoryId }) {
@@ -36,6 +42,10 @@ struct TransactionDetailView: View {
                 self._selectedSubcategory = State(initialValue: subcategory)
             }
         }
+    }
+
+    var effectiveCategories: [BudgetCategory] {
+        loadedCategories.isEmpty ? categories : loadedCategories
     }
 
     var merchantName: String {
@@ -69,7 +79,7 @@ struct TransactionDetailView: View {
 
                 ScrollView {
                     VStack(spacing: Theme.Spacing.lg) {
-                        // Transaction Details Card
+                        // Transaction Details Card (always show this)
                         VStack(spacing: Theme.Spacing.md) {
                             // Amount
                             Text(formattedAmount)
@@ -127,13 +137,80 @@ struct TransactionDetailView: View {
                         .padding(.horizontal, Theme.Spacing.lg)
                         .padding(.top, Theme.Spacing.md)
 
-                        // Category Selection
-                        CategorySelectionCard(
-                            categories: categories,
-                            selectedCategory: $selectedCategory,
-                            selectedSubcategory: $selectedSubcategory
-                        )
-                        .padding(.horizontal, Theme.Spacing.lg)
+                        // Category Selection (with loading state)
+                        if isLoadingCategories {
+                            VStack(spacing: Theme.Spacing.md) {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: Theme.Colors.primary))
+                                Text("Loading categories...")
+                                    .font(.subheadline)
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(Theme.Spacing.xl)
+                            .background(Theme.Colors.cardBackground)
+                            .cornerRadius(Theme.CornerRadius.lg)
+                            .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
+                            .padding(.horizontal, Theme.Spacing.lg)
+                        } else if let error = categoryLoadError {
+                            VStack(spacing: Theme.Spacing.sm) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 32))
+                                    .foregroundColor(.orange)
+                                Text("Failed to load categories")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(Theme.Colors.textPrimary)
+                                Text(error)
+                                    .font(.caption)
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                                    .multilineTextAlignment(.center)
+                                Button {
+                                    Task { await loadCategoriesIfNeeded() }
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "arrow.clockwise")
+                                        Text("Retry")
+                                    }
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(Theme.Colors.primary)
+                                    .padding(.horizontal, Theme.Spacing.md)
+                                    .padding(.vertical, Theme.Spacing.sm)
+                                    .background(Theme.Colors.primary.opacity(0.1))
+                                    .cornerRadius(Theme.CornerRadius.sm)
+                                }
+                                .padding(.top, 4)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(Theme.Spacing.lg)
+                            .background(Theme.Colors.cardBackground)
+                            .cornerRadius(Theme.CornerRadius.lg)
+                            .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
+                            .padding(.horizontal, Theme.Spacing.lg)
+                        } else if effectiveCategories.isEmpty {
+                            VStack(spacing: Theme.Spacing.sm) {
+                                Image(systemName: "folder.fill")
+                                    .font(.system(size: 32))
+                                    .foregroundColor(Theme.Colors.textSecondary.opacity(0.5))
+                                Text("No categories available")
+                                    .font(.subheadline)
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(Theme.Spacing.xl)
+                            .background(Theme.Colors.cardBackground)
+                            .cornerRadius(Theme.CornerRadius.lg)
+                            .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
+                            .padding(.horizontal, Theme.Spacing.lg)
+                        } else {
+                            CategorySelectionCard(
+                                categories: effectiveCategories,
+                                selectedCategory: $selectedCategory,
+                                selectedSubcategory: $selectedSubcategory
+                            )
+                            .padding(.horizontal, Theme.Spacing.lg)
+                        }
 
                         // Save Button (only show if changes were made)
                         if hasChanges && !isSaving {
@@ -222,6 +299,68 @@ struct TransactionDetailView: View {
                     }
                     .fontWeight(.semibold)
                 }
+            }
+            .task {
+                await loadCategoriesIfNeeded()
+            }
+        }
+    }
+
+    private func loadCategoriesIfNeeded() async {
+        // If categories were already passed in, don't load
+        guard categories.isEmpty else {
+            return
+        }
+
+        isLoadingCategories = true
+        categoryLoadError = nil
+
+        do {
+            // Fetch the category tree (includes all categories and subcategories)
+            let treeResponse = try await apiClient.fetchCategoriesTree()
+
+            // Convert to BudgetCategory model
+            let fetchedCategories = treeResponse.map { item in
+                BudgetCategory(
+                    id: item.id,
+                    name: item.name,
+                    icon: item.icon,
+                    color: BudgetCategory.CategoryColor(rawValue: item.color) ?? .blue,
+                    type: (item.type == "income") ? .income : .expense,
+                    subcategories: item.subcategories.map { sub in
+                        BudgetSubcategory(
+                            id: sub.id,
+                            name: sub.name,
+                            icon: sub.icon,
+                            budgetAmount: nil,
+                            spentAmount: 0,
+                            transactionCount: 0
+                        )
+                    },
+                    budgetAmount: nil,
+                    spentAmount: 0
+                )
+            }
+
+            await MainActor.run {
+                loadedCategories = fetchedCategories
+                isLoadingCategories = false
+
+                // Initialize selected category if transaction has one
+                if let categoryId = transaction.categoryId,
+                   let category = fetchedCategories.first(where: { $0.id == categoryId }) {
+                    selectedCategory = category
+
+                    if let subcategoryId = transaction.subcategoryId,
+                       let subcategory = category.subcategories.first(where: { $0.id == subcategoryId }) {
+                        selectedSubcategory = subcategory
+                    }
+                }
+            }
+        } catch {
+            await MainActor.run {
+                isLoadingCategories = false
+                categoryLoadError = error.localizedDescription
             }
         }
     }

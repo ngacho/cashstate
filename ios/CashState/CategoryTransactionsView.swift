@@ -8,6 +8,7 @@ struct CategoryTransactionsView: View {
 
     @State private var transactions: [Transaction] = []
     @State private var isLoading = true
+    @State private var isLoadingCategories = true
     @State private var errorMessage: String?
     @State private var selectedTransaction: Transaction?
     @State private var showTransactionDetail = false
@@ -28,8 +29,19 @@ struct CategoryTransactionsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                if isLoading {
-                    ProgressView("Loading transactions...")
+                if isLoading || isLoadingCategories {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        if isLoading {
+                            Text("Loading transactions...")
+                                .font(.subheadline)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        } else {
+                            Text("Loading categories...")
+                                .font(.subheadline)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                    }
                 } else if let error = errorMessage {
                     VStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "exclamationmark.triangle")
@@ -88,13 +100,9 @@ struct CategoryTransactionsView: View {
                         Text(subcategory?.icon ?? category.icon)
                             .font(.system(size: 50))
                             .frame(width: 80, height: 80)
-                            .background(
+                            .overlay(
                                 Circle()
-                                    .fill(category.color.color.opacity(0.1))
-                                    .overlay(
-                                        Circle()
-                                            .strokeBorder(category.color.color.opacity(0.2), lineWidth: 2)
-                                    )
+                                    .strokeBorder(category.color.color, lineWidth: 3)
                             )
 
                         Text(title)
@@ -191,6 +199,9 @@ struct CategoryTransactionsView: View {
         }
 
     private func loadCategories() async {
+        isLoadingCategories = true
+        defer { isLoadingCategories = false }
+
         do {
             // Fetch the category tree (includes all categories and subcategories)
             let treeResponse = try await apiClient.fetchCategoriesTree()
@@ -289,14 +300,14 @@ struct TransactionRowView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: Theme.Spacing.md) {
                 // Icon
-                ZStack {
-                    Circle()
-                        .fill(categoryColor.opacity(0.15))
-                        .frame(width: 44, height: 44)
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(categoryColor)
-                }
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(categoryColor)
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Circle()
+                            .strokeBorder(categoryColor, lineWidth: 2)
+                    )
 
                 // Transaction info
                 VStack(alignment: .leading, spacing: 4) {

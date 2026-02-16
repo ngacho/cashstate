@@ -4,32 +4,9 @@ from app.database import Database
 
 
 # Default category and subcategory data (using cross-platform emojis)
+# NOTE: Income and Transfers are intentionally excluded from defaults
+# They belong in goals/net worth tracking, not expense budgeting
 DEFAULT_CATEGORIES = [
-    # Income & Transfers
-    {
-        "name": "Income",
-        "icon": "💰",
-        "color": "#10B981",
-        "display_order": 1,
-        "subcategories": [
-            {"name": "Salary", "icon": "💵", "display_order": 1},
-            {"name": "Freelance", "icon": "💻", "display_order": 2},
-            {"name": "Bonus", "icon": "⭐", "display_order": 3},
-            {"name": "Investment Income", "icon": "📊", "display_order": 4},
-            {"name": "Refund", "icon": "↩️", "display_order": 5},
-            {"name": "Other Income", "icon": "➕", "display_order": 6},
-        ],
-    },
-    {
-        "name": "Transfers",
-        "icon": "🔄",
-        "color": "#6B7280",
-        "display_order": 2,
-        "subcategories": [
-            {"name": "Between Accounts", "icon": "↔️", "display_order": 1},
-            {"name": "Credit Card Payment", "icon": "💳", "display_order": 2},
-        ],
-    },
     # Essential Expenses
     {
         "name": "Housing",
@@ -311,13 +288,14 @@ class OnboardingService:
         created_categories = []  # Track created categories for budget allocation
 
         for cat_data in DEFAULT_CATEGORIES:
-            # Create category
+            # Create category (all defaults are expense categories)
             category = self.db.create_category(
                 {
                     "user_id": user_id,
                     "name": cat_data["name"],
                     "icon": cat_data["icon"],
                     "color": cat_data["color"],
+                    "type": "expense",  # All default categories are expenses
                     "is_system": False,  # User's own copy of defaults
                     "display_order": cat_data["display_order"],
                 }

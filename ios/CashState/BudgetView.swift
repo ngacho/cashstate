@@ -19,6 +19,9 @@ struct BudgetView: View {
     @State private var isLoading = true
     @State private var loadError: String?
 
+    // Filter toggle
+    @State private var showIncomeInBudget = false
+
     var totalBudget: Double {
         categories.compactMap { $0.budgetAmount }.reduce(0, +)
     }
@@ -219,31 +222,87 @@ struct BudgetView: View {
                                 .font(.headline)
                                 .foregroundColor(Theme.Colors.textPrimary)
                             Spacer()
-                            Button {
-                                showEditBudget = true
+                            // Toggle for including income
+                            Menu {
+                                Button(action: {
+                                    showIncomeInBudget.toggle()
+                                    Task { await loadData() }
+                                }) {
+                                    Label(
+                                        showIncomeInBudget ? "Hide Income" : "Show Income",
+                                        systemImage: showIncomeInBudget ? "eye.slash" : "eye"
+                                    )
+                                }
+                                Button {
+                                    showEditBudget = true
+                                } label: {
+                                    Label("Edit Budget", systemImage: "pencil")
+                                }
                             } label: {
-                                Text("Edit Budget")
-                                    .font(.subheadline)
+                                Image(systemName: "ellipsis.circle")
+                                    .font(.title3)
                                     .foregroundColor(Theme.Colors.primary)
                             }
                         }
 
-                        // Donut Chart
-                        ZStack {
-                            BudgetDonutChart(
-                                categories: categories.filter { $0.budgetAmount != nil },
-                                total: totalSpent
-                            )
-                            .frame(height: 220)
-
-                            // Total in center
-                            VStack(spacing: 4) {
-                                Text("Expense")
+                        // Income indicator (when enabled)
+                        if showIncomeInBudget {
+                            HStack(spacing: 8) {
+                                Image(systemName: "info.circle.fill")
+                                    .font(.caption)
+                                    .foregroundColor(.blue)
+                                Text("Income included in totals")
                                     .font(.caption)
                                     .foregroundColor(Theme.Colors.textSecondary)
-                                Text("$\(String(format: "%.2f", totalSpent))")
-                                    .font(.system(size: 24, weight: .bold))
-                                    .foregroundColor(Theme.Colors.textPrimary)
+                            }
+                            .padding(.horizontal, Theme.Spacing.sm)
+                            .padding(.vertical, 6)
+                            .background(Color.blue.opacity(0.1))
+                            .cornerRadius(Theme.CornerRadius.sm)
+                        }
+
+                        // Donut Chart
+                        VStack(spacing: Theme.Spacing.sm) {
+                            ZStack {
+                                BudgetDonutChart(
+                                    categories: categories.filter { $0.budgetAmount != nil },
+                                    total: totalSpent
+                                )
+                                .frame(height: 220)
+
+                                // Total in center
+                                VStack(spacing: 4) {
+                                    Text("Spending")
+                                        .font(.caption)
+                                        .foregroundColor(Theme.Colors.textSecondary)
+                                    Text("$\(String(format: "%.2f", totalSpent))")
+                                        .font(.system(size: 24, weight: .bold))
+                                        .foregroundColor(Theme.Colors.textPrimary)
+                                    Text("of $\(String(format: "%.0f", totalBudget))")
+                                        .font(.caption2)
+                                        .foregroundColor(Theme.Colors.textSecondary)
+                                }
+                            }
+
+                            // Legend for dual ring
+                            HStack(spacing: Theme.Spacing.lg) {
+                                HStack(spacing: 6) {
+                                    Circle()
+                                        .fill(Color.gray.opacity(0.6))
+                                        .frame(width: 12, height: 12)
+                                    Text("Outer: Spending")
+                                        .font(.caption2)
+                                        .foregroundColor(Theme.Colors.textSecondary)
+                                }
+
+                                HStack(spacing: 6) {
+                                    Circle()
+                                        .fill(Color.gray.opacity(0.3))
+                                        .frame(width: 12, height: 12)
+                                    Text("Inner: Budget")
+                                        .font(.caption2)
+                                        .foregroundColor(Theme.Colors.textSecondary)
+                                }
                             }
                         }
                         .padding(.vertical, Theme.Spacing.sm)
@@ -318,11 +377,19 @@ struct BudgetView: View {
             )
 
             // Build category spending map
+            // IMPORTANT: Only count expenses (negative amounts) in budget tracking
+            // Income/credits (positive amounts) are excluded unless toggle is enabled
             var categorySpending: [String: Double] = [:]
             var subcategorySpending: [String: Double] = [:]
             var subcategoryTransactionCount: [String: Int] = [:]
 
             for transaction in transactions {
+                // Skip income/credits unless toggle is enabled
+                let isExpense = transaction.amount < 0
+                if !isExpense && !showIncomeInBudget {
+                    continue
+                }
+
                 let amount = abs(transaction.amount)
 
                 if let categoryId = transaction.categoryId {
@@ -341,8 +408,15 @@ struct BudgetView: View {
                 budgetMap[budget.categoryId] = budget.amount
             }
 
-            // Convert to BudgetCategory
-            self.categories = categoriesTree.map { cat in
+            // Convert to BudgetCategory (filter out non-expense categories)
+            self.categories = categoriesTree
+                .filter { cat in
+                    // Only include expense categories in budget view
+                    // Income and Transfers should not appear in expense budgeting
+                    let categoryType = cat.type ?? "expense"  // Default to expense if not set
+                    return categoryType == "expense"
+                }
+                .map { cat in
                 let subcategories = cat.subcategories.map { sub in
                     BudgetSubcategory(
                         id: sub.id,
@@ -367,8 +441,13 @@ struct BudgetView: View {
             }
 
             // Load uncategorized transactions (transactions without category_id)
+            // Only show uncategorized EXPENSES by default (income/credits excluded unless toggle is on)
             self.uncategorizedTransactions = transactions
-                .filter { $0.categoryId == nil }
+                .filter { tx in
+                    let hasNoCategory = tx.categoryId == nil
+                    let isExpense = tx.amount < 0
+                    return hasNoCategory && (isExpense || showIncomeInBudget)
+                }
                 .map { tx in
                     CategorizableTransaction(
                         id: tx.id,
@@ -389,16 +468,39 @@ struct BudgetView: View {
     }
 
     private func mapColor(_ hexColor: String) -> BudgetCategory.CategoryColor {
-        // Simple mapping from hex colors to enum values
+        // Mapping from database hex colors to CategoryColor enum
         switch hexColor.lowercased() {
-        case "#007aff", "#0066cc": return .blue
-        case "#af52de", "#8e44ad": return .purple
-        case "#ff2d55", "#e91e63": return .pink
-        case "#ff9500", "#ff6b00": return .orange
-        case "#ffcc00", "#ffd700": return .yellow
-        case "#34c759", "#28a745": return .green
-        case "#5ac8fa", "#00bcd4": return .teal
-        case "#ff3b30", "#dc3545": return .red
+        // Blue shades
+        case "#3b82f6": return .blue  // Utilities, Business Expenses
+
+        // Purple shades
+        case "#8b5cf6": return .purple  // Housing, Subscriptions
+        case "#6366f1": return .purple  // Insurance (indigo)
+        case "#a855f7": return .purple  // Entertainment
+
+        // Pink shades
+        case "#ec4899": return .pink  // Healthcare, Gifts & Donations
+        case "#f472b6": return .pink  // Personal Care
+
+        // Orange shades
+        case "#f59e0b": return .orange  // Transportation, Fees & Charges
+
+        // Red shades
+        case "#ef4444": return .red  // Food & Dining, Debt Payments
+
+        // Teal/Cyan shades
+        case "#06b6d4": return .teal  // Shopping, Travel
+        case "#14b8a6": return .teal  // Education
+
+        // Green shades
+        case "#10b981": return .green  // Savings & Investments
+
+        // Yellow shades
+        case "#fbbf24", "#eab308": return .yellow
+
+        // Gray shades (mapped to blue as fallback)
+        case "#6b7280", "#9ca3af": return .blue  // Taxes, Uncategorized
+
         default: return .blue
         }
     }
@@ -425,12 +527,14 @@ struct BudgetCategoryRow: View {
 
     var body: some View {
         HStack(spacing: Theme.Spacing.md) {
-            // Icon
+            // Icon with colored border
             Text(category.icon)
                 .font(.title2)
                 .frame(width: 44, height: 44)
-                .background(category.color.color.opacity(0.15))
-                .clipShape(Circle())
+                .overlay(
+                    Circle()
+                        .strokeBorder(category.color.color, lineWidth: 2)
+                )
 
             // Info
             VStack(alignment: .leading, spacing: 4) {
@@ -500,15 +604,37 @@ struct BudgetDonutChart: View {
     let categories: [BudgetCategory]
     let total: Double
 
+    var totalBudget: Double {
+        categories.compactMap { $0.budgetAmount }.reduce(0, +)
+    }
+
     var body: some View {
         GeometryReader { geometry in
             ZStack {
+                // Outer ring - Spending (wider)
                 ForEach(Array(categories.enumerated()), id: \.element.id) { index, category in
                     BudgetDonutSlice(
-                        startAngle: startAngle(for: index),
-                        endAngle: endAngle(for: index),
-                        color: category.color.color
+                        startAngle: spendingStartAngle(for: index),
+                        endAngle: spendingEndAngle(for: index),
+                        color: category.color.color,
+                        innerRadiusRatio: 0.55,  // Wider outer ring
+                        outerRadiusRatio: 1.0
                     )
+                }
+
+                // Inner ring - Budget allocation (narrower)
+                if totalBudget > 0 {
+                    ForEach(Array(categories.enumerated()), id: \.element.id) { index, category in
+                        if category.budgetAmount != nil {
+                            BudgetDonutSlice(
+                                startAngle: budgetStartAngle(for: index),
+                                endAngle: budgetEndAngle(for: index),
+                                color: category.color.color.opacity(0.5),
+                                innerRadiusRatio: 0.42,  // Narrower inner ring
+                                outerRadiusRatio: 0.52
+                            )
+                        }
+                    }
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.width)
@@ -516,14 +642,26 @@ struct BudgetDonutChart: View {
         .aspectRatio(1, contentMode: .fit)
     }
 
-    func startAngle(for index: Int) -> Angle {
+    // Spending angles (outer ring)
+    func spendingStartAngle(for index: Int) -> Angle {
         let previousTotal = categories.prefix(index).reduce(0.0) { $0 + $1.spentAmount }
         return Angle(degrees: (previousTotal / total) * 360 - 90)
     }
 
-    func endAngle(for index: Int) -> Angle {
+    func spendingEndAngle(for index: Int) -> Angle {
         let currentTotal = categories.prefix(index + 1).reduce(0.0) { $0 + $1.spentAmount }
         return Angle(degrees: (currentTotal / total) * 360 - 90)
+    }
+
+    // Budget allocation angles (inner ring)
+    func budgetStartAngle(for index: Int) -> Angle {
+        let previousTotal = categories.prefix(index).compactMap { $0.budgetAmount }.reduce(0.0, +)
+        return Angle(degrees: (previousTotal / totalBudget) * 360 - 90)
+    }
+
+    func budgetEndAngle(for index: Int) -> Angle {
+        let currentTotal = categories.prefix(index + 1).compactMap { $0.budgetAmount }.reduce(0.0, +)
+        return Angle(degrees: (currentTotal / totalBudget) * 360 - 90)
     }
 }
 
@@ -531,17 +669,20 @@ struct BudgetDonutSlice: View {
     let startAngle: Angle
     let endAngle: Angle
     let color: Color
+    let innerRadiusRatio: CGFloat
+    let outerRadiusRatio: CGFloat
 
     var body: some View {
         GeometryReader { geometry in
             Path { path in
                 let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                let radius = min(geometry.size.width, geometry.size.height) / 2
-                let innerRadius = radius * 0.65 // Donut hole
+                let maxRadius = min(geometry.size.width, geometry.size.height) / 2
+                let outerRadius = maxRadius * outerRadiusRatio
+                let innerRadius = maxRadius * innerRadiusRatio
 
                 path.addArc(
                     center: center,
-                    radius: radius,
+                    radius: outerRadius,
                     startAngle: startAngle,
                     endAngle: endAngle,
                     clockwise: false
@@ -615,8 +756,10 @@ struct CategoryDetailView: View {
                         Text(category.icon)
                             .font(.system(size: 60))
                             .frame(width: 80, height: 80)
-                            .background(category.color.color.opacity(0.15))
-                            .clipShape(Circle())
+                            .overlay(
+                                Circle()
+                                    .strokeBorder(category.color.color, lineWidth: 3)
+                            )
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text(category.name)
@@ -645,8 +788,10 @@ struct CategoryDetailView: View {
                                     Text(subcategory.icon)
                                         .font(.title3)
                                         .frame(width: 36, height: 36)
-                                        .background(category.color.color.opacity(0.15))
-                                        .clipShape(Circle())
+                                        .overlay(
+                                            Circle()
+                                                .strokeBorder(category.color.color, lineWidth: 1.5)
+                                        )
 
                                     Text(subcategory.name)
                                         .font(.body)
@@ -701,12 +846,14 @@ struct ExpandableCategoryCard: View {
                 }
             } label: {
                 HStack(spacing: Theme.Spacing.md) {
-                    // Icon
+                    // Icon with colored border
                     Text(category.icon)
                         .font(.title2)
                         .frame(width: 44, height: 44)
-                        .background(category.color.color.opacity(0.15))
-                        .clipShape(Circle())
+                        .overlay(
+                            Circle()
+                                .strokeBorder(category.color.color, lineWidth: 2)
+                        )
 
                     // Info
                     VStack(alignment: .leading, spacing: 4) {
@@ -909,12 +1056,14 @@ struct SubcategoryRow: View {
                     showTransactions = true
                 } label: {
                     HStack(spacing: Theme.Spacing.sm) {
-                    // Icon
+                    // Icon with parent category colored border
                     Text(subcategory.icon)
                         .font(.body)
                         .frame(width: 32, height: 32)
-                        .background(categoryColor.opacity(0.1))
-                        .clipShape(Circle())
+                        .overlay(
+                            Circle()
+                                .strokeBorder(categoryColor, lineWidth: 1.5)
+                        )
 
                     // Info
                     VStack(alignment: .leading, spacing: 2) {

@@ -650,6 +650,7 @@ struct AccountDetailView: View {
 
     @State private var transactions: [Transaction] = []
     @State private var isLoading = false
+    @State private var isLoadingCategories = true
     @State private var selectedTab: TransactionTab = .all
     @State private var selectedTransaction: Transaction?
     @State private var showTransactionDetail = false
@@ -1087,6 +1088,9 @@ struct AccountDetailView: View {
     }
 
     func loadCategories() async {
+        isLoadingCategories = true
+        defer { isLoadingCategories = false }
+
         do {
             // Fetch the category tree (includes all categories and subcategories)
             let treeResponse = try await apiClient.fetchCategoriesTree()
