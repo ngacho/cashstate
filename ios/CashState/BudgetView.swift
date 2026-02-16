@@ -251,7 +251,7 @@ struct BudgetView: View {
                         // Category list with expandable subcategories
                         VStack(spacing: Theme.Spacing.sm) {
                             ForEach($categories) { $category in
-                                ExpandableCategoryCard(category: $category)
+                                ExpandableCategoryCard(category: $category, apiClient: apiClient)
                             }
 
                             // Add Category button
@@ -686,6 +686,7 @@ struct CategoryDetailView: View {
 
 struct ExpandableCategoryCard: View {
     @Binding var category: BudgetCategory
+    let apiClient: APIClient
     @State private var isExpanded: Bool = false
     @State private var showEditCategoryBudget: Bool = false
     @State private var showAllTransactions: Bool = false
@@ -816,7 +817,8 @@ struct ExpandableCategoryCard: View {
                         SubcategoryRow(
                             category: category,
                             subcategory: $subcategory,
-                            categoryColor: category.color.color
+                            categoryColor: category.color.color,
+                            apiClient: apiClient
                         )
                     }
 
@@ -864,6 +866,7 @@ struct ExpandableCategoryCard: View {
             CategoryTransactionsView(
                 category: category,
                 subcategory: nil,
+                apiClient: apiClient,
                 isPresented: $showAllTransactions
             )
             .presentationDetents([.large])
@@ -885,6 +888,7 @@ struct SubcategoryRow: View {
     let category: BudgetCategory
     @Binding var subcategory: BudgetSubcategory
     let categoryColor: Color
+    let apiClient: APIClient
     @State private var showEditBudget = false
     @State private var showTransactions = false
 
@@ -1006,6 +1010,7 @@ struct SubcategoryRow: View {
             CategoryTransactionsView(
                 category: category,
                 subcategory: subcategory,
+                apiClient: apiClient,
                 isPresented: $showTransactions
             )
             .presentationDetents([.large])

@@ -3,15 +3,12 @@ import SwiftUI
 struct CategoryTransactionsView: View {
     let category: BudgetCategory
     let subcategory: BudgetSubcategory?
+    let apiClient: APIClient
     @Binding var isPresented: Bool
 
-    var transactions: [CategoryTransaction] {
-        if let sub = subcategory {
-            return CategoryTransaction.transactions(for: category.id, subcategoryId: sub.id)
-        } else {
-            return CategoryTransaction.transactions(for: category.id)
-        }
-    }
+    @State private var transactions: [Transaction] = []
+    @State private var isLoading = true
+    @State private var errorMessage: String?
 
     var title: String {
         if let sub = subcategory {
@@ -22,15 +19,52 @@ struct CategoryTransactionsView: View {
     }
 
     var totalAmount: Double {
-        transactions.reduce(0) { $0 + $1.amount }
+        transactions.reduce(0) { $0 + abs($1.amount) }
     }
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: Theme.Spacing.lg) {
-                    // Header with icon and stats
-                    VStack(spacing: Theme.Spacing.sm) {
+            ZStack {
+                if isLoading {
+                    ProgressView("Loading transactions...")
+                } else if let error = errorMessage {
+                    VStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 50))
+                            .foregroundColor(.red)
+                        Text("Error loading transactions")
+                            .font(.headline)
+                        Text(error)
+                            .font(.subheadline)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding()
+                } else {
+                    contentView
+                }
+            }
+            .navigationTitle("Transactions")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        isPresented = false
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+            .task {
+                await loadTransactions()
+            }
+        }
+    }
+
+    private var contentView: some View {
+        ScrollView {
+            VStack(spacing: Theme.Spacing.lg) {
+                // Header with icon and stats
+                VStack(spacing: Theme.Spacing.sm) {
                         Text(subcategory?.icon ?? category.icon)
                             .font(.system(size: 50))
                             .frame(width: 80, height: 80)
@@ -107,7 +141,7 @@ struct CategoryTransactionsView: View {
 
                             LazyVStack(spacing: 0) {
                                 ForEach(transactions) { transaction in
-                                    CategoryTransactionRow(
+                                    TransactionRowView(
                                         transaction: transaction,
                                         category: category,
                                         showSubcategoryChip: subcategory == nil,
@@ -130,24 +164,51 @@ struct CategoryTransactionsView: View {
                 }
             }
             .background(Theme.Colors.background)
-            .navigationTitle("Transactions")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        isPresented = false
-                    }
-                    .fontWeight(.semibold)
+        }
+
+    private func loadTransactions() async {
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            // Fetch all transactions for the current month
+            let calendar = Calendar.current
+            let now = Date()
+            let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
+            let startTimestamp = Int(startOfMonth.timeIntervalSince1970)
+
+            let allTransactions = try await apiClient.listSimplefinTransactions(
+                dateFrom: startTimestamp,
+                dateTo: nil,
+                limit: 1000,
+                offset: 0
+            )
+
+            // Filter transactions by category and subcategory
+            if let sub = subcategory {
+                // Filter by subcategory
+                transactions = allTransactions.filter {
+                    $0.categoryId == category.id && $0.subcategoryId == sub.id
+                }
+            } else {
+                // Filter by category only (all subcategories)
+                transactions = allTransactions.filter {
+                    $0.categoryId == category.id
                 }
             }
+
+            isLoading = false
+        } catch {
+            errorMessage = error.localizedDescription
+            isLoading = false
         }
     }
 }
 
-// MARK: - Category Transaction Row
+// MARK: - Transaction Row View
 
-struct CategoryTransactionRow: View {
-    let transaction: CategoryTransaction
+struct TransactionRowView: View {
+    let transaction: Transaction
     let category: BudgetCategory
     let showSubcategoryChip: Bool
     let categoryColor: Color
@@ -155,12 +216,16 @@ struct CategoryTransactionRow: View {
     var formattedDate: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d"
-        return formatter.string(from: transaction.date)
+        return formatter.string(from: Date(timeIntervalSince1970: TimeInterval(transaction.postedDate)))
     }
 
     var subcategory: BudgetSubcategory? {
         guard let subId = transaction.subcategoryId else { return nil }
         return category.subcategories.first { $0.id == subId }
+    }
+
+    var merchantName: String {
+        transaction.payee ?? transaction.description
     }
 
     var body: some View {
@@ -178,7 +243,7 @@ struct CategoryTransactionRow: View {
 
                 // Transaction info
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(transaction.merchantName)
+                    Text(merchantName)
                         .font(.body)
                         .fontWeight(.medium)
                         .foregroundColor(Theme.Colors.textPrimary)
@@ -192,19 +257,13 @@ struct CategoryTransactionRow: View {
                                 .font(.caption)
                                 .foregroundColor(.orange)
                         }
-                        if !transaction.description.isEmpty && transaction.description != transaction.merchantName {
-                            Text("• \(transaction.description)")
-                                .font(.caption)
-                                .foregroundColor(Theme.Colors.textSecondary)
-                                .lineLimit(1)
-                        }
                     }
                 }
 
                 Spacer()
 
                 // Amount
-                Text("-$\(String(format: "%.2f", transaction.amount))")
+                Text("-$\(String(format: "%.2f", abs(transaction.amount)))")
                     .font(.body)
                     .fontWeight(.semibold)
                     .foregroundColor(Theme.Colors.expense)
@@ -235,19 +294,10 @@ struct CategoryTransactionRow: View {
 }
 
 #Preview {
-    VStack {
-        // Preview with subcategory (no chips)
-        CategoryTransactionsView(
-            category: BudgetCategory.mockCategories[0],
-            subcategory: BudgetCategory.mockCategories[0].subcategories[0],
-            isPresented: .constant(true)
-        )
-
-        // Preview without subcategory (shows chips)
-        CategoryTransactionsView(
-            category: BudgetCategory.mockCategories[0],
-            subcategory: nil,
-            isPresented: .constant(true)
-        )
-    }
+    CategoryTransactionsView(
+        category: BudgetCategory.mockCategories[0],
+        subcategory: nil,
+        apiClient: APIClient(),
+        isPresented: .constant(true)
+    )
 }
