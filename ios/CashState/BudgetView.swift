@@ -571,12 +571,31 @@ struct InteractiveBudgetDonutView: View {
                             .font(.caption)
                             .fontWeight(.medium)
                             .foregroundColor(Theme.Colors.textSecondary)
-                        Text("$\(String(format: "%.2f", category.spentAmount))")
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundColor(category.color)
-                        Text("\(Int((category.spentAmount / totalSpent) * 100))% of spending")
-                            .font(.caption2)
-                            .foregroundColor(Theme.Colors.textSecondary)
+
+                        // Show budget info if budget ring is visible
+                        if showBudgetRing, let budget = category.budgetAmount {
+                            Text("$\(String(format: "%.2f", category.spentAmount))")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(category.color)
+                            Text("of $\(String(format: "%.0f", budget)) budget")
+                                .font(.caption2)
+                                .foregroundColor(Theme.Colors.textSecondary)
+
+                            let percentage = (category.spentAmount / budget) * 100
+                            Text("\(Int(percentage))% used")
+                                .font(.caption2)
+                                .fontWeight(.medium)
+                                .foregroundColor(percentage > 100 ? Theme.Colors.expense :
+                                               percentage > 90 ? .orange : Theme.Colors.income)
+                        } else {
+                            // Just spending info
+                            Text("$\(String(format: "%.2f", category.spentAmount))")
+                                .font(.system(size: 24, weight: .bold))
+                                .foregroundColor(category.color)
+                            Text("\(Int((category.spentAmount / totalSpent) * 100))% of spending")
+                                .font(.caption2)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
                     } else {
                         Text("Spending")
                             .font(.caption)
@@ -666,18 +685,18 @@ struct BudgetDonutChart: View {
                     }
                 }
 
-                // Inner ring - Budget allocation (narrower) - toggleable
+                // Outer ring - Budget allocation (narrow wrapper) - toggleable
                 if showBudgetRing && totalBudget > 0 {
                     ForEach(Array(categories.enumerated()), id: \.element.id) { index, category in
                         if category.budgetAmount != nil {
                             BudgetDonutSlice(
                                 startAngle: budgetStartAngle(for: index),
                                 endAngle: budgetEndAngle(for: index),
-                                color: category.color.opacity(0.5),
-                                innerRadiusRatio: 0.35,  // Narrower inner ring
-                                outerRadiusRatio: 0.47,
-                                isSelected: false,
-                                isAnySelected: false
+                                color: category.color.opacity(0.4),
+                                innerRadiusRatio: 1.02,  // Just outside spending ring
+                                outerRadiusRatio: 1.08,  // Super narrow ring
+                                isSelected: selectedIndex == index,  // Highlight if category is selected
+                                isAnySelected: selectedIndex != nil
                             )
                         }
                     }
