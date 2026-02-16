@@ -5,12 +5,14 @@ struct CategoryTransactionsNavigableView: View {
     let category: BudgetCategory
     let subcategory: BudgetSubcategory?
     let apiClient: APIClient
+    let selectedMonth: Date
 
     var body: some View {
         CategoryTransactionsContentView(
             category: category,
             subcategory: subcategory,
             apiClient: apiClient,
+            selectedMonth: selectedMonth,
             isPresented: nil
         )
     }
@@ -21,6 +23,7 @@ struct CategoryTransactionsView: View {
     let category: BudgetCategory
     let subcategory: BudgetSubcategory?
     let apiClient: APIClient
+    let selectedMonth: Date
     @Binding var isPresented: Bool
 
     var body: some View {
@@ -29,6 +32,7 @@ struct CategoryTransactionsView: View {
                 category: category,
                 subcategory: subcategory,
                 apiClient: apiClient,
+                selectedMonth: selectedMonth,
                 isPresented: $isPresented
             )
             .toolbar {
@@ -48,6 +52,7 @@ private struct CategoryTransactionsContentView: View {
     let category: BudgetCategory
     let subcategory: BudgetSubcategory?
     let apiClient: APIClient
+    let selectedMonth: Date
     var isPresented: Binding<Bool>?
 
     @State private var transactions: [Transaction] = []
@@ -267,15 +272,18 @@ private struct CategoryTransactionsContentView: View {
         errorMessage = nil
 
         do {
-            // Fetch all transactions for the current month
+            // Fetch all transactions for the selected month
             let calendar = Calendar.current
-            let now = Date()
-            let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
+            let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: selectedMonth))!
             let startTimestamp = Int(startOfMonth.timeIntervalSince1970)
+
+            // Calculate end of selected month
+            let startOfNextMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth)!
+            let endTimestamp = Int(startOfNextMonth.timeIntervalSince1970)
 
             let response = try await apiClient.listSimplefinTransactions(
                 dateFrom: startTimestamp,
-                dateTo: nil,
+                dateTo: endTimestamp,
                 limit: 1000,
                 offset: 0
             )
@@ -394,6 +402,7 @@ struct TransactionRowView: View {
         category: BudgetCategory.mockCategories[0],
         subcategory: nil,
         apiClient: APIClient(),
+        selectedMonth: Date(),
         isPresented: .constant(true)
     )
 }

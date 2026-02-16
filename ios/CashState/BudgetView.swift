@@ -92,7 +92,8 @@ struct BudgetView: View {
                 CategoryTransactionsNavigableView(
                     category: destination.category,
                     subcategory: destination.subcategory,
-                    apiClient: apiClient
+                    apiClient: apiClient,
+                    selectedMonth: selectedMonth
                 )
             }
             .toolbar {
@@ -420,13 +421,6 @@ struct BudgetView: View {
             let startOfNextMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth)!
             let endTimestamp = Int(startOfNextMonth.timeIntervalSince1970)
 
-            // Debug: print date range
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-            print("📅 Loading budget data for: \(currentMonthYear)")
-            print("   Start: \(dateFormatter.string(from: startOfMonth)) (timestamp: \(startTimestamp))")
-            print("   End (exclusive): \(dateFormatter.string(from: startOfNextMonth)) (timestamp: \(endTimestamp))")
-
             let response = try await apiClient.listSimplefinTransactions(
                 dateFrom: startTimestamp,
                 dateTo: endTimestamp,
@@ -437,9 +431,6 @@ struct BudgetView: View {
             let transactions = response.items
             hasPreviousData = response.hasPreviousMonth
             hasNextData = response.hasNextMonth
-
-            print("   Fetched \(transactions.count) transactions for \(currentMonthYear)")
-            print("   📅 Navigation: hasPrevious=\(hasPreviousData), hasNext=\(hasNextData)")
 
             // Build category spending map
             // IMPORTANT: Only count expenses (negative amounts) in budget tracking
