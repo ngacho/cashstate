@@ -96,7 +96,8 @@ struct TransactionsView: View {
         defer { isLoading = false }
 
         do {
-            transactions = try await apiClient.listSimplefinTransactions(limit: 200)
+            let response = try await apiClient.listSimplefinTransactions(limit: 200)
+            transactions = response.items
         } catch {
             // Silently fail and show empty state - no data synced yet
             print("Failed to load transactions: \(error)")
@@ -479,7 +480,8 @@ struct InsightsView: View {
         defer { isLoading = false }
 
         do {
-            transactions = try await apiClient.listSimplefinTransactions(limit: 200)
+            let response = try await apiClient.listSimplefinTransactions(limit: 200)
+            transactions = response.items
         } catch {
             // Silent fail for insights - user can refresh
             print("Failed to load transactions: \(error)")

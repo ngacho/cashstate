@@ -92,6 +92,15 @@ class SimplefinTransactionResponse(BaseModel):
 
 
 # ============================================================================
+class SimplefinTransactionListResponse(BaseModel):
+    """List of SimpleFin transactions with navigation metadata."""
+
+    items: list[SimplefinTransactionResponse]
+    total: int
+    has_previous_month: bool  # True if there are transactions in the previous month
+    has_next_month: bool  # True if there are transactions in the next month (future months always false)
+
+
 # SimpleFin Sync Schemas
 # ============================================================================
 

@@ -273,7 +273,7 @@ private struct CategoryTransactionsContentView: View {
             let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
             let startTimestamp = Int(startOfMonth.timeIntervalSince1970)
 
-            let allTransactions = try await apiClient.listSimplefinTransactions(
+            let response = try await apiClient.listSimplefinTransactions(
                 dateFrom: startTimestamp,
                 dateTo: nil,
                 limit: 1000,
@@ -283,12 +283,12 @@ private struct CategoryTransactionsContentView: View {
             // Filter transactions by category and subcategory
             if let sub = subcategory {
                 // Filter by subcategory
-                transactions = allTransactions.filter {
+                transactions = response.items.filter {
                     $0.categoryId == category.id && $0.subcategoryId == sub.id
                 }
             } else {
                 // Filter by category only (all subcategories)
-                transactions = allTransactions.filter {
+                transactions = response.items.filter {
                     $0.categoryId == category.id
                 }
             }

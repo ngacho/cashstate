@@ -77,6 +77,21 @@ struct Transaction: Identifiable, Codable, Hashable {
     var merchantName: String { description }
 }
 
+// Transaction list response with navigation metadata
+struct TransactionListResponse: Codable {
+    let items: [Transaction]
+    let total: Int
+    let hasPreviousMonth: Bool
+    let hasNextMonth: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case items
+        case total
+        case hasPreviousMonth = "has_previous_month"
+        case hasNextMonth = "has_next_month"
+    }
+}
+
 // MARK: - Time Range
 
 enum TimeRange: String, CaseIterable {

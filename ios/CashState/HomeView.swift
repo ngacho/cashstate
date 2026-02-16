@@ -1129,8 +1129,8 @@ struct AccountDetailView: View {
 
         do {
             // Load all transactions and filter by account
-            let allTransactions = try await apiClient.listSimplefinTransactions(limit: 500)
-            transactions = allTransactions.filter { $0.simplefinAccountId == account.id }
+            let response = try await apiClient.listSimplefinTransactions(limit: 500)
+            transactions = response.items.filter { $0.simplefinAccountId == account.id }
         } catch {
             print("Failed to load transactions: \(error)")
         }

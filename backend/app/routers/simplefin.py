@@ -11,7 +11,7 @@ from app.schemas.simplefin import (
     SetupTokenResponse,
     SimplefinItemResponse,
     SimplefinAccountResponse,
-    SimplefinTransactionResponse,
+    SimplefinTransactionListResponse,
     SyncResponse,
     FetchAccountsResponse,
 )
@@ -154,7 +154,7 @@ async def list_accounts(
     return accounts
 
 
-@router.get("/transactions", response_model=list[SimplefinTransactionResponse])
+@router.get("/transactions", response_model=SimplefinTransactionListResponse)
 async def list_transactions(
     user: dict = Depends(get_current_user),
     db: Database = Depends(get_database),
@@ -163,7 +163,11 @@ async def list_transactions(
     limit: int = 50,
     offset: int = 0,
 ):
-    """List all SimpleFin transactions for the current user."""
+    """List all SimpleFin transactions for the current user.
+
+    Returns transaction list with navigation metadata (has_previous_month, has_next_month)
+    indicating if there are transactions before/after the current date range.
+    """
     from datetime import datetime
 
     # Convert timestamps to human-readable dates for logging
@@ -195,7 +199,44 @@ async def list_transactions(
         logger.debug(f"[GET /simplefin/transactions] Sample transaction: id={sample.get('id')}, category_id={sample.get('category_id')}, subcategory_id={sample.get('subcategory_id')}, amount={sample.get('amount')}")
         logger.debug(f"[GET /simplefin/transactions] Fields in response: {list(sample.keys())}")
 
-    return transactions
+    # Calculate navigation metadata when we have a date range
+    has_previous = False
+    has_next = False
+
+    if date_from is not None:
+        # Check if there are ANY transactions before this date range
+        earlier_transactions = db.get_user_simplefin_transactions(
+            user_id=user["id"],
+            date_from=None,
+            date_to=date_from - 1,  # Before the start of current range
+            limit=1,
+            offset=0,
+        )
+        has_previous = len(earlier_transactions) > 0
+
+    if date_to is not None:
+        # Check if there are ANY transactions after this date range (and not in future)
+        now = int(datetime.now().timestamp())
+        search_end = min(date_to + 1, now)  # Don't search beyond current time
+
+        if search_end > date_to:  # Only search if there's a range to search
+            later_transactions = db.get_user_simplefin_transactions(
+                user_id=user["id"],
+                date_from=date_to,  # After the end of current range
+                date_to=search_end,
+                limit=1,
+                offset=0,
+            )
+            has_next = len(later_transactions) > 0
+
+    logger.info(f"[GET /simplefin/transactions] Navigation: has_previous={has_previous}, has_next={has_next}")
+
+    return SimplefinTransactionListResponse(
+        items=transactions,
+        total=len(transactions),
+        has_previous_month=has_previous,
+        has_next_month=has_next,
+    )
 
 
 @router.post("/sync/{item_id}", response_model=SyncResponse)

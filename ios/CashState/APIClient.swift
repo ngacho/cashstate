@@ -317,7 +317,7 @@ actor APIClient {
         dateTo: Int? = nil,
         limit: Int = 50,
         offset: Int = 0
-    ) async throws -> [Transaction] {
+    ) async throws -> TransactionListResponse {
         var components = URLComponents(string: Config.apiBaseURL + "/simplefin/transactions")
         var queryItems: [URLQueryItem] = []
 
@@ -374,7 +374,7 @@ actor APIClient {
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode([Transaction].self, from: data)
+        return try decoder.decode(TransactionListResponse.self, from: data)
     }
 
     // MARK: - Account Snapshots (per-account balance history)

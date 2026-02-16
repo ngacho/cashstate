@@ -29,7 +29,8 @@ struct BudgetView: View {
 
     // Month selection for viewing historical data
     @State private var selectedMonth: Date = Date()
-    @State private var earliestTransactionDate: Date?
+    @State private var hasPreviousData: Bool = false
+    @State private var hasNextData: Bool = false
 
     var totalBudget: Double {
         categories.compactMap { $0.budgetAmount }.reduce(0, +)
@@ -62,18 +63,8 @@ struct BudgetView: View {
     }
 
     var isPreviousMonthAvailable: Bool {
-        guard let earliestDate = earliestTransactionDate else {
-            // If we don't know the earliest date yet, allow navigation (we'll find out when we try)
-            return true
-        }
-
-        let calendar = Calendar.current
-        guard let previousMonth = calendar.date(byAdding: .month, value: -1, to: selectedMonth) else {
-            return false
-        }
-
-        // Allow if previous month is on or after the earliest transaction month
-        return previousMonth >= calendar.date(from: calendar.dateComponents([.year, .month], from: earliestDate))!
+        // API tells us if there's any previous data
+        return hasPreviousData
     }
 
     var body: some View {
@@ -187,8 +178,8 @@ struct BudgetView: View {
                                 .foregroundColor(Theme.Colors.textSecondary)
 
                             // Show indicator when at earliest available month
-                            if !isPreviousMonthAvailable && earliestTransactionDate != nil {
-                                Text("Earliest data")
+                            if !isPreviousMonthAvailable {
+                                Text("No earlier data")
                                     .font(.caption2)
                                     .foregroundColor(Theme.Colors.textSecondary.opacity(0.7))
                                     .italic()
@@ -436,32 +427,19 @@ struct BudgetView: View {
             print("   Start: \(dateFormatter.string(from: startOfMonth)) (timestamp: \(startTimestamp))")
             print("   End (exclusive): \(dateFormatter.string(from: startOfNextMonth)) (timestamp: \(endTimestamp))")
 
-            let transactions = try await apiClient.listSimplefinTransactions(
+            let response = try await apiClient.listSimplefinTransactions(
                 dateFrom: startTimestamp,
                 dateTo: endTimestamp,
                 limit: 1000,
                 offset: 0
             )
 
-            print("   Fetched \(transactions.count) transactions for \(currentMonthYear)")
+            let transactions = response.items
+            hasPreviousData = response.hasPreviousMonth
+            hasNextData = response.hasNextMonth
 
-            // Track earliest transaction date for navigation limits
-            if !transactions.isEmpty {
-                let oldestInBatch = transactions.map { Date(timeIntervalSince1970: TimeInterval($0.postedDate)) }.min()
-                if let oldest = oldestInBatch {
-                    if let current = earliestTransactionDate {
-                        earliestTransactionDate = min(current, oldest)
-                    } else {
-                        earliestTransactionDate = oldest
-                    }
-                    print("   📅 Earliest known transaction date: \(dateFormatter.string(from: earliestTransactionDate!))")
-                }
-            } else if earliestTransactionDate == nil {
-                // If no transactions in current month and we haven't seen any before,
-                // set earliest to current month to prevent going back further
-                earliestTransactionDate = selectedMonth
-                print("   📅 No transactions found, limiting navigation to current month")
-            }
+            print("   Fetched \(transactions.count) transactions for \(currentMonthYear)")
+            print("   📅 Navigation: hasPrevious=\(hasPreviousData), hasNext=\(hasNextData)")
 
             // Build category spending map
             // IMPORTANT: Only count expenses (negative amounts) in budget tracking
