@@ -6,6 +6,7 @@ struct BudgetView: View {
     @State private var showAllBudgets = false
     @State private var showEditBudget = false
     @State private var selectedCategory: BudgetCategory?
+    @State private var navigationPath = NavigationPath()
 
     // Categorization state
     @State private var uncategorizedTransactions: [CategorizableTransaction] = []
@@ -40,7 +41,7 @@ struct BudgetView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack(path: $navigationPath) {
             Group {
                 if isLoading {
                     ProgressView("Loading...")
@@ -60,6 +61,13 @@ struct BudgetView: View {
             }
             .navigationTitle("Budget")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: CategoryTransactionsDestination.self) { destination in
+                CategoryTransactionsNavigableView(
+                    category: destination.category,
+                    subcategory: destination.subcategory,
+                    apiClient: apiClient
+                )
+            }
             .toolbar {
                 if !categories.isEmpty {
                     ToolbarItem(placement: .navigationBarTrailing) {
@@ -791,12 +799,26 @@ struct CategoryDetailView: View {
 
 // MARK: - Expandable Category Card
 
+// Helper for navigation
+struct CategoryTransactionsDestination: Hashable {
+    let category: BudgetCategory
+    let subcategory: BudgetSubcategory?
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(category.id)
+        hasher.combine(subcategory?.id)
+    }
+
+    static func == (lhs: CategoryTransactionsDestination, rhs: CategoryTransactionsDestination) -> Bool {
+        lhs.category.id == rhs.category.id && lhs.subcategory?.id == rhs.subcategory?.id
+    }
+}
+
 struct ExpandableCategoryCard: View {
     @Binding var category: BudgetCategory
     let apiClient: APIClient
     @State private var isExpanded: Bool = false
     @State private var showEditCategoryBudget: Bool = false
-    @State private var showAllTransactions: Bool = false
     @State private var showAddSubcategory: Bool = false
 
     var body: some View {
@@ -947,9 +969,7 @@ struct ExpandableCategoryCard: View {
                     }
 
                     // View all transactions button
-                    Button {
-                        showAllTransactions = true
-                    } label: {
+                    NavigationLink(value: CategoryTransactionsDestination(category: category, subcategory: nil)) {
                         HStack(spacing: Theme.Spacing.xs) {
                             Image(systemName: "list.bullet.rectangle")
                                 .font(.caption)
@@ -971,15 +991,6 @@ struct ExpandableCategoryCard: View {
                 isPresented: $showEditCategoryBudget
             )
         }
-        .sheet(isPresented: $showAllTransactions) {
-            CategoryTransactionsView(
-                category: category,
-                subcategory: nil,
-                apiClient: apiClient,
-                isPresented: $showAllTransactions
-            )
-            .presentationDetents([.large])
-        }
         .sheet(isPresented: $showAddSubcategory) {
             AddSubcategoryView(
                 parentCategory: category,
@@ -999,7 +1010,6 @@ struct SubcategoryRow: View {
     let categoryColor: Color
     let apiClient: APIClient
     @State private var showEditBudget = false
-    @State private var showTransactions = false
 
     var percentageUsed: Double {
         guard let budget = subcategory.budgetAmount, budget > 0 else { return 0 }
@@ -1014,9 +1024,7 @@ struct SubcategoryRow: View {
     var body: some View {
         VStack(spacing: 4) {
             HStack(spacing: Theme.Spacing.sm) {
-                Button {
-                    showTransactions = true
-                } label: {
+                NavigationLink(value: CategoryTransactionsDestination(category: category, subcategory: subcategory)) {
                     HStack(spacing: Theme.Spacing.sm) {
                     // Icon with parent category colored border
                     Text(subcategory.icon)
@@ -1116,15 +1124,6 @@ struct SubcategoryRow: View {
                 categoryColor: categoryColor,
                 isPresented: $showEditBudget
             )
-        }
-        .sheet(isPresented: $showTransactions) {
-            CategoryTransactionsView(
-                category: category,
-                subcategory: subcategory,
-                apiClient: apiClient,
-                isPresented: $showTransactions
-            )
-            .presentationDetents([.large])
         }
     }
 }

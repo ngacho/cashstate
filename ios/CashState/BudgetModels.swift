@@ -3,7 +3,15 @@ import SwiftUI
 
 // MARK: - Budget Category
 
-struct BudgetCategory: Identifiable, Codable {
+struct BudgetCategory: Identifiable, Codable, Hashable {
+    // Custom Hashable implementation to only hash the id
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
+    static func == (lhs: BudgetCategory, rhs: BudgetCategory) -> Bool {
+        lhs.id == rhs.id
+    }
     let id: String
     let name: String
     let icon: String
@@ -78,7 +86,15 @@ enum ColorPalette: String, CaseIterable, Identifiable {
 
 // MARK: - Budget Subcategory
 
-struct BudgetSubcategory: Identifiable, Codable {
+struct BudgetSubcategory: Identifiable, Codable, Hashable {
+    // Custom Hashable implementation to only hash the id
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
+    static func == (lhs: BudgetSubcategory, rhs: BudgetSubcategory) -> Bool {
+        lhs.id == rhs.id
+    }
     let id: String
     let name: String
     let icon: String

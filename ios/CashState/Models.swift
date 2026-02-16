@@ -20,7 +20,7 @@ struct AuthResponse: Codable {
 
 // MARK: - SimpleFin Transaction (matches backend SimplefinTransactionResponse)
 
-struct Transaction: Identifiable, Codable {
+struct Transaction: Identifiable, Codable, Hashable {
     let id: String
     let simplefinAccountId: String
     let simplefinTransactionId: String

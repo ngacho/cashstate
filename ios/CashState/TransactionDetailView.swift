@@ -1,11 +1,61 @@
 import SwiftUI
 
+// MARK: - Navigable version (for NavigationLink)
+struct TransactionDetailNavigableView: View {
+    let transaction: Transaction
+    let categories: [BudgetCategory]
+    let apiClient: APIClient
+    var onCategoryUpdated: ((String?, String?) -> Void)?
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        TransactionDetailContentView(
+            transaction: transaction,
+            categories: categories,
+            apiClient: apiClient,
+            onCategoryUpdated: onCategoryUpdated,
+            onDismiss: { dismiss() }
+        )
+    }
+}
+
+// MARK: - Modal version (for sheets - legacy support)
 struct TransactionDetailView: View {
     let transaction: Transaction
     let categories: [BudgetCategory]
     let apiClient: APIClient
     @Binding var isPresented: Bool
     @Binding var onCategoryUpdated: ((String?, String?) -> Void)?
+
+    var body: some View {
+        NavigationStack {
+            TransactionDetailContentView(
+                transaction: transaction,
+                categories: categories,
+                apiClient: apiClient,
+                onCategoryUpdated: onCategoryUpdated,
+                onDismiss: { isPresented = false }
+            )
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        isPresented = false
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Content View (shared logic)
+private struct TransactionDetailContentView: View {
+    let transaction: Transaction
+    let categories: [BudgetCategory]
+    let apiClient: APIClient
+    var onCategoryUpdated: ((String?, String?) -> Void)?
+    var onDismiss: () -> Void
 
     @State private var selectedCategory: BudgetCategory?
     @State private var selectedSubcategory: BudgetSubcategory?
@@ -20,14 +70,14 @@ struct TransactionDetailView: View {
         transaction: Transaction,
         categories: [BudgetCategory],
         apiClient: APIClient,
-        isPresented: Binding<Bool>,
-        onCategoryUpdated: Binding<((String?, String?) -> Void)?> = .constant(nil)
+        onCategoryUpdated: ((String?, String?) -> Void)?,
+        onDismiss: @escaping () -> Void
     ) {
         self.transaction = transaction
         self.categories = categories
         self.apiClient = apiClient
-        self._isPresented = isPresented
-        self._onCategoryUpdated = onCategoryUpdated
+        self.onCategoryUpdated = onCategoryUpdated
+        self.onDismiss = onDismiss
 
         // Initialize loadedCategories with passed categories
         self._loadedCategories = State(initialValue: categories)
@@ -73,11 +123,10 @@ struct TransactionDetailView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Theme.Colors.background.ignoresSafeArea()
+        ZStack {
+            Theme.Colors.background.ignoresSafeArea()
 
-                ScrollView {
+            ScrollView {
                     VStack(spacing: Theme.Spacing.lg) {
                         // Transaction Details Card (always show this)
                         VStack(spacing: Theme.Spacing.md) {
@@ -264,10 +313,10 @@ struct TransactionDetailView: View {
 
                         Spacer(minLength: Theme.Spacing.xl)
                     }
-                }
+            }
 
-                // Success Animation Overlay
-                if showSuccessAnimation {
+            // Success Animation Overlay
+            if showSuccessAnimation {
                     ZStack {
                         Color.black.opacity(0.3)
                             .ignoresSafeArea()
@@ -289,20 +338,11 @@ struct TransactionDetailView: View {
                     }
                     .transition(.opacity)
                 }
-            }
-            .navigationTitle("Transaction Details")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        isPresented = false
-                    }
-                    .fontWeight(.semibold)
-                }
-            }
-            .task {
-                await loadCategoriesIfNeeded()
-            }
+        }
+        .navigationTitle("Transaction Details")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await loadCategoriesIfNeeded()
         }
     }
 
@@ -390,7 +430,7 @@ struct TransactionDetailView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                     showSuccessAnimation = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        isPresented = false
+                        onDismiss()
                     }
                 }
             }

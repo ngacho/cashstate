@@ -1,17 +1,59 @@
 import SwiftUI
 
+// MARK: - Navigable version (for NavigationLink)
+struct CategoryTransactionsNavigableView: View {
+    let category: BudgetCategory
+    let subcategory: BudgetSubcategory?
+    let apiClient: APIClient
+
+    var body: some View {
+        CategoryTransactionsContentView(
+            category: category,
+            subcategory: subcategory,
+            apiClient: apiClient,
+            isPresented: nil
+        )
+    }
+}
+
+// MARK: - Modal version (for sheets - legacy support)
 struct CategoryTransactionsView: View {
     let category: BudgetCategory
     let subcategory: BudgetSubcategory?
     let apiClient: APIClient
     @Binding var isPresented: Bool
 
+    var body: some View {
+        NavigationStack {
+            CategoryTransactionsContentView(
+                category: category,
+                subcategory: subcategory,
+                apiClient: apiClient,
+                isPresented: $isPresented
+            )
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        isPresented = false
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Content View (shared logic)
+private struct CategoryTransactionsContentView: View {
+    let category: BudgetCategory
+    let subcategory: BudgetSubcategory?
+    let apiClient: APIClient
+    var isPresented: Binding<Bool>?
+
     @State private var transactions: [Transaction] = []
     @State private var isLoading = true
     @State private var isLoadingCategories = true
     @State private var errorMessage: String?
-    @State private var selectedTransaction: Transaction?
-    @State private var showTransactionDetail = false
     @State private var allCategories: [BudgetCategory] = []
 
     var title: String {
@@ -27,68 +69,55 @@ struct CategoryTransactionsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                if isLoading || isLoadingCategories {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                        if isLoading {
-                            Text("Loading transactions...")
-                                .font(.subheadline)
-                                .foregroundColor(Theme.Colors.textSecondary)
-                        } else {
-                            Text("Loading categories...")
-                                .font(.subheadline)
-                                .foregroundColor(Theme.Colors.textSecondary)
-                        }
-                    }
-                } else if let error = errorMessage {
-                    VStack(spacing: Theme.Spacing.md) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 50))
-                            .foregroundColor(.red)
-                        Text("Error loading transactions")
-                            .font(.headline)
-                        Text(error)
+        ZStack {
+            if isLoading || isLoadingCategories {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    if isLoading {
+                        Text("Loading transactions...")
                             .font(.subheadline)
                             .foregroundColor(Theme.Colors.textSecondary)
-                            .multilineTextAlignment(.center)
+                    } else {
+                        Text("Loading categories...")
+                            .font(.subheadline)
+                            .foregroundColor(Theme.Colors.textSecondary)
                     }
-                    .padding()
-                } else {
-                    contentView
                 }
+            } else if let error = errorMessage {
+                VStack(spacing: Theme.Spacing.md) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 50))
+                        .foregroundColor(.red)
+                    Text("Error loading transactions")
+                        .font(.headline)
+                    Text(error)
+                        .font(.subheadline)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding()
+            } else {
+                contentView
             }
-            .navigationTitle("Transactions")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        isPresented = false
+        }
+        .navigationTitle("Transactions")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(for: Transaction.self) { transaction in
+            TransactionDetailNavigableView(
+                transaction: transaction,
+                categories: allCategories,
+                apiClient: apiClient,
+                onCategoryUpdated: { _, _ in
+                    // Reload transactions to reflect changes
+                    Task {
+                        await loadTransactions()
                     }
-                    .fontWeight(.semibold)
                 }
-            }
-            .task {
-                await loadTransactions()
-                await loadCategories()
-            }
-            .sheet(isPresented: $showTransactionDetail) {
-                if let transaction = selectedTransaction {
-                    TransactionDetailView(
-                        transaction: transaction,
-                        categories: allCategories,
-                        apiClient: apiClient,
-                        isPresented: $showTransactionDetail,
-                        onCategoryUpdated: .constant({ newCategoryId, newSubcategoryId in
-                            // Reload transactions to reflect changes
-                            Task {
-                                await loadTransactions()
-                            }
-                        })
-                    )
-                }
-            }
+            )
+        }
+        .task {
+            await loadTransactions()
+            await loadCategories()
         }
     }
 
@@ -169,16 +198,15 @@ struct CategoryTransactionsView: View {
 
                             LazyVStack(spacing: 0) {
                                 ForEach(transactions) { transaction in
-                                    TransactionRowView(
-                                        transaction: transaction,
-                                        category: category,
-                                        showSubcategoryChip: subcategory == nil,
-                                        categoryColor: category.color
-                                    )
-                                    .onTapGesture {
-                                        selectedTransaction = transaction
-                                        showTransactionDetail = true
+                                    NavigationLink(value: transaction) {
+                                        TransactionRowView(
+                                            transaction: transaction,
+                                            category: category,
+                                            showSubcategoryChip: subcategory == nil,
+                                            categoryColor: category.color
+                                        )
                                     }
+                                    .buttonStyle(.plain)
                                     if transaction.id != transactions.last?.id {
                                         Divider()
                                             .padding(.leading, 60)
