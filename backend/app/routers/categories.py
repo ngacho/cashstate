@@ -17,12 +17,43 @@ from app.schemas.category import (
     SubcategoryListResponse,
     CategorizationRequest,
     CategorizationResponse,
+    SeedDefaultsRequest,
+    SeedDefaultsResponse,
 )
 from app.schemas.common import SuccessResponse
 from app.services.categorization_service import get_categorization_service
+from app.services.onboarding_service import get_onboarding_service
 
 
 router = APIRouter(prefix="/categories", tags=["Categories"])
+
+
+# ============================================================================
+# Onboarding Endpoint
+# ============================================================================
+
+
+@router.post("/seed-defaults", response_model=SeedDefaultsResponse)
+async def seed_default_categories(
+    request: SeedDefaultsRequest,
+    user: dict = Depends(get_current_user),
+    db: Database = Depends(get_database),
+):
+    """Seed default categories, subcategories, and budgets for a new user.
+
+    This endpoint creates a complete set of default categories (Income, Housing,
+    Food & Dining, etc.), their subcategories, and allocates the monthly budget
+    evenly across expense categories.
+
+    Should be called once during user onboarding.
+    """
+    onboarding_service = get_onboarding_service(db)
+    result = onboarding_service.seed_default_categories(
+        user_id=user["id"],
+        monthly_budget=request.monthly_budget
+    )
+
+    return SeedDefaultsResponse(**result)
 
 
 # ============================================================================
@@ -295,6 +326,10 @@ async def categorize_with_ai(
         )
         return CategorizationResponse(**result)
     except ValueError as e:
+        print(f"[AI Categorization] ValueError: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
+        print(f"[AI Categorization] Exception: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Categorization failed: {str(e)}")

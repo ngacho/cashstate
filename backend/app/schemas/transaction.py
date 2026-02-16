@@ -32,3 +32,32 @@ class TransactionListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class TransactionUpdate(BaseModel):
+    """Update transaction categorization."""
+
+    category_id: str | None = None
+    subcategory_id: str | None = None
+
+
+class TransactionBatchUpdateItem(BaseModel):
+    """Single transaction update in a batch."""
+
+    transaction_id: str
+    category_id: str | None = None
+    subcategory_id: str | None = None
+
+
+class TransactionBatchUpdate(BaseModel):
+    """Batch update multiple transactions."""
+
+    updates: list[TransactionBatchUpdateItem]
+
+
+class TransactionBatchUpdateResponse(BaseModel):
+    """Response from batch update."""
+
+    updated_count: int
+    failed_count: int
+    failed_ids: list[str] = []

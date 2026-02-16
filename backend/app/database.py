@@ -171,6 +171,58 @@ class Database:
         )
         return result.data[0] if result.data else None
 
+    def update_simplefin_transaction(
+        self, transaction_id: str, updates: dict
+    ) -> dict | None:
+        """Update a SimpleFin transaction (e.g., categorization)."""
+        result = (
+            self.client.table("simplefin_transactions")
+            .update(updates)
+            .eq("id", transaction_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def get_simplefin_transactions_by_ids(self, transaction_ids: list[str]) -> list[dict]:
+        """Batch fetch SimpleFin transactions by IDs in ONE query."""
+        result = (
+            self.client.table("simplefin_transactions")
+            .select("*")
+            .in_("id", transaction_ids)
+            .execute()
+        )
+        return result.data
+
+    def batch_update_simplefin_transactions(self, updates: list[dict]) -> int:
+        """Batch update multiple SimpleFin transactions in ONE SQL query using RPC.
+
+        Args:
+            updates: List of dicts with 'id' and fields to update (category_id, subcategory_id)
+
+        Returns:
+            Number of transactions updated
+        """
+        if not updates:
+            return 0
+
+        # Build arrays for batch RPC call
+        transaction_ids = [u["id"] for u in updates]
+        category_ids = [u.get("category_id") for u in updates]
+        subcategory_ids = [u.get("subcategory_id") for u in updates]
+
+        # Call stored procedure that does batch update in single SQL
+        result = self.client.rpc(
+            "batch_update_transaction_categories",
+            {
+                "transaction_ids": transaction_ids,
+                "category_ids": category_ids,
+                "subcategory_ids": subcategory_ids,
+            },
+        ).execute()
+
+        # RPC returns number of updated rows
+        return result.data if isinstance(result.data, int) else len(updates)
+
     def get_user_simplefin_transactions(
         self,
         user_id: str,
@@ -216,6 +268,71 @@ class Database:
             query = query.gte("posted_date", date_from)
         if date_to:
             query = query.lte("posted_date", date_to)
+        result = query.execute()
+        return result.count if result.count is not None else 0
+
+    def get_user_transactions_with_account_info(
+        self,
+        user_id: str,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        """Get user's transactions with joined account information from transactions_view.
+
+        This method queries the transactions_view which joins transactions with accounts
+        to provide all fields needed for the TransactionResponse schema.
+
+        Args:
+            user_id: User UUID
+            date_from: Start date in YYYY-MM-DD format
+            date_to: End date in YYYY-MM-DD format
+            limit: Max number of results
+            offset: Offset for pagination
+
+        Returns:
+            List of transaction dicts with account info (simplefin_item_id, account_name, etc.)
+        """
+        query = self.client.table("transactions_view").select("*")
+        query = query.eq("user_id", user_id)
+
+        if date_from:
+            query = query.gte("date", date_from)
+        if date_to:
+            query = query.lte("date", date_to)
+
+        result = (
+            query.order("posted", desc=True)
+            .range(offset, offset + limit - 1)
+            .execute()
+        )
+        return result.data
+
+    def count_user_transactions_with_account_info(
+        self,
+        user_id: str,
+        date_from: str | None = None,
+        date_to: str | None = None,
+    ) -> int:
+        """Count user's transactions from the transactions_view.
+
+        Args:
+            user_id: User UUID
+            date_from: Start date in YYYY-MM-DD format
+            date_to: End date in YYYY-MM-DD format
+
+        Returns:
+            Total count of matching transactions
+        """
+        query = self.client.table("transactions_view").select("id", count="exact")
+        query = query.eq("user_id", user_id)
+
+        if date_from:
+            query = query.gte("date", date_from)
+        if date_to:
+            query = query.lte("date", date_to)
+
         result = query.execute()
         return result.count if result.count is not None else 0
 
@@ -326,6 +443,27 @@ class Database:
     def delete_subcategory(self, subcategory_id: str) -> None:
         """Delete a subcategory."""
         self.client.table("subcategories").delete().eq("id", subcategory_id).execute()
+
+    # ========================================================================
+    # Budgets
+    # ========================================================================
+
+    def create_budget(self, budget_data: dict) -> dict:
+        """Create a new budget entry."""
+        result = self.client.table("budgets").insert(budget_data).execute()
+        return result.data[0]
+
+    def get_budgets(self, user_id: str, category_id: str = None) -> list[dict]:
+        """Get budgets for a user, optionally filtered by category."""
+        query = self.client.table("budgets").select("*").eq("user_id", user_id)
+        if category_id:
+            query = query.eq("category_id", category_id)
+        result = query.execute()
+        return result.data
+
+    # ========================================================================
+    # Transaction Categorization
+    # ========================================================================
 
     def update_transaction_category(
         self, transaction_id: str, category_id: str | None, subcategory_id: str | None

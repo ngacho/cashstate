@@ -13,7 +13,7 @@ class CategoryBase(BaseModel):
     """Base category fields."""
 
     name: str = Field(..., min_length=1, max_length=100)
-    icon: str | None = Field(None, description="SF Symbol name (e.g., 'fork.knife')")
+    icon: str | None = Field(None, description="Emoji character (e.g., '🍽️') - cross-platform")
     color: str | None = Field(None, description="Hex color code (e.g., '#FF5733')")
     display_order: int = Field(default=0, description="Display order for sorting")
 
@@ -60,14 +60,16 @@ class SubcategoryBase(BaseModel):
 
     category_id: str = Field(..., description="Parent category ID")
     name: str = Field(..., min_length=1, max_length=100)
-    icon: str | None = Field(None, description="SF Symbol name")
+    icon: str | None = Field(None, description="Emoji character - cross-platform")
     display_order: int = Field(default=0, description="Display order within category")
 
 
-class SubcategoryCreate(SubcategoryBase):
-    """Create a new subcategory."""
+class SubcategoryCreate(BaseModel):
+    """Create a new subcategory (category_id comes from URL path)."""
 
-    pass
+    name: str = Field(..., min_length=1, max_length=100)
+    icon: str | None = Field(None, description="Emoji character - cross-platform")
+    display_order: int = Field(default=0, description="Display order within category")
 
 
 class SubcategoryUpdate(BaseModel):
@@ -148,3 +150,28 @@ class CategorizationResponse(BaseModel):
     categorized_count: int
     failed_count: int
     results: list[TransactionCategorization]
+
+
+# ============================================================================
+# Onboarding / Seed Defaults
+# ============================================================================
+
+
+class SeedDefaultsRequest(BaseModel):
+    """Request to seed default categories with budget allocation."""
+
+    monthly_budget: float = Field(
+        ...,
+        gt=0,
+        description="Total monthly budget to distribute across categories (e.g., 3000.00)",
+    )
+
+
+class SeedDefaultsResponse(BaseModel):
+    """Response from seeding default categories."""
+
+    categories_created: int
+    subcategories_created: int
+    budgets_created: int
+    monthly_budget: float
+    budget_per_category: float

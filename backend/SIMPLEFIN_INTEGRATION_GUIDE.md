@@ -110,7 +110,7 @@ Update sync job + item last_synced_at
 | SimpleFin Field | Our Field | Notes |
 |----------------|-----------|-------|
 | `id` | `simplefin_account_id` | e.g., "ACT-xxx" |
-| `name` | `name` | e.g., "credit (2537)" |
+| `name` | `name` | e.g., "credit" |
 | `currency` | `currency` | Always "USD" in US |
 | `balance` | `balance` | Converted to numeric |
 | `available-balance` | `available_balance` | Converted to numeric |

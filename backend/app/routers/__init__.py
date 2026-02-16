@@ -1,6 +1,7 @@
 """API routers."""
 
 from app.routers.auth import router as auth_router
+from app.routers.budgets import router as budgets_router
 from app.routers.categories import router as categories_router
 from app.routers.plaid import router as plaid_router
 from app.routers.simplefin import router as simplefin_router
@@ -10,6 +11,7 @@ from app.routers.transactions import router as transactions_router
 
 __all__ = [
     "auth_router",
+    "budgets_router",
     "categories_router",
     "plaid_router",
     "simplefin_router",

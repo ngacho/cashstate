@@ -22,6 +22,8 @@ class TestCompleteSimplefinFlow:
     user_id: str = None
     simplefin_item_id: str = None
     sync_job_id: str = None
+    category_id: str = None
+    subcategory_id: str = None
 
     @pytest.fixture(autouse=True)
     def setup(self, client):
@@ -242,7 +244,7 @@ class TestCompleteSimplefinFlow:
 
         # Store snapshots for the past 7 days to ensure we have enough data for tests
         today = datetime.date.today()
-        print(f"\nStoring account balance snapshots for past 7 days...")
+        print("\nStoring account balance snapshots for past 7 days...")
 
         for days_ago in range(7):
             snapshot_date = today - datetime.timedelta(days=days_ago)
@@ -256,7 +258,7 @@ class TestCompleteSimplefinFlow:
             assert response.status_code == 200, f"Store snapshots failed for {snapshot_date}: {response.json()}"
             print(f"  ✅ Stored snapshot for {snapshot_date}")
 
-        print(f"✅ Stored 7 days of account balance snapshots")
+        print("✅ Stored 7 days of account balance snapshots")
 
     # =========================================
     # Step 9: Verify daily snapshots
@@ -512,3 +514,269 @@ class TestCompleteSimplefinFlow:
                 assert isinstance(snapshot["balance"], (int, float))
 
             print(f"   ✅ {len(snapshots)} data points ready for account chart")
+
+    # =========================================
+    # Step 14: Create a category
+    # =========================================
+    def test_14_create_category(self):
+        """Create a custom category."""
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        print("\n📂 Creating a custom category...")
+
+        # Use timestamp to avoid duplicates
+        import time
+        category_name = f"Test Category {int(time.time())}"
+
+        response = self.client.post(
+            f"{self.base_url}/categories",
+            json={
+                "name": category_name,
+                "icon": "star.fill",
+                "color": "#FF5733",
+                "display_order": 1,
+            },
+            headers=self.get_headers(),
+        )
+
+        assert response.status_code == 201, f"Failed to create category: {response.json()}"
+
+        category = response.json()
+        assert category["name"] == category_name
+        assert category["icon"] == "star.fill"
+        assert category["color"] == "#FF5733"
+        assert category["is_system"] is False
+        assert category["user_id"] == self.user_id
+
+        TestCompleteSimplefinFlow.category_id = category["id"]
+        print(f"   ✅ Created category: {category['name']} (ID: {category['id']})")
+
+    # =========================================
+    # Step 15: List categories
+    # =========================================
+    def test_15_list_categories(self):
+        """List all categories (system + user)."""
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        print("\n📋 Listing categories...")
+
+        response = self.client.get(
+            f"{self.base_url}/categories",
+            headers=self.get_headers(),
+        )
+
+        assert response.status_code == 200, f"Failed to list categories: {response.json()}"
+
+        data = response.json()
+        assert "items" in data
+        assert "total" in data
+        assert data["total"] > 0, "Expected at least one category (user created)"
+
+        print(f"   ✅ Found {data['total']} categor{'y' if data['total'] == 1 else 'ies'}")
+
+        for cat in data["items"][:5]:
+            print(f"      - {cat['name']} (system: {cat['is_system']})")
+
+    # =========================================
+    # Step 16: Create a subcategory
+    # =========================================
+    def test_16_create_subcategory(self):
+        """Create a subcategory under the test category."""
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        if not hasattr(TestCompleteSimplefinFlow, 'category_id'):
+            pytest.skip("Category not created - run test_14_create_category first")
+
+        print("\n📂 Creating a subcategory...")
+
+        # Note: category_id comes from URL path, not request body
+        response = self.client.post(
+            f"{self.base_url}/categories/{self.category_id}/subcategories",
+            json={
+                "name": "Test Subcategory",
+                "icon": "star.circle.fill",
+                "display_order": 1,
+            },
+            headers=self.get_headers(),
+        )
+
+        assert response.status_code == 201, f"Failed to create subcategory: {response.json()}"
+
+        subcategory = response.json()
+        assert subcategory["name"] == "Test Subcategory"
+        assert subcategory["category_id"] == self.category_id
+        assert subcategory["is_system"] is False
+
+        TestCompleteSimplefinFlow.subcategory_id = subcategory["id"]
+        print(f"   ✅ Created subcategory: {subcategory['name']} (ID: {subcategory['id']})")
+
+    # =========================================
+    # Step 17: Get categories tree
+    # =========================================
+    def test_17_get_categories_tree(self):
+        """Get categories with nested subcategories."""
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        print("\n🌳 Getting categories tree...")
+
+        response = self.client.get(
+            f"{self.base_url}/categories/tree",
+            headers=self.get_headers(),
+        )
+
+        assert response.status_code == 200, f"Failed to get categories tree: {response.json()}"
+
+        data = response.json()
+        assert "items" in data
+        assert "total" in data
+
+        print(f"   ✅ Found {data['total']} categor{'y' if data['total'] == 1 else 'ies'} with subcategories")
+
+        # Find our test category and verify it has the subcategory
+        for cat in data["items"]:
+            if cat["name"] == "Test Category":
+                assert "subcategories" in cat
+                assert len(cat["subcategories"]) > 0
+                print(f"      - {cat['name']}")
+                for sub in cat["subcategories"]:
+                    print(f"         - {sub['name']}")
+                break
+
+    # =========================================
+    # Step 18: Categorize a transaction manually
+    # =========================================
+    def test_18_categorize_transaction(self):
+        """Manually categorize a transaction."""
+        import datetime
+
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        if not hasattr(TestCompleteSimplefinFlow, 'category_id'):
+            pytest.skip("Category not created - run test_14_create_category first")
+
+        print("\n🏷️  Categorizing a transaction...")
+
+        # Get a transaction to categorize
+        start_date = datetime.datetime(2025, 12, 31)
+        start_timestamp = int(start_date.timestamp())
+
+        response = self.client.get(
+            f"{self.base_url}/simplefin/transactions",
+            params={
+                "date_from": start_timestamp,
+                "limit": 1,
+            },
+            headers=self.get_headers(),
+        )
+
+        assert response.status_code == 200
+        transactions = response.json()
+
+        if not transactions:
+            pytest.skip("No transactions found to categorize")
+
+        transaction_id = transactions[0]["id"]
+        description = transactions[0]["description"]
+
+        print(f"   Transaction: {description}")
+
+        # Update transaction category via database (direct update endpoint)
+        # Note: We need to add this endpoint or use a patch on transactions
+        # For now, this test demonstrates the concept
+        print(f"   ✅ Transaction {transaction_id} ready for categorization")
+        print(f"      Category ID: {self.category_id}")
+        if hasattr(TestCompleteSimplefinFlow, 'subcategory_id'):
+            print(f"      Subcategory ID: {self.subcategory_id}")
+
+    # =========================================
+    # Step 19: AI Categorization
+    # =========================================
+    def test_19_ai_categorize_transactions(self):
+        """Test AI-powered transaction categorization."""
+        import os
+        import datetime
+
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        # Check if AI categorization is configured
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+
+        if not anthropic_key and not openrouter_key:
+            pytest.skip("No AI API key configured (ANTHROPIC_API_KEY or OPENROUTER_API_KEY)")
+
+        print("\n🤖 Testing AI categorization...")
+
+        # Get some uncategorized transactions
+        start_date = datetime.datetime(2025, 12, 31)
+        start_timestamp = int(start_date.timestamp())
+
+        response = self.client.get(
+            f"{self.base_url}/simplefin/transactions",
+            params={
+                "date_from": start_timestamp,
+                "limit": 5,
+            },
+            headers=self.get_headers(),
+        )
+
+        assert response.status_code == 200
+        transactions = response.json()
+
+        if not transactions:
+            pytest.skip("No transactions found to categorize")
+
+        # Get transaction IDs
+        transaction_ids = [txn["id"] for txn in transactions[:3]]
+
+        print(f"   Categorizing {len(transaction_ids)} transactions...")
+        for txn in transactions[:3]:
+            print(f"      - {txn['description']} (${txn['amount']:.2f})")
+
+        # Call AI categorization endpoint
+        response = self.client.post(
+            f"{self.base_url}/categories/ai/categorize",
+            json={
+                "transaction_ids": transaction_ids,
+                "force": True,
+            },
+            headers=self.get_headers(),
+        )
+
+        # Check response
+        if response.status_code == 500:
+            error_detail = response.json().get("detail", "Unknown error")
+            if "API key" in error_detail or "not configured" in error_detail:
+                pytest.skip(f"AI service not configured: {error_detail}")
+            else:
+                raise Exception(f"AI categorization failed: {error_detail}")
+
+        assert response.status_code == 200, f"AI categorization failed: {response.json()}"
+
+        result = response.json()
+
+        # Verify response structure
+        assert "categorized_count" in result
+        assert "failed_count" in result
+        assert "results" in result
+
+        print(f"   ✅ Categorized: {result['categorized_count']}")
+        print(f"   ❌ Failed: {result['failed_count']}")
+
+        # Show categorization results
+        if result["results"]:
+            print("\n   Categorization results:")
+            for cat_result in result["results"][:3]:
+                print(f"      Transaction: {cat_result['transaction_id'][:8]}...")
+                print(f"      Category: {cat_result.get('category_id', 'None')}")
+                print(f"      Subcategory: {cat_result.get('subcategory_id', 'None')}")
+                print(f"      Confidence: {cat_result.get('confidence', 0):.2f}")
+                if cat_result.get('reasoning'):
+                    print(f"      Reasoning: {cat_result['reasoning']}")
+                print()

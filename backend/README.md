@@ -54,20 +54,40 @@ Required variables:
 - `ENCRYPTION_KEY` - Fernet encryption key (generate with: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`)
 - `SIMPLEFIN_ACCESS_URL` (optional) - Pre-claimed SimpleFin access URL for development/testing
 
+**AI Categorization (optional):**
+- `CATEGORIZATION_PROVIDER` - Provider to use: `claude` (default) or `openrouter`
+- `ANTHROPIC_API_KEY` - Anthropic API key for Claude AI categorization (required if provider=claude)
+- `CLAUDE_MODEL` - Claude model (default: `claude-3-5-sonnet-20241022`)
+- `OPENROUTER_API_KEY` - OpenRouter API key for cheaper categorization (required if provider=openrouter)
+- `OPENROUTER_MODEL` - OpenRouter model (default: `meta-llama/llama-3.1-8b-instruct:free`)
+
 ### 3. Set Up Database
 
-Run the migration SQL file in your Supabase SQL Editor:
-
+**NEW DATABASES:**
 1. Go to Supabase Dashboard > SQL Editor
-2. Copy contents of `supabase/migrations/001_simplefin_schema.sql` and execute
+2. Run `supabase/migrations/001_complete_schema.sql`
+3. Run `supabase/migrations/003_default_categories_and_budgets.sql`
+
+**EXISTING DATABASES:**
+1. Go to Supabase Dashboard > SQL Editor
+2. Run `supabase/migrations/003_default_categories_and_budgets.sql`
 
 This creates the following tables with RLS policies:
 - `simplefin_items` - SimpleFin connections (encrypted access URLs)
 - `simplefin_accounts` - Account details with balances and institution info
 - `simplefin_transactions` - Transactions with all SimpleFin fields
 - `simplefin_sync_jobs` - Sync operation tracking
+- `account_balance_history` - Daily account balance snapshots for net worth tracking
+- `categories` - Transaction categories (20 system defaults + user-custom)
+- `subcategories` - Subcategories under parent categories (100+ defaults)
+- `budgets` - User budget allocations per category
 
-**Note:** This migration assumes the `users` table exists (created by Supabase Auth). If you need Plaid integration, see the Plaid migration files.
+**Default Data Included:**
+- 20 system categories (Income, Housing, Food, Shopping, etc.)
+- 100+ subcategories (Rent, Groceries, Gas, Restaurants, etc.)
+- Budget tracking structure
+
+**Detailed Instructions:** See `supabase/migrations/MIGRATION_GUIDE.md`
 
 ### 4. Activate Virtual Environment (Optional)
 
@@ -110,6 +130,121 @@ source .venv/bin/activate
 uvicorn app.main:app --reload
 ```
 
+## AI Categorization Configuration
+
+CashState supports two AI providers for automatic transaction categorization:
+
+### Claude (Anthropic) - Production Recommended
+
+Best accuracy and reliability using Claude 3.5 Sonnet.
+
+```bash
+# .env
+CATEGORIZATION_PROVIDER=claude
+ANTHROPIC_API_KEY=sk-ant-...
+CLAUDE_MODEL=claude-3-5-sonnet-20241022  # Optional, this is the default
+```
+
+### OpenRouter - Budget-Friendly
+
+Access to 300+ models including free options. Lower cost but may have reduced accuracy.
+
+```bash
+# .env
+CATEGORIZATION_PROVIDER=openrouter
+OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_MODEL=meta-llama/llama-3.1-8b-instruct:free  # Free tier model
+# Or use Claude via OpenRouter: anthropic/claude-3.5-sonnet
+```
+
+**Get API Keys:**
+- Claude: [console.anthropic.com](https://console.anthropic.com)
+- OpenRouter: [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys)
+
+**Available OpenRouter Models:**
+- Free: `meta-llama/llama-3.1-8b-instruct:free`, `google/gemma-2-9b-it:free`
+- Paid (Claude via OpenRouter): `anthropic/claude-3.5-sonnet`
+- See all models: [openrouter.ai/models](https://openrouter.ai/models)
+
+### Categorize All Transactions
+
+After setting up AI categorization, run all your transactions through the service:
+
+**Option 1: Python Script (Recommended)**
+```bash
+# Make sure backend is running
+uv run uvicorn app.main:app --reload
+
+# In another terminal
+cd backend
+uv run python scripts/categorize_all_transactions.py
+```
+
+**Option 2: API Endpoint**
+```bash
+# Get access token first
+curl -X POST http://localhost:8000/app/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "password"}'
+
+# Categorize all transactions
+curl -X POST http://localhost:8000/app/v1/categories/ai/categorize \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"force": true}'
+```
+
+**Option 3: Swagger UI**
+1. Go to http://localhost:8000/docs
+2. Authorize with your credentials
+3. Use `POST /app/v1/categories/ai/categorize`
+4. Request body: `{"force": true}`
+
+**Note:** The service processes up to 200 transactions per request. For large datasets, you may need to run it multiple times or modify the limit in the service code.
+
+## New User Onboarding
+
+CashState provides a streamlined onboarding experience for new users to get started with budget tracking.
+
+### Seed Default Categories
+
+When a new user signs up, they can get started immediately with 20 comprehensive default categories and 100+ subcategories:
+
+**Via API:**
+```bash
+curl -X POST http://localhost:8000/app/v1/categories/seed-defaults \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Via Swagger UI:**
+1. Go to http://localhost:8000/docs
+2. Authorize with your credentials
+3. Use `POST /app/v1/categories/seed-defaults`
+
+**Response:**
+```json
+{
+  "message": "Seeded 20 categories and 107 subcategories"
+}
+```
+
+**Default Categories Include:**
+- **Income & Transfers** (2): Income, Transfers
+- **Essential Expenses** (6): Housing, Transportation, Food & Dining, Utilities, Healthcare, Insurance
+- **Lifestyle** (5): Shopping, Entertainment, Personal Care, Education, Subscriptions
+- **Financial** (4): Savings & Investments, Debt Payments, Taxes, Fees & Charges
+- **Other** (3): Gifts & Donations, Travel, Business Expenses
+- **Uncategorized** (1): Default for uncategorized transactions
+
+Each category includes relevant subcategories (e.g., Food & Dining → Groceries, Restaurants, Coffee Shops, etc.).
+
+**iOS Integration:**
+The iOS app automatically detects when users have no categories and presents an onboarding screen with:
+- "Use Default Categories" button (one-click setup)
+- "Create Custom Category" button (manual setup)
+
+See [`ONBOARDING_COMPLETE.md`](../ONBOARDING_COMPLETE.md) for full details.
+
 ## Documentation
 
 - **API Docs (Swagger UI)**: `http://localhost:8000/docs`
@@ -148,6 +283,27 @@ Base URL: `/app/v1`
 ### Transactions
 - `GET /transactions` - List transactions (with date filters, pagination)
 - `GET /transactions/{id}` - Get single transaction
+
+### Categories & AI Categorization
+- `POST /categories/seed-defaults` - **NEW!** Seed default categories for new users (one-time setup)
+- `GET /categories` - List all categories (system + user's own)
+- `GET /categories/tree` - Get categories with nested subcategories
+- `POST /categories` - Create a new user category
+- `GET /categories/{id}` - Get category details
+- `PATCH /categories/{id}` - Update a user category
+- `DELETE /categories/{id}` - Delete a user category
+- `GET /categories/{id}/subcategories` - List subcategories for a category
+- `POST /categories/{id}/subcategories` - Create a new subcategory
+- `GET /categories/subcategories/{id}` - Get subcategory details
+- `PATCH /categories/subcategories/{id}` - Update a subcategory
+- `DELETE /categories/subcategories/{id}` - Delete a subcategory
+- `POST /categories/ai/categorize` - Categorize transactions using Claude AI
+
+### Budgets
+- `GET /budgets` - List all budgets for the user (optional query param: `category_id`)
+- `POST /budgets` - Create a new budget
+- `PATCH /budgets/{id}` - Update a budget
+- `DELETE /budgets/{id}` - Delete a budget
 
 ## Linting
 
@@ -442,6 +598,8 @@ cashstate-backend/
 │   ├── dependencies.py   # Auth + DB dependency injection
 │   ├── schemas/          # Request/response models
 │   │   ├── auth.py
+│   │   ├── budget.py
+│   │   ├── category.py
 │   │   ├── common.py
 │   │   ├── plaid.py
 │   │   ├── simplefin.py
@@ -449,12 +607,16 @@ cashstate-backend/
 │   │   └── transaction.py
 │   ├── routers/          # API routes
 │   │   ├── auth.py
+│   │   ├── budgets.py
+│   │   ├── categories.py
 │   │   ├── plaid.py
 │   │   ├── simplefin.py
+│   │   ├── snapshots.py
 │   │   ├── sync.py
 │   │   └── transactions.py
 │   ├── services/         # Business logic
 │   │   ├── auth_service.py
+│   │   ├── categorization_service.py
 │   │   ├── plaid_service.py
 │   │   ├── simplefin_service.py
 │   │   └── sync_service.py
@@ -463,7 +625,9 @@ cashstate-backend/
 │   └── utils/
 ├── supabase/
 │   └── migrations/
-│       └── 001_simplefin_schema.sql
+│       ├── 001_complete_schema.sql     # Full schema (for new databases)
+│       ├── 002_add_categories.sql      # Add categories (for existing databases)
+│       └── README.md                    # Migration instructions
 ├── tests/
 │   ├── conftest.py                 # Pytest configuration
 │   ├── test_complete_run.py        # Plaid integration tests (real sandbox)

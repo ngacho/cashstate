@@ -103,6 +103,10 @@ Only respond with the JSON array, no other text."""
         Returns:
             dict with categorization results
         """
+        print(f"[AI Categorization] Starting categorization for user {user_id}")
+        print(f"[AI Categorization] Transaction IDs: {transaction_ids}")
+        print(f"[AI Categorization] Force: {force}")
+
         # Get transactions to categorize
         if transaction_ids:
             # Get specific transactions
@@ -121,7 +125,10 @@ Only respond with the JSON array, no other text."""
             else:
                 transactions = [txn for txn in all_txns if txn.get("category_id") is None]
 
+        print(f"[AI Categorization] Found {len(transactions)} transactions to categorize")
+
         if not transactions:
+            print("[AI Categorization] No transactions to categorize")
             return {
                 "categorized_count": 0,
                 "failed_count": 0,
@@ -133,10 +140,19 @@ Only respond with the JSON array, no other text."""
         transactions_context = self._build_transactions_context(transactions)
         prompt = self._build_prompt(categories_context, transactions_context)
 
+        print(f"[AI Categorization] Prompt length: {len(prompt)} characters")
+        print(f"[AI Categorization] Categories context:\n{categories_context}")
+        print(f"[AI Categorization] Transactions context (first 500 chars):\n{transactions_context[:500]}...")
+
         # Call AI model
         try:
+            print("[AI Categorization] Calling AI model...")
             response_text = self._call_ai_model(prompt)
+            print(f"[AI Categorization] Model response length: {len(response_text)} characters")
+            print(f"[AI Categorization] Model response:\n{response_text}")
+
             categorizations = json.loads(response_text)
+            print(f"[AI Categorization] Parsed {len(categorizations)} categorizations from response")
 
             # Apply categorizations
             results = []
@@ -149,6 +165,8 @@ Only respond with the JSON array, no other text."""
                     category_id = cat.get("category_id")
                     subcategory_id = cat.get("subcategory_id")
 
+                    print(f"[AI Categorization] Processing transaction {txn_id}: category={category_id}, subcategory={subcategory_id}")
+
                     # Update transaction
                     updated = self.db.update_transaction_category(
                         transaction_id=txn_id,
@@ -158,6 +176,7 @@ Only respond with the JSON array, no other text."""
 
                     if updated:
                         categorized_count += 1
+                        print(f"[AI Categorization] ✓ Successfully categorized {txn_id}")
                         results.append({
                             "transaction_id": txn_id,
                             "category_id": category_id,
@@ -167,17 +186,26 @@ Only respond with the JSON array, no other text."""
                         })
                     else:
                         failed_count += 1
+                        print(f"[AI Categorization] ✗ Failed to update {txn_id} in database")
                 except Exception as e:
                     failed_count += 1
-                    print(f"Failed to categorize transaction {cat.get('transaction_id')}: {e}")
+                    print(f"[AI Categorization] ✗ Exception categorizing {cat.get('transaction_id')}: {e}")
 
+            print(f"[AI Categorization] Complete: {categorized_count} succeeded, {failed_count} failed")
             return {
                 "categorized_count": categorized_count,
                 "failed_count": failed_count,
                 "results": results,
             }
 
+        except json.JSONDecodeError as e:
+            print(f"[AI Categorization] JSON parsing error: {e}")
+            print(f"[AI Categorization] Response text was: {response_text}")
+            raise Exception(f"AI categorization failed: Invalid JSON response from model")
         except Exception as e:
+            print(f"[AI Categorization] Unexpected error: {e}")
+            import traceback
+            traceback.print_exc()
             raise Exception(f"AI categorization failed: {str(e)}")
 
 
@@ -191,12 +219,15 @@ class ClaudeCategorizationService(BaseCategorizationService):
 
     def _call_ai_model(self, prompt: str) -> str:
         """Call Claude API and return response text."""
+        print(f"[Claude] Calling model {self.model}")
         message = self.client.messages.create(
             model=self.model,
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
-        return message.content[0].text
+        response = message.content[0].text
+        print(f"[Claude] Response received: {len(response)} characters")
+        return response
 
 
 class OpenRouterCategorizationService(BaseCategorizationService):
@@ -217,11 +248,14 @@ class OpenRouterCategorizationService(BaseCategorizationService):
 
     def _call_ai_model(self, prompt: str) -> str:
         """Call OpenRouter API and return response text."""
+        print(f"[OpenRouter] Calling model {self.model}")
         response = self.client.chat.send(
             model=self.model,
             messages=[{"role": "user", "content": prompt}],
         )
-        return response.choices[0].message.content
+        content = response.choices[0].message.content
+        print(f"[OpenRouter] Response received: {len(content)} characters")
+        return content
 
 
 def get_categorization_service(db: Database) -> BaseCategorizationService:
