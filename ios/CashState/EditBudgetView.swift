@@ -9,7 +9,7 @@ struct EditBudgetView: View {
     @State private var budgetAmount: String
     @State private var selectedType: Budget.BudgetType
     @State private var selectedPeriod: Budget.BudgetPeriod
-    @State private var selectedColor: BudgetCategory.CategoryColor
+    @State private var selectedColor: ColorPalette
     @State private var selectedTransactionFilters: Set<Budget.TransactionFilter>
     @State private var selectedAccountFilters: Set<Budget.AccountFilter>
     @State private var includedCategories: Set<String>
@@ -26,7 +26,8 @@ struct EditBudgetView: View {
         _budgetAmount = State(initialValue: String(format: "%.0f", budgetValue.amount))
         _selectedType = State(initialValue: budgetValue.type)
         _selectedPeriod = State(initialValue: budgetValue.period)
-        _selectedColor = State(initialValue: budgetValue.color)
+        // Find matching ColorPalette or default to blue
+        _selectedColor = State(initialValue: ColorPalette(rawValue: budgetValue.colorHex) ?? .blue)
         _selectedTransactionFilters = State(initialValue: Set(budgetValue.transactionFilters))
         _selectedAccountFilters = State(initialValue: Set(budgetValue.accountFilters))
         _includedCategories = State(initialValue: Set(budgetValue.includedCategories))
@@ -143,7 +144,7 @@ struct EditBudgetView: View {
 
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: Theme.Spacing.md) {
-                                ForEach(BudgetCategory.CategoryColor.allCases, id: \.self) { color in
+                                ForEach(ColorPalette.allCases) { color in
                                     Button {
                                         selectedColor = color
                                     } label: {
@@ -328,7 +329,7 @@ struct EditBudgetView: View {
         budget.amount = amount
         budget.type = selectedType
         budget.period = selectedPeriod
-        budget.color = selectedColor
+        budget.colorHex = selectedColor.rawValue  // Use hex string from color palette
         budget.transactionFilters = Array(selectedTransactionFilters)
         budget.accountFilters = Array(selectedAccountFilters)
         budget.includedCategories = Array(includedCategories)
@@ -379,14 +380,14 @@ struct CategoryIconButton: View {
                     .frame(width: 60, height: 60)
                     .background(
                         isSelected
-                        ? category.color.color.opacity(0.2)
+                        ? category.color.opacity(0.2)
                         : Color.gray.opacity(0.1)
                     )
                     .cornerRadius(Theme.CornerRadius.md)
                     .overlay(
                         RoundedRectangle(cornerRadius: Theme.CornerRadius.md)
                             .stroke(
-                                isSelected ? category.color.color : Color.clear,
+                                isSelected ? category.color : Color.clear,
                                 lineWidth: 2
                             )
                     )

@@ -325,7 +325,7 @@ struct TransactionDetailView: View {
                     id: item.id,
                     name: item.name,
                     icon: item.icon,
-                    color: BudgetCategory.CategoryColor(rawValue: item.color) ?? .blue,
+                    colorHex: item.color,  // Use hex color directly from database
                     type: (item.type == "income") ? .income : .expense,
                     subcategories: item.subcategories.map { sub in
                         BudgetSubcategory(
@@ -433,11 +433,11 @@ struct CategorySelectionCard: View {
                             Text(selected.name)
                                 .font(.caption)
                                 .fontWeight(.medium)
-                                .foregroundColor(selected.color.color)
+                                .foregroundColor(selected.color)
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(selected.color.color.opacity(0.1))
+                        .background(selected.color.opacity(0.1))
                         .cornerRadius(6)
                     }
                 }
@@ -509,11 +509,11 @@ struct CategorySelectionCard: View {
                                 Text(selected.name)
                                     .font(.caption)
                                     .fontWeight(.medium)
-                                    .foregroundColor(selectedCat.color.color)
+                                    .foregroundColor(selectedCat.color)
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(selectedCat.color.color.opacity(0.1))
+                            .background(selectedCat.color.opacity(0.1))
                             .cornerRadius(6)
                         }
                     }
@@ -527,7 +527,7 @@ struct CategorySelectionCard: View {
                         // "None" option
                         SubcategoryChip(
                             subcategory: nil,
-                            categoryColor: selectedCat.color.color,
+                            categoryColor: selectedCat.color,
                             isSelected: selectedSubcategory == nil,
                             action: {
                                 withAnimation(.spring(response: 0.3)) {
@@ -539,7 +539,7 @@ struct CategorySelectionCard: View {
                         ForEach(displayedSubcategories) { subcategory in
                             SubcategoryChip(
                                 subcategory: subcategory,
-                                categoryColor: selectedCat.color.color,
+                                categoryColor: selectedCat.color,
                                 isSelected: selectedSubcategory?.id == subcategory.id,
                                 action: {
                                     withAnimation(.spring(response: 0.3)) {

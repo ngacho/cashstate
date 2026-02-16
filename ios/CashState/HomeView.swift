@@ -1101,7 +1101,7 @@ struct AccountDetailView: View {
                     id: item.id,
                     name: item.name,
                     icon: item.icon,
-                    color: BudgetCategory.CategoryColor(rawValue: item.color) ?? .blue,
+                    colorHex: item.color,  // Use hex color directly from database
                     type: (item.type == "income") ? .income : .expense,
                     subcategories: item.subcategories.map { sub in
                         BudgetSubcategory(

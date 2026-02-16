@@ -432,7 +432,7 @@ struct BudgetView: View {
                     id: cat.id,
                     name: cat.name,
                     icon: cat.icon,
-                    color: mapColor(cat.color),
+                    colorHex: cat.color,  // Use hex color directly from database
                     type: .expense, // Default to expense for now
                     subcategories: subcategories,
                     budgetAmount: budgetMap[cat.id],
@@ -467,44 +467,6 @@ struct BudgetView: View {
         }
     }
 
-    private func mapColor(_ hexColor: String) -> BudgetCategory.CategoryColor {
-        // Mapping from database hex colors to CategoryColor enum
-        switch hexColor.lowercased() {
-        // Blue shades
-        case "#3b82f6": return .blue  // Utilities, Business Expenses
-
-        // Purple shades
-        case "#8b5cf6": return .purple  // Housing, Subscriptions
-        case "#6366f1": return .purple  // Insurance (indigo)
-        case "#a855f7": return .purple  // Entertainment
-
-        // Pink shades
-        case "#ec4899": return .pink  // Healthcare, Gifts & Donations
-        case "#f472b6": return .pink  // Personal Care
-
-        // Orange shades
-        case "#f59e0b": return .orange  // Transportation, Fees & Charges
-
-        // Red shades
-        case "#ef4444": return .red  // Food & Dining, Debt Payments
-
-        // Teal/Cyan shades
-        case "#06b6d4": return .teal  // Shopping, Travel
-        case "#14b8a6": return .teal  // Education
-
-        // Green shades
-        case "#10b981": return .green  // Savings & Investments
-
-        // Yellow shades
-        case "#fbbf24", "#eab308": return .yellow
-
-        // Gray shades (mapped to blue as fallback)
-        case "#6b7280", "#9ca3af": return .blue  // Taxes, Uncategorized
-
-        default: return .blue
-        }
-    }
-
     private var currentMonthYear: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMMM yyyy"
@@ -533,7 +495,7 @@ struct BudgetCategoryRow: View {
                 .frame(width: 44, height: 44)
                 .overlay(
                     Circle()
-                        .strokeBorder(category.color.color, lineWidth: 2)
+                        .strokeBorder(category.color, lineWidth: 2)
                 )
 
             // Info
@@ -561,7 +523,7 @@ struct BudgetCategoryRow: View {
                                 .frame(height: 4)
 
                             RoundedRectangle(cornerRadius: 2)
-                                .fill(category.isOverBudget ? Theme.Colors.expense : category.color.color)
+                                .fill(category.isOverBudget ? Theme.Colors.expense : category.color)
                                 .frame(width: geometry.size.width * min(category.percentageUsed / 100, 1.0), height: 4)
                         }
                     }
@@ -616,7 +578,7 @@ struct BudgetDonutChart: View {
                     BudgetDonutSlice(
                         startAngle: spendingStartAngle(for: index),
                         endAngle: spendingEndAngle(for: index),
-                        color: category.color.color,
+                        color: category.color,
                         innerRadiusRatio: 0.55,  // Wider outer ring
                         outerRadiusRatio: 1.0
                     )
@@ -629,7 +591,7 @@ struct BudgetDonutChart: View {
                             BudgetDonutSlice(
                                 startAngle: budgetStartAngle(for: index),
                                 endAngle: budgetEndAngle(for: index),
-                                color: category.color.color.opacity(0.5),
+                                color: category.color.opacity(0.5),
                                 innerRadiusRatio: 0.42,  // Narrower inner ring
                                 outerRadiusRatio: 0.52
                             )
@@ -758,7 +720,7 @@ struct CategoryDetailView: View {
                             .frame(width: 80, height: 80)
                             .overlay(
                                 Circle()
-                                    .strokeBorder(category.color.color, lineWidth: 3)
+                                    .strokeBorder(category.color, lineWidth: 3)
                             )
 
                         VStack(alignment: .leading, spacing: 4) {
@@ -790,7 +752,7 @@ struct CategoryDetailView: View {
                                         .frame(width: 36, height: 36)
                                         .overlay(
                                             Circle()
-                                                .strokeBorder(category.color.color, lineWidth: 1.5)
+                                                .strokeBorder(category.color, lineWidth: 1.5)
                                         )
 
                                     Text(subcategory.name)
@@ -852,7 +814,7 @@ struct ExpandableCategoryCard: View {
                         .frame(width: 44, height: 44)
                         .overlay(
                             Circle()
-                                .strokeBorder(category.color.color, lineWidth: 2)
+                                .strokeBorder(category.color, lineWidth: 2)
                         )
 
                     // Info
@@ -897,7 +859,7 @@ struct ExpandableCategoryCard: View {
                         } else {
                             Text("Set Budget")
                                 .font(.caption)
-                                .foregroundColor(category.color.color)
+                                .foregroundColor(category.color)
                         }
 
                         // Edit budget button
@@ -906,7 +868,7 @@ struct ExpandableCategoryCard: View {
                         } label: {
                             Image(systemName: "pencil.circle.fill")
                                 .font(.title3)
-                                .foregroundColor(category.color.color.opacity(0.7))
+                                .foregroundColor(category.color.opacity(0.7))
                         }
                         .buttonStyle(.plain)
                     }
@@ -931,7 +893,7 @@ struct ExpandableCategoryCard: View {
                             .frame(height: 4)
 
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(category.isOverBudget ? Theme.Colors.expense : category.color.color)
+                            .fill(category.isOverBudget ? Theme.Colors.expense : category.color)
                             .frame(width: geometry.size.width * min(category.percentageUsed / 100, 1.0), height: 4)
                     }
                 }
@@ -964,7 +926,7 @@ struct ExpandableCategoryCard: View {
                         SubcategoryRow(
                             category: category,
                             subcategory: $subcategory,
-                            categoryColor: category.color.color,
+                            categoryColor: category.color,
                             apiClient: apiClient
                         )
                     }
@@ -980,7 +942,7 @@ struct ExpandableCategoryCard: View {
                                 .font(.caption)
                                 .fontWeight(.medium)
                         }
-                        .foregroundColor(category.color.color)
+                        .foregroundColor(category.color)
                         .padding(.vertical, Theme.Spacing.xs)
                     }
 

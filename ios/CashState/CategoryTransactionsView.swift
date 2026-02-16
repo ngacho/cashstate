@@ -102,7 +102,7 @@ struct CategoryTransactionsView: View {
                             .frame(width: 80, height: 80)
                             .overlay(
                                 Circle()
-                                    .strokeBorder(category.color.color, lineWidth: 3)
+                                    .strokeBorder(category.color, lineWidth: 3)
                             )
 
                         Text(title)
@@ -173,7 +173,7 @@ struct CategoryTransactionsView: View {
                                         transaction: transaction,
                                         category: category,
                                         showSubcategoryChip: subcategory == nil,
-                                        categoryColor: category.color.color
+                                        categoryColor: category.color
                                     )
                                     .onTapGesture {
                                         selectedTransaction = transaction
@@ -212,7 +212,7 @@ struct CategoryTransactionsView: View {
                     id: item.id,
                     name: item.name,
                     icon: item.icon,
-                    color: BudgetCategory.CategoryColor(rawValue: item.color) ?? .blue,
+                    colorHex: item.color,  // Use hex color directly from database
                     type: (item.type == "income") ? .income : .expense,
                     subcategories: item.subcategories.map { sub in
                         BudgetSubcategory(

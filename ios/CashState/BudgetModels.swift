@@ -7,7 +7,7 @@ struct BudgetCategory: Identifiable, Codable {
     let id: String
     let name: String
     let icon: String
-    let color: CategoryColor
+    let colorHex: String  // Store hex string directly from database
     let type: CategoryType
     var subcategories: [BudgetSubcategory]
     var budgetAmount: Double?
@@ -18,21 +18,9 @@ struct BudgetCategory: Identifiable, Codable {
         case income = "Income"
     }
 
-    enum CategoryColor: String, Codable, CaseIterable {
-        case blue, purple, pink, orange, yellow, green, teal, red
-
-        var color: Color {
-            switch self {
-            case .blue: return Color.blue
-            case .purple: return Color.purple
-            case .pink: return Color.pink
-            case .orange: return Color.orange
-            case .yellow: return Color.yellow
-            case .green: return Color.green
-            case .teal: return Color.teal
-            case .red: return Color.red
-            }
-        }
+    // Computed property to convert hex to SwiftUI Color
+    var color: Color {
+        Color(hex: colorHex)
     }
 
     var percentageUsed: Double {
@@ -43,6 +31,48 @@ struct BudgetCategory: Identifiable, Codable {
     var isOverBudget: Bool {
         guard let budget = budgetAmount else { return false }
         return spentAmount > budget
+    }
+
+    // Map JSON "color" key to "colorHex" property
+    enum CodingKeys: String, CodingKey {
+        case id, name, icon, type, subcategories, budgetAmount, spentAmount
+        case colorHex = "color"
+    }
+}
+
+// MARK: - Color Palette for UI Pickers
+
+enum ColorPalette: String, CaseIterable, Identifiable {
+    case blue = "#3B82F6"
+    case purple = "#8B5CF6"
+    case pink = "#EC4899"
+    case red = "#EF4444"
+    case orange = "#F59E0B"
+    case yellow = "#FBBF24"
+    case green = "#10B981"
+    case teal = "#06B6D4"
+    case indigo = "#6366F1"
+    case cyan = "#14B8A6"
+
+    var id: String { rawValue }
+
+    var color: Color {
+        Color(hex: rawValue)
+    }
+
+    var name: String {
+        switch self {
+        case .blue: return "Blue"
+        case .purple: return "Purple"
+        case .pink: return "Pink"
+        case .red: return "Red"
+        case .orange: return "Orange"
+        case .yellow: return "Yellow"
+        case .green: return "Green"
+        case .teal: return "Teal"
+        case .indigo: return "Indigo"
+        case .cyan: return "Cyan"
+        }
     }
 }
 
@@ -66,11 +96,23 @@ struct Budget: Identifiable, Codable {
     var type: BudgetType
     var period: BudgetPeriod
     var startDate: Date
-    var color: BudgetCategory.CategoryColor
+    var colorHex: String  // Store hex string directly
     var includedCategories: [String] // Category IDs
     var excludedCategories: [String] // Category IDs
     var transactionFilters: [TransactionFilter]
     var accountFilters: [AccountFilter]
+
+    // Computed property to convert hex to SwiftUI Color
+    var color: Color {
+        Color(hex: colorHex)
+    }
+
+    // Map JSON "color" key to "colorHex" property
+    enum CodingKeys: String, CodingKey {
+        case id, name, amount, type, period, startDate
+        case colorHex = "color"
+        case includedCategories, excludedCategories, transactionFilters, accountFilters
+    }
 
     enum BudgetType: String, Codable, CaseIterable {
         case expense = "Expense budget"
@@ -124,7 +166,7 @@ extension BudgetCategory {
             id: "1",
             name: "Entertainment",
             icon: "🍿",
-            color: .blue,
+            colorHex: "#3B82F6",  // Blue
             type: .expense,
             subcategories: [
                 BudgetSubcategory(id: "1-1", name: "Movies", icon: "🍿", budgetAmount: 100.00, spentAmount: 45.00, transactionCount: 3),
@@ -138,7 +180,7 @@ extension BudgetCategory {
             id: "2",
             name: "Food",
             icon: "🍔",
-            color: .orange,
+            colorHex: "#F59E0B",  // Orange
             type: .expense,
             subcategories: [
                 BudgetSubcategory(id: "2-1", name: "Groceries", icon: "🛒", budgetAmount: 500.00, spentAmount: 450.00, transactionCount: 28),
@@ -152,7 +194,7 @@ extension BudgetCategory {
             id: "3",
             name: "Transport",
             icon: "🚗",
-            color: .teal,
+            colorHex: "#06B6D4",  // Teal
             type: .expense,
             subcategories: [
                 BudgetSubcategory(id: "3-1", name: "Gas", icon: "⛽", spentAmount: 180.00, transactionCount: 8),
@@ -166,7 +208,7 @@ extension BudgetCategory {
             id: "4",
             name: "Home & Utilities",
             icon: "🏠",
-            color: .purple,
+            colorHex: "#8B5CF6",  // Purple
             type: .expense,
             subcategories: [
                 BudgetSubcategory(id: "4-1", name: "Rent", icon: "🏘️", budgetAmount: 1500.00, spentAmount: 1500.00, transactionCount: 1),
@@ -180,7 +222,7 @@ extension BudgetCategory {
             id: "5",
             name: "Personal & Medical",
             icon: "❤️",
-            color: .pink,
+            colorHex: "#EC4899",  // Pink
             type: .expense,
             subcategories: [
                 BudgetSubcategory(id: "5-1", name: "Healthcare", icon: "💊", spentAmount: 120.00, transactionCount: 2),
@@ -194,7 +236,7 @@ extension BudgetCategory {
             id: "6",
             name: "Shopping",
             icon: "🛍️",
-            color: .yellow,
+            colorHex: "#FBBF24",  // Yellow
             type: .expense,
             subcategories: [
                 BudgetSubcategory(id: "6-1", name: "Clothing", icon: "👕", spentAmount: 200.00, transactionCount: 5),
@@ -277,7 +319,7 @@ extension Budget {
             type: .expense,
             period: .month,
             startDate: Calendar.current.date(from: DateComponents(year: 2025, month: 2, day: 1))!,
-            color: .blue,
+            colorHex: "#3B82F6",  // Blue
             includedCategories: ["1", "2", "3", "4", "5", "6"],
             excludedCategories: [],
             transactionFilters: [.default, .expense],
@@ -290,7 +332,7 @@ extension Budget {
             type: .savings,
             period: .month,
             startDate: Calendar.current.date(from: DateComponents(year: 2025, month: 2, day: 1))!,
-            color: .green,
+            colorHex: "#10B981",  // Green
             includedCategories: [],
             excludedCategories: [],
             transactionFilters: [.income],

@@ -192,7 +192,7 @@ struct CategorySelectButton: View {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.caption)
                             .foregroundColor(.white)
-                            .background(Circle().fill(category.color.color))
+                            .background(Circle().fill(category.color))
                             .offset(x: 4, y: -4)
                     } else if isExcluded {
                         Image(systemName: "xmark.circle.fill")
@@ -214,7 +214,7 @@ struct CategorySelectButton: View {
 
     private var backgroundColor: Color {
         if isIncluded {
-            return category.color.color.opacity(0.2)
+            return category.color.opacity(0.2)
         } else if isExcluded {
             return Color.red.opacity(0.1)
         } else {
@@ -224,7 +224,7 @@ struct CategorySelectButton: View {
 
     private var borderColor: Color {
         if isIncluded {
-            return category.color.color
+            return category.color
         } else if isExcluded {
             return Color.red
         } else {

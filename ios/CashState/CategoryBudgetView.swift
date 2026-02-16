@@ -26,7 +26,7 @@ struct CategoryBudgetView: View {
                         Text(category.icon)
                             .font(.system(size: 60))
                             .frame(width: 100, height: 100)
-                            .background(category.color.color.opacity(0.15))
+                            .background(category.color.opacity(0.15))
                             .clipShape(Circle())
 
                         Text(category.name)
@@ -88,7 +88,7 @@ struct CategoryBudgetView: View {
                                             .frame(height: 8)
 
                                         RoundedRectangle(cornerRadius: 4)
-                                            .fill(isOver ? Theme.Colors.expense : category.color.color)
+                                            .fill(isOver ? Theme.Colors.expense : category.color)
                                             .frame(width: geometry.size.width * min(percentage / 100, 1.0), height: 8)
                                     }
                                 }
@@ -117,8 +117,8 @@ struct CategoryBudgetView: View {
                                             .fontWeight(.medium)
                                             .padding(.horizontal, Theme.Spacing.md)
                                             .padding(.vertical, Theme.Spacing.sm)
-                                            .background(category.color.color.opacity(0.1))
-                                            .foregroundColor(category.color.color)
+                                            .background(category.color.opacity(0.1))
+                                            .foregroundColor(category.color)
                                             .cornerRadius(Theme.CornerRadius.md)
                                     }
                                 }

@@ -7,7 +7,7 @@ struct AddCategoryView: View {
     @State private var categoryName: String = ""
     @State private var selectedType: BudgetCategory.CategoryType = .expense
     @State private var selectedIcon: String = "🎨"
-    @State private var selectedColor: BudgetCategory.CategoryColor = .blue
+    @State private var selectedColor: ColorPalette = .blue
     @State private var isMainCategory: Bool = true
     @State private var subcategories: [SubcategoryItem] = []
     @State private var showAddSubcategory = false
@@ -71,7 +71,7 @@ struct AddCategoryView: View {
                     // Color Selection
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: Theme.Spacing.md) {
-                            ForEach(BudgetCategory.CategoryColor.allCases, id: \.self) { color in
+                            ForEach(ColorPalette.allCases) { color in
                                 Button {
                                     selectedColor = color
                                 } label: {
@@ -281,7 +281,7 @@ struct AddCategoryView: View {
             id: UUID().uuidString,
             name: categoryName,
             icon: selectedIcon,
-            color: selectedColor,
+            colorHex: selectedColor.rawValue,  // Use hex string from color palette
             type: selectedType,
             subcategories: budgetSubcategories,
             budgetAmount: nil,
@@ -304,7 +304,7 @@ struct SubcategoryItem: Identifiable {
 // MARK: - Add Subcategory to New Category View
 
 struct AddSubcategoryToNewCategoryView: View {
-    let categoryColor: BudgetCategory.CategoryColor
+    let categoryColor: ColorPalette
     @Binding var isPresented: Bool
     var onSave: ((SubcategoryItem) -> Void)?
 

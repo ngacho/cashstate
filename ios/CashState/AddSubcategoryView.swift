@@ -39,7 +39,7 @@ struct AddSubcategoryView: View {
                         Text(parentCategory.icon)
                             .font(.title2)
                             .frame(width: 50, height: 50)
-                            .background(parentCategory.color.color.opacity(0.15))
+                            .background(parentCategory.color.opacity(0.15))
                             .clipShape(Circle())
 
                         VStack(alignment: .leading, spacing: 4) {
@@ -64,7 +64,7 @@ struct AddSubcategoryView: View {
                         Text(selectedIcon)
                             .font(.system(size: 48))
                             .frame(width: 100, height: 100)
-                            .background(parentCategory.color.color.opacity(0.2))
+                            .background(parentCategory.color.opacity(0.2))
                             .cornerRadius(Theme.CornerRadius.lg)
 
                         // Name input
@@ -89,13 +89,13 @@ struct AddSubcategoryView: View {
                         Toggle(isOn: $hasBudget) {
                             HStack {
                                 Image(systemName: "dollarsign.circle")
-                                    .foregroundColor(parentCategory.color.color)
+                                    .foregroundColor(parentCategory.color)
                                 Text("Set Budget")
                                     .font(.subheadline)
                                     .fontWeight(.medium)
                             }
                         }
-                        .tint(parentCategory.color.color)
+                        .tint(parentCategory.color)
 
                         if hasBudget {
                             HStack {
@@ -148,14 +148,14 @@ struct AddSubcategoryView: View {
                                         .frame(width: 50, height: 50)
                                         .background(
                                             selectedIcon == icon
-                                            ? parentCategory.color.color.opacity(0.2)
+                                            ? parentCategory.color.opacity(0.2)
                                             : Theme.Colors.cardBackground.opacity(0.5)
                                         )
                                         .cornerRadius(Theme.CornerRadius.sm)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: Theme.CornerRadius.sm)
                                                 .stroke(
-                                                    selectedIcon == icon ? parentCategory.color.color : Color.clear,
+                                                    selectedIcon == icon ? parentCategory.color : Color.clear,
                                                     lineWidth: 2
                                                 )
                                         )
@@ -182,7 +182,7 @@ struct AddSubcategoryView: View {
                         .background(
                             subcategoryName.isEmpty
                             ? Color.gray.opacity(0.3)
-                            : parentCategory.color.color
+                            : parentCategory.color
                         )
                         .cornerRadius(Theme.CornerRadius.md)
                     }

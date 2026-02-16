@@ -633,7 +633,7 @@ struct TransactionCardView: View {
                             // "None" option for optional subcategory
                             SubcategoryChip(
                                 subcategory: nil,
-                                categoryColor: selectedCat.color.color,
+                                categoryColor: selectedCat.color,
                                 isSelected: selectedSubcategory == nil && showSubcategories,
                                 action: {
                                     onSubcategorySelect(nil)
@@ -643,7 +643,7 @@ struct TransactionCardView: View {
                             ForEach(displayedSubcategories) { subcategory in
                                 SubcategoryChip(
                                     subcategory: subcategory,
-                                    categoryColor: selectedCat.color.color,
+                                    categoryColor: selectedCat.color,
                                     isSelected: selectedSubcategory?.id == subcategory.id,
                                     action: {
                                         onSubcategorySelect(subcategory)
@@ -782,7 +782,7 @@ struct SwipeIndicator: View {
                     .font(.system(size: 60))
                 Text(category.name)
                     .font(.headline)
-                    .foregroundColor(category.color.color)
+                    .foregroundColor(category.color)
             }
         }
         .padding(Theme.Spacing.md)
@@ -810,12 +810,12 @@ struct CategoryChip: View {
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.sm)
-            .background(isSelected ? category.color.color.opacity(0.2) : Color.gray.opacity(0.1))
-            .foregroundColor(isSelected ? category.color.color : Theme.Colors.textSecondary)
+            .background(isSelected ? category.color.opacity(0.2) : Color.gray.opacity(0.1))
+            .foregroundColor(isSelected ? category.color : Theme.Colors.textSecondary)
             .cornerRadius(20)
             .overlay(
                 RoundedRectangle(cornerRadius: 20)
-                    .stroke(isSelected ? category.color.color : Color.clear, lineWidth: 2)
+                    .stroke(isSelected ? category.color : Color.clear, lineWidth: 2)
             )
         }
         .buttonStyle(.plain)
@@ -1315,7 +1315,7 @@ struct ReviewTransactionRow: View {
                     Text(category.name)
                         .font(.caption)
                         .fontWeight(.medium)
-                        .foregroundColor(category.color.color)
+                        .foregroundColor(category.color)
 
                     if let subcategory = subcategory {
                         Text(subcategory.name)
