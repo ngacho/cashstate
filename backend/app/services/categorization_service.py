@@ -201,7 +201,7 @@ Only respond with the JSON array, no other text."""
         except json.JSONDecodeError as e:
             print(f"[AI Categorization] JSON parsing error: {e}")
             print(f"[AI Categorization] Response text was: {response_text}")
-            raise Exception(f"AI categorization failed: Invalid JSON response from model")
+            raise Exception("AI categorization failed: Invalid JSON response from model")
         except Exception as e:
             print(f"[AI Categorization] Unexpected error: {e}")
             import traceback

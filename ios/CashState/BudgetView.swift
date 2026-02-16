@@ -11,7 +11,11 @@ struct BudgetView: View {
     // Categorization state
     @State private var uncategorizedTransactions: [CategorizableTransaction] = []
     @State private var showManualCategorization = false
-    @State private var showAICategorization = false
+
+    // AI categorization (inline, no modal)
+    @State private var isAICategorizationRunning = false
+    @State private var aiCategorizationProgress: Double = 0
+    @State private var aiCategorizationError: String?
 
     // Quick add category
     @State private var showAddCategory = false
@@ -22,6 +26,10 @@ struct BudgetView: View {
 
     // Filter toggle
     @State private var showIncomeInBudget = false
+
+    // Month selection for viewing historical data
+    @State private var selectedMonth: Date = Date()
+    @State private var earliestTransactionDate: Date?
 
     var totalBudget: Double {
         categories.compactMap { $0.budgetAmount }.reduce(0, +)
@@ -38,6 +46,34 @@ struct BudgetView: View {
     var spentPercentage: Double {
         guard totalBudget > 0 else { return 0 }
         return min((totalSpent / totalBudget) * 100, 100)
+    }
+
+    var isNextMonthAvailable: Bool {
+        let calendar = Calendar.current
+        guard let nextMonth = calendar.date(byAdding: .month, value: 1, to: selectedMonth) else {
+            return false
+        }
+        return nextMonth <= Date()
+    }
+
+    var isCurrentMonth: Bool {
+        let calendar = Calendar.current
+        return calendar.isDate(selectedMonth, equalTo: Date(), toGranularity: .month)
+    }
+
+    var isPreviousMonthAvailable: Bool {
+        guard let earliestDate = earliestTransactionDate else {
+            // If we don't know the earliest date yet, allow navigation (we'll find out when we try)
+            return true
+        }
+
+        let calendar = Calendar.current
+        guard let previousMonth = calendar.date(byAdding: .month, value: -1, to: selectedMonth) else {
+            return false
+        }
+
+        // Allow if previous month is on or after the earliest transaction month
+        return previousMonth >= calendar.date(from: calendar.dateComponents([.year, .month], from: earliestDate))!
     }
 
     var body: some View {
@@ -103,20 +139,6 @@ struct BudgetView: View {
                     Task { await loadData() }
                 }
             }
-            .sheet(isPresented: $showAICategorization) {
-                AICategorization(
-                    isPresented: $showAICategorization,
-                    transactions: $uncategorizedTransactions,
-                    categories: categories,
-                    apiClient: apiClient
-                )
-            }
-            .onChange(of: showAICategorization) { oldValue, newValue in
-                // Reload data when AI categorization sheet is dismissed
-                if oldValue == true && newValue == false {
-                    Task { await loadData() }
-                }
-            }
             .sheet(isPresented: $showAddCategory) {
                 AddCategoryView(isPresented: $showAddCategory) { newCategory in
                     categories.append(newCategory)
@@ -125,6 +147,15 @@ struct BudgetView: View {
         }
         .task {
             await loadData()
+        }
+        .onChange(of: selectedMonth) { oldValue, newValue in
+            // Reload data when the selected month changes (skip initial load)
+            if oldValue != newValue {
+                isLoading = true  // Show loading state immediately
+                Task {
+                    await loadData()
+                }
+            }
         }
     }
 
@@ -135,10 +166,15 @@ struct BudgetView: View {
                 HStack {
                         Button {
                             // Previous month
+                            let calendar = Calendar.current
+                            if let newMonth = calendar.date(byAdding: .month, value: -1, to: selectedMonth) {
+                                selectedMonth = newMonth
+                            }
                         } label: {
                             Image(systemName: "chevron.left")
-                                .foregroundColor(Theme.Colors.textPrimary)
+                                .foregroundColor(isPreviousMonthAvailable ? Theme.Colors.textPrimary : Theme.Colors.textSecondary.opacity(0.3))
                         }
+                        .disabled(!isPreviousMonthAvailable)
 
                         Spacer()
 
@@ -149,28 +185,74 @@ struct BudgetView: View {
                             Text("\(daysRemainingText)")
                                 .font(.caption)
                                 .foregroundColor(Theme.Colors.textSecondary)
+
+                            // Show indicator when at earliest available month
+                            if !isPreviousMonthAvailable && earliestTransactionDate != nil {
+                                Text("Earliest data")
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Colors.textSecondary.opacity(0.7))
+                                    .italic()
+                            }
                         }
 
                         Spacer()
 
                         Button {
-                            // Next month
+                            // Next month (only if not in future)
+                            let calendar = Calendar.current
+                            if let newMonth = calendar.date(byAdding: .month, value: 1, to: selectedMonth),
+                               newMonth <= Date() {
+                                selectedMonth = newMonth
+                            }
                         } label: {
                             Image(systemName: "chevron.right")
-                                .foregroundColor(Theme.Colors.textPrimary)
+                                .foregroundColor(isNextMonthAvailable ? Theme.Colors.textPrimary : Theme.Colors.textSecondary.opacity(0.3))
                         }
+                        .disabled(!isNextMonthAvailable)
                     }
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.top, Theme.Spacing.sm)
 
-                    // Uncategorized Transactions Card
+                    // Uncategorized Transactions Card or AI Progress
                     if !uncategorizedTransactions.isEmpty {
-                        UncategorizedTransactionsCard(
-                            uncategorizedCount: uncategorizedTransactions.count,
-                            showManualCategorization: $showManualCategorization,
-                            showAICategorization: $showAICategorization
-                        )
-                        .padding(.horizontal, Theme.Spacing.md)
+                        if isAICategorizationRunning {
+                            AICategorizationProgressCard(
+                                progress: aiCategorizationProgress,
+                                totalCount: uncategorizedTransactions.count
+                            )
+                            .padding(.horizontal, Theme.Spacing.md)
+                        } else {
+                            UncategorizedTransactionsCard(
+                                uncategorizedCount: uncategorizedTransactions.count,
+                                showManualCategorization: $showManualCategorization,
+                                onAICategorizationTap: {
+                                    Task { await startAICategorization() }
+                                }
+                            )
+                            .padding(.horizontal, Theme.Spacing.md)
+
+                            // Show error if AI categorization failed
+                            if let error = aiCategorizationError {
+                                HStack(spacing: Theme.Spacing.sm) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.orange)
+                                    Text(error)
+                                        .font(.caption)
+                                        .foregroundColor(Theme.Colors.textSecondary)
+                                    Spacer()
+                                    Button("Retry") {
+                                        aiCategorizationError = nil
+                                        Task { await startAICategorization() }
+                                    }
+                                    .font(.caption)
+                                    .foregroundColor(Theme.Colors.primary)
+                                }
+                                .padding(Theme.Spacing.sm)
+                                .background(Color.orange.opacity(0.1))
+                                .cornerRadius(Theme.CornerRadius.sm)
+                                .padding(.horizontal, Theme.Spacing.md)
+                            }
+                        }
                     }
 
                     // Budget Overview Card
@@ -326,6 +408,10 @@ struct BudgetView: View {
         isLoading = true
         loadError = nil
 
+        // Clear old data to prevent showing stale information
+        categories = []
+        uncategorizedTransactions = []
+
         do {
             // Fetch categories tree
             let categoriesTree = try await apiClient.fetchCategoriesTree()
@@ -333,18 +419,49 @@ struct BudgetView: View {
             // Fetch budgets
             let budgets = try await apiClient.fetchBudgets()
 
-            // Fetch transactions for the current month to calculate spending
+            // Fetch transactions for the selected month to calculate spending
             let calendar = Calendar.current
-            let now = Date()
-            let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
+            let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: selectedMonth))!
             let startTimestamp = Int(startOfMonth.timeIntervalSince1970)
+
+            // Calculate start of NEXT month (exclusive end point)
+            // Backend uses lt (less than) so this will get all transactions in the selected month
+            let startOfNextMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth)!
+            let endTimestamp = Int(startOfNextMonth.timeIntervalSince1970)
+
+            // Debug: print date range
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            print("📅 Loading budget data for: \(currentMonthYear)")
+            print("   Start: \(dateFormatter.string(from: startOfMonth)) (timestamp: \(startTimestamp))")
+            print("   End (exclusive): \(dateFormatter.string(from: startOfNextMonth)) (timestamp: \(endTimestamp))")
 
             let transactions = try await apiClient.listSimplefinTransactions(
                 dateFrom: startTimestamp,
-                dateTo: nil,
+                dateTo: endTimestamp,
                 limit: 1000,
                 offset: 0
             )
+
+            print("   Fetched \(transactions.count) transactions for \(currentMonthYear)")
+
+            // Track earliest transaction date for navigation limits
+            if !transactions.isEmpty {
+                let oldestInBatch = transactions.map { Date(timeIntervalSince1970: TimeInterval($0.postedDate)) }.min()
+                if let oldest = oldestInBatch {
+                    if let current = earliestTransactionDate {
+                        earliestTransactionDate = min(current, oldest)
+                    } else {
+                        earliestTransactionDate = oldest
+                    }
+                    print("   📅 Earliest known transaction date: \(dateFormatter.string(from: earliestTransactionDate!))")
+                }
+            } else if earliestTransactionDate == nil {
+                // If no transactions in current month and we haven't seen any before,
+                // set earliest to current month to prevent going back further
+                earliestTransactionDate = selectedMonth
+                print("   📅 No transactions found, limiting navigation to current month")
+            }
 
             // Build category spending map
             // IMPORTANT: Only count expenses (negative amounts) in budget tracking
@@ -440,15 +557,77 @@ struct BudgetView: View {
     private var currentMonthYear: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMMM yyyy"
-        return formatter.string(from: Date())
+        return formatter.string(from: selectedMonth)
     }
 
     private var daysRemainingText: String {
         let calendar = Calendar.current
-        let now = Date()
-        let endOfMonth = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: calendar.date(from: calendar.dateComponents([.year, .month], from: now))!)!
-        let remaining = calendar.dateComponents([.day], from: now, to: endOfMonth).day ?? 0
-        return remaining > 0 ? "\(remaining) days left" : "Period ended"
+
+        // If viewing current month, show days remaining
+        if isCurrentMonth {
+            let now = Date()
+            let endOfMonth = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: calendar.date(from: calendar.dateComponents([.year, .month], from: now))!)!
+            let remaining = calendar.dateComponents([.day], from: now, to: endOfMonth).day ?? 0
+            return remaining > 0 ? "\(remaining) days left" : "Period ended"
+        } else {
+            // For historical months, show "Past period" or similar
+            return "Past period"
+        }
+    }
+
+    private func startAICategorization() async {
+        guard !isAICategorizationRunning else { return }
+
+        isAICategorizationRunning = true
+        aiCategorizationProgress = 0
+        aiCategorizationError = nil
+
+        // Animate progress while waiting for API
+        let progressTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
+            if !isAICategorizationRunning || aiCategorizationProgress >= 0.95 {
+                timer.invalidate()
+            } else {
+                aiCategorizationProgress += 0.02
+            }
+        }
+
+        do {
+            // Call backend AI categorization
+            let transactionIds = uncategorizedTransactions.map { $0.id }
+            let response = try await apiClient.categorizeWithAI(transactionIds: transactionIds, force: false)
+
+            // Build batch updates
+            let updates = response.results.compactMap { result -> (transactionId: String, categoryId: String?, subcategoryId: String?)? in
+                guard result.categoryId != nil else { return nil }
+                return (transactionId: result.transactionId,
+                       categoryId: result.categoryId,
+                       subcategoryId: result.subcategoryId)
+            }
+
+            // Save to backend (already done by categorizeWithAI, but batch update ensures consistency)
+            if !updates.isEmpty {
+                _ = try await apiClient.batchUpdateTransactions(updates)
+            }
+
+            // Complete progress
+            aiCategorizationProgress = 1.0
+
+            // Wait a moment to show completion
+            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+
+            // Reload data to refresh the view
+            await loadData()
+
+            // Reset state
+            isAICategorizationRunning = false
+            aiCategorizationProgress = 0
+
+        } catch {
+            progressTimer.invalidate()
+            aiCategorizationError = "Failed to categorize: \(error.localizedDescription)"
+            isAICategorizationRunning = false
+            aiCategorizationProgress = 0
+        }
     }
 }
 

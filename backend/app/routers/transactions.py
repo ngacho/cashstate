@@ -169,7 +169,7 @@ async def batch_update_transactions(
         updated_count = db.batch_update_simplefin_transactions(valid_updates)
         logger.info(f"[PATCH /transactions/batch/categorize] Successfully updated {updated_count} transactions")
     else:
-        logger.warning(f"[PATCH /transactions/batch/categorize] No valid updates to process")
+        logger.warning("[PATCH /transactions/batch/categorize] No valid updates to process")
 
     if failed_ids:
         logger.warning(f"[PATCH /transactions/batch/categorize] Failed IDs: {failed_ids}")

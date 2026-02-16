@@ -30,7 +30,7 @@ struct CategorizableTransaction: Identifiable {
 struct UncategorizedTransactionsCard: View {
     let uncategorizedCount: Int
     @Binding var showManualCategorization: Bool
-    @Binding var showAICategorization: Bool
+    let onAICategorizationTap: () -> Void
 
     var body: some View {
         VStack(spacing: Theme.Spacing.md) {
@@ -73,7 +73,7 @@ struct UncategorizedTransactionsCard: View {
 
                 // AI categorization button
                 Button {
-                    showAICategorization = true
+                    onAICategorizationTap()
                 } label: {
                     HStack {
                         Image(systemName: "sparkles")
@@ -96,6 +96,77 @@ struct UncategorizedTransactionsCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: Theme.CornerRadius.md)
                 .stroke(Theme.Colors.expense.opacity(0.2), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - AI Categorization Progress Card (Inline)
+
+struct AICategorizationProgressCard: View {
+    let progress: Double
+    let totalCount: Int
+
+    var body: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            HStack {
+                Image(systemName: "sparkles")
+                    .foregroundColor(Theme.Colors.primary)
+                    .font(.title3)
+                    .symbolEffect(.pulse)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("AI Categorization in Progress")
+                        .font(.headline)
+                        .foregroundColor(Theme.Colors.textPrimary)
+
+                    Text("Analyzing \(totalCount) transaction\(totalCount == 1 ? "" : "s")...")
+                        .font(.caption)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                }
+
+                Spacer()
+            }
+
+            // Progress bar
+            VStack(spacing: Theme.Spacing.xs) {
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.gray.opacity(0.15))
+                            .frame(height: 8)
+
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Theme.Colors.primary)
+                            .frame(width: geometry.size.width * progress, height: 8)
+                            .animation(.linear(duration: 0.3), value: progress)
+                    }
+                }
+                .frame(height: 8)
+
+                HStack {
+                    Text("\(Int(progress * 100))%")
+                        .font(.caption)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                    Spacer()
+                    if progress >= 1.0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(Theme.Colors.income)
+                                .font(.caption)
+                            Text("Complete")
+                                .font(.caption)
+                                .foregroundColor(Theme.Colors.income)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .background(Theme.Colors.primary.opacity(0.05))
+        .cornerRadius(Theme.CornerRadius.md)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.CornerRadius.md)
+                .stroke(Theme.Colors.primary.opacity(0.2), lineWidth: 1)
         )
     }
 }
@@ -1347,15 +1418,23 @@ extension CategorizableTransaction {
 
 #Preview("Uncategorized Card") {
     @Previewable @State var showManual = false
-    @Previewable @State var showAI = false
 
     return VStack {
         UncategorizedTransactionsCard(
             uncategorizedCount: 15,
             showManualCategorization: $showManual,
-            showAICategorization: $showAI
+            onAICategorizationTap: {
+                print("AI categorization tapped")
+            }
         )
         .padding()
+
+        AICategorizationProgressCard(
+            progress: 0.65,
+            totalCount: 15
+        )
+        .padding()
+
         Spacer()
     }
     .background(Theme.Colors.background)

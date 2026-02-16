@@ -253,10 +253,13 @@ class Database:
         query = self.client.table("simplefin_transactions").select("*")
         query = query.eq("user_id", user_id)
 
-        if date_from:
+        # Note: Use 'is not None' to handle edge case where date_from could be 0 (Unix epoch)
+        if date_from is not None:
             query = query.gte("posted_date", date_from)
-        if date_to:
-            query = query.lte("posted_date", date_to)
+        if date_to is not None:
+            # Use lt (less than) not lte to exclude transactions at exactly the end timestamp
+            # This ensures when querying for a month, we don't include the first moment of next month
+            query = query.lt("posted_date", date_to)
         result = (
             query.order("posted_date", desc=True)
             .range(offset, offset + limit - 1)
