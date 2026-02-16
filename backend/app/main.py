@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import get_settings
+from app.logging_config import setup_logging
 from app.routers import (
     auth_router,
     budgets_router,
@@ -18,6 +19,8 @@ from app.routers import (
 )
 from app.cron import sync_simplefin_transactions, update_daily_snapshots
 
+# Setup logging
+logger = setup_logging()
 
 settings = get_settings()
 
@@ -26,21 +29,21 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
-    print(f"Starting {settings.app_name} API...")
+    logger.info(f"Starting {settings.app_name} API...")
 
     # Start cron jobs
     if settings.enable_cron_jobs:
-        print("[CRON] Starting scheduled tasks...")
+        logger.info("[CRON] Starting scheduled tasks...")
         await sync_simplefin_transactions()  # Run immediately on startup
         await update_daily_snapshots()  # Run immediately on startup
-        print("[CRON] Scheduled tasks initialized")
+        logger.info("[CRON] Scheduled tasks initialized")
     else:
-        print("[CRON] Cron jobs disabled")
+        logger.info("[CRON] Cron jobs disabled")
 
     yield
 
     # Shutdown
-    print(f"Shutting down {settings.app_name} API...")
+    logger.info(f"Shutting down {settings.app_name} API...")
 
 
 app = FastAPI(

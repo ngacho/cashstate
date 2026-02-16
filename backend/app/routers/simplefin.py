@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.config import get_settings
 from app.database import Database
 from app.dependencies import get_current_user, get_database
+from app.logging_config import get_logger
 from app.schemas.simplefin import (
     SetupTokenRequest,
     SetupTokenResponse,
@@ -19,6 +20,7 @@ from app.utils.encryption import encrypt_token, decrypt_token
 
 
 router = APIRouter(prefix="/simplefin", tags=["SimpleFin"])
+logger = get_logger("simplefin")
 
 
 @router.post("/setup", response_model=SetupTokenResponse)
@@ -162,6 +164,16 @@ async def list_transactions(
     offset: int = 0,
 ):
     """List all SimpleFin transactions for the current user."""
+    from datetime import datetime
+
+    # Convert timestamps to human-readable dates for logging
+    date_from_str = datetime.fromtimestamp(date_from).strftime("%Y-%m-%d") if date_from else "None"
+    date_to_str = datetime.fromtimestamp(date_to).strftime("%Y-%m-%d") if date_to else "None"
+
+    logger.info(f"[GET /simplefin/transactions] User: {user['id']}")
+    logger.info(f"[GET /simplefin/transactions] Date range: {date_from_str} to {date_to_str} (timestamps: {date_from} to {date_to})")
+    logger.info(f"[GET /simplefin/transactions] Pagination: limit={limit}, offset={offset}")
+
     transactions = db.get_user_simplefin_transactions(
         user_id=user["id"],
         date_from=date_from,
@@ -169,6 +181,20 @@ async def list_transactions(
         limit=limit,
         offset=offset,
     )
+
+    # Count categorized vs uncategorized
+    categorized_count = sum(1 for t in transactions if t.get("category_id") is not None)
+    uncategorized_count = len(transactions) - categorized_count
+
+    logger.info(f"[GET /simplefin/transactions] Returning {len(transactions)} transactions:")
+    logger.info(f"[GET /simplefin/transactions]   - {categorized_count} categorized")
+    logger.info(f"[GET /simplefin/transactions]   - {uncategorized_count} uncategorized")
+
+    if transactions:
+        sample = transactions[0]
+        logger.debug(f"[GET /simplefin/transactions] Sample transaction: id={sample.get('id')}, category_id={sample.get('category_id')}, subcategory_id={sample.get('subcategory_id')}, amount={sample.get('amount')}")
+        logger.debug(f"[GET /simplefin/transactions] Fields in response: {list(sample.keys())}")
+
     return transactions
 
 

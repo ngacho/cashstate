@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.database import Database
 from app.dependencies import get_current_user, get_database
+from app.logging_config import get_logger
 from app.schemas.category import (
     CategoryCreate,
     CategoryUpdate,
@@ -26,6 +27,7 @@ from app.services.onboarding_service import get_onboarding_service
 
 
 router = APIRouter(prefix="/categories", tags=["Categories"])
+logger = get_logger("categories")
 
 
 # ============================================================================
@@ -80,8 +82,13 @@ async def get_categories_tree(
     db: Database = Depends(get_database),
 ):
     """Get categories with nested subcategories."""
+    logger.info(f"[GET /categories/tree] User: {user['id']}")
+
     categories = db.get_categories(user["id"])
+    logger.debug(f"[GET /categories/tree] Fetched {len(categories)} categories")
+
     all_subcategories = db.get_subcategories()
+    logger.debug(f"[GET /categories/tree] Fetched {len(all_subcategories)} subcategories")
 
     # Group subcategories by category_id
     subcategories_by_category = {}
@@ -100,6 +107,7 @@ async def get_categories_tree(
         )
         tree.append(cat_response)
 
+    logger.info(f"[GET /categories/tree] Returning {len(tree)} categories with subcategories")
     return CategoriesTreeResponse(items=tree, total=len(tree))
 
 
@@ -317,6 +325,8 @@ async def categorize_with_ai(
     their description, payee, and amount. It can categorize specific transactions
     or all uncategorized transactions.
     """
+    logger.info(f"[POST /categories/ai/categorize] User: {user['id']}, Transaction IDs: {request.transaction_ids}, Force: {request.force}")
+
     try:
         categorization_service = get_categorization_service(db)
         result = categorization_service.categorize_transactions(
@@ -324,12 +334,13 @@ async def categorize_with_ai(
             transaction_ids=request.transaction_ids,
             force=request.force,
         )
+        logger.info(f"[POST /categories/ai/categorize] Success: {result['categorized_count']} categorized, {result['failed_count']} failed")
         return CategorizationResponse(**result)
     except ValueError as e:
-        print(f"[AI Categorization] ValueError: {str(e)}")
+        logger.error(f"[POST /categories/ai/categorize] ValueError: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        print(f"[AI Categorization] Exception: {str(e)}")
+        logger.error(f"[POST /categories/ai/categorize] Exception: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Categorization failed: {str(e)}")

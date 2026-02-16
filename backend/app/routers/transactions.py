@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.database import Database
 from app.dependencies import get_current_user, get_database
+from app.logging_config import get_logger
 from app.schemas.transaction import (
     TransactionResponse,
     TransactionListResponse,
@@ -14,6 +15,7 @@ from app.schemas.transaction import (
 
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
+logger = get_logger("transactions")
 
 
 @router.get("", response_model=TransactionListResponse)
@@ -125,6 +127,7 @@ async def batch_update_transactions(
     db: Database = Depends(get_database),
 ):
     """Batch update transaction categorizations - TRUE batch with single SQL query."""
+    logger.info(f"[PATCH /transactions/batch/categorize] User: {user['id']}, Updates: {len(batch.updates)}")
 
     # Extract all transaction IDs
     transaction_ids = [item.transaction_id for item in batch.updates]
@@ -132,6 +135,7 @@ async def batch_update_transactions(
     # Batch fetch all transactions in ONE query
     transactions = db.get_simplefin_transactions_by_ids(transaction_ids)
     transaction_map = {tx["id"]: tx for tx in transactions}
+    logger.debug(f"[PATCH /transactions/batch/categorize] Fetched {len(transactions)} transactions from DB")
 
     # Verify ownership and build valid updates
     failed_ids = []
@@ -161,7 +165,16 @@ async def batch_update_transactions(
     # Batch update ALL valid transactions in ONE SQL query
     updated_count = 0
     if valid_updates:
+        logger.debug(f"[PATCH /transactions/batch/categorize] Updating {len(valid_updates)} transactions")
         updated_count = db.batch_update_simplefin_transactions(valid_updates)
+        logger.info(f"[PATCH /transactions/batch/categorize] Successfully updated {updated_count} transactions")
+    else:
+        logger.warning(f"[PATCH /transactions/batch/categorize] No valid updates to process")
+
+    if failed_ids:
+        logger.warning(f"[PATCH /transactions/batch/categorize] Failed IDs: {failed_ids}")
+
+    logger.info(f"[PATCH /transactions/batch/categorize] Complete: {updated_count} updated, {len(failed_ids)} failed")
 
     return TransactionBatchUpdateResponse(
         updated_count=updated_count,

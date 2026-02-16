@@ -202,8 +202,15 @@ class Database:
         Returns:
             Number of transactions updated
         """
+        import logging
+        logger = logging.getLogger("cashstate.database")
+
         if not updates:
+            logger.warning("[DB] batch_update_simplefin_transactions: No updates provided")
             return 0
+
+        logger.info(f"[DB] Batch updating {len(updates)} transactions")
+        logger.debug(f"[DB] Sample update: {updates[0] if updates else 'None'}")
 
         # Build arrays for batch RPC call
         transaction_ids = [u["id"] for u in updates]
@@ -221,7 +228,10 @@ class Database:
         ).execute()
 
         # RPC returns number of updated rows
-        return result.data if isinstance(result.data, int) else len(updates)
+        updated_count = result.data if isinstance(result.data, int) else len(updates)
+        logger.info(f"[DB] ✓ Batch update complete: {updated_count} transactions updated")
+
+        return updated_count
 
     def get_user_simplefin_transactions(
         self,
@@ -469,10 +479,21 @@ class Database:
         self, transaction_id: str, category_id: str | None, subcategory_id: str | None
     ) -> dict | None:
         """Update transaction categorization."""
+        import logging
+        logger = logging.getLogger("cashstate.database")
+
+        logger.debug(f"[DB] Updating transaction {transaction_id}: category_id={category_id}, subcategory_id={subcategory_id}")
+
         result = (
             self.client.table("simplefin_transactions")
             .update({"category_id": category_id, "subcategory_id": subcategory_id})
             .eq("id", transaction_id)
             .execute()
         )
-        return result.data[0] if result.data else None
+
+        if result.data:
+            logger.debug(f"[DB] ✓ Successfully updated transaction {transaction_id}")
+            return result.data[0]
+        else:
+            logger.error(f"[DB] ✗ Failed to update transaction {transaction_id} - no data returned")
+            return None

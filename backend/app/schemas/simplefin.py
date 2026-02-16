@@ -83,6 +83,10 @@ class SimplefinTransactionResponse(BaseModel):
 
     pending: bool
 
+    # Categorization fields
+    category_id: str | None = None
+    subcategory_id: str | None = None
+
     created_at: datetime
     updated_at: datetime
 

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.database import Database
 from app.dependencies import get_current_user, get_database
+from app.logging_config import get_logger
 from app.schemas.budget import (
     BudgetCreate,
     BudgetUpdate,
@@ -14,6 +15,7 @@ from app.schemas.common import SuccessResponse
 
 
 router = APIRouter(prefix="/budgets", tags=["Budgets"])
+logger = get_logger("budgets")
 
 
 @router.get("", response_model=BudgetListResponse)
@@ -23,7 +25,11 @@ async def list_budgets(
     db: Database = Depends(get_database),
 ):
     """List all budgets for the user, optionally filtered by category."""
+    logger.info(f"[GET /budgets] User: {user['id']}, category_id: {category_id}")
+
     budgets = db.get_budgets(user["id"], category_id=category_id)
+
+    logger.info(f"[GET /budgets] Returning {len(budgets)} budgets")
     return BudgetListResponse(
         items=[BudgetResponse(**budget) for budget in budgets],
         total=len(budgets),
