@@ -270,49 +270,11 @@ struct BudgetView: View {
                         }
 
                         // Donut Chart
-                        VStack(spacing: Theme.Spacing.sm) {
-                            ZStack {
-                                BudgetDonutChart(
-                                    categories: categories.filter { $0.budgetAmount != nil },
-                                    total: totalSpent
-                                )
-                                .frame(height: 220)
-
-                                // Total in center
-                                VStack(spacing: 4) {
-                                    Text("Spending")
-                                        .font(.caption)
-                                        .foregroundColor(Theme.Colors.textSecondary)
-                                    Text("$\(String(format: "%.2f", totalSpent))")
-                                        .font(.system(size: 24, weight: .bold))
-                                        .foregroundColor(Theme.Colors.textPrimary)
-                                    Text("of $\(String(format: "%.0f", totalBudget))")
-                                        .font(.caption2)
-                                        .foregroundColor(Theme.Colors.textSecondary)
-                                }
-                            }
-
-                            // Legend for dual ring
-                            HStack(spacing: Theme.Spacing.lg) {
-                                HStack(spacing: 6) {
-                                    Circle()
-                                        .fill(Color.gray.opacity(0.6))
-                                        .frame(width: 12, height: 12)
-                                    Text("Outer: Spending")
-                                        .font(.caption2)
-                                        .foregroundColor(Theme.Colors.textSecondary)
-                                }
-
-                                HStack(spacing: 6) {
-                                    Circle()
-                                        .fill(Color.gray.opacity(0.3))
-                                        .frame(width: 12, height: 12)
-                                    Text("Inner: Budget")
-                                        .font(.caption2)
-                                        .foregroundColor(Theme.Colors.textSecondary)
-                                }
-                            }
-                        }
+                        InteractiveBudgetDonutView(
+                            categories: categories.filter { $0.budgetAmount != nil },
+                            totalSpent: totalSpent,
+                            totalBudget: totalBudget
+                        )
                         .padding(.vertical, Theme.Spacing.sm)
 
                         // Category list with expandable subcategories
@@ -568,11 +530,118 @@ struct BudgetCategoryRow: View {
     }
 }
 
+// MARK: - Interactive Budget Donut View
+
+struct InteractiveBudgetDonutView: View {
+    let categories: [BudgetCategory]
+    let totalSpent: Double
+    let totalBudget: Double
+
+    @State private var selectedCategoryIndex: Int?
+    @State private var showBudgetRing = false
+
+    var body: some View {
+        VStack(spacing: Theme.Spacing.sm) {
+            ZStack {
+                BudgetDonutChart(
+                    categories: categories,
+                    total: totalSpent,
+                    selectedIndex: selectedCategoryIndex,
+                    showBudgetRing: showBudgetRing,
+                    onTap: { index in
+                        withAnimation(.spring(response: 0.3)) {
+                            if selectedCategoryIndex == index {
+                                selectedCategoryIndex = nil
+                            } else {
+                                selectedCategoryIndex = index
+                            }
+                        }
+                    }
+                )
+                .frame(height: 280)  // Bigger donut
+
+                // Center content - changes based on selection
+                VStack(spacing: 4) {
+                    if let selectedIndex = selectedCategoryIndex,
+                       selectedIndex < categories.count {
+                        let category = categories[selectedIndex]
+                        Text(category.icon)
+                            .font(.system(size: 32))
+                        Text(category.name)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                        Text("$\(String(format: "%.2f", category.spentAmount))")
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundColor(category.color)
+                        Text("\(Int((category.spentAmount / totalSpent) * 100))% of spending")
+                            .font(.caption2)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    } else {
+                        Text("Spending")
+                            .font(.caption)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                        Text("$\(String(format: "%.2f", totalSpent))")
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundColor(Theme.Colors.textPrimary)
+                        Text("of $\(String(format: "%.0f", totalBudget))")
+                            .font(.caption2)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                }
+                .multilineTextAlignment(.center)
+            }
+
+            // Controls and legend
+            HStack(spacing: Theme.Spacing.lg) {
+                // Toggle for budget ring
+                Button {
+                    withAnimation(.spring(response: 0.3)) {
+                        showBudgetRing.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: showBudgetRing ? "checkmark.circle.fill" : "circle")
+                            .foregroundColor(showBudgetRing ? Theme.Colors.primary : Theme.Colors.textSecondary)
+                        Text("Show Budget")
+                            .font(.caption2)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                }
+
+                Spacer()
+
+                // Tap instruction
+                if selectedCategoryIndex == nil {
+                    Text("Tap segments for details")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Colors.textSecondary.opacity(0.7))
+                        .italic()
+                } else {
+                    Button {
+                        withAnimation(.spring(response: 0.3)) {
+                            selectedCategoryIndex = nil
+                        }
+                    } label: {
+                        Text("Clear selection")
+                            .font(.caption2)
+                            .foregroundColor(Theme.Colors.primary)
+                    }
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.sm)
+        }
+    }
+}
+
 // MARK: - Budget Donut Chart
 
 struct BudgetDonutChart: View {
     let categories: [BudgetCategory]
     let total: Double
+    var selectedIndex: Int?
+    var showBudgetRing: Bool
+    var onTap: ((Int) -> Void)?
 
     var totalBudget: Double {
         categories.compactMap { $0.budgetAmount }.reduce(0, +)
@@ -587,21 +656,28 @@ struct BudgetDonutChart: View {
                         startAngle: spendingStartAngle(for: index),
                         endAngle: spendingEndAngle(for: index),
                         color: category.color,
-                        innerRadiusRatio: 0.55,  // Wider outer ring
-                        outerRadiusRatio: 1.0
+                        innerRadiusRatio: 0.50,  // Bigger donut hole
+                        outerRadiusRatio: 1.0,
+                        isSelected: selectedIndex == index,
+                        isAnySelected: selectedIndex != nil
                     )
+                    .onTapGesture {
+                        onTap?(index)
+                    }
                 }
 
-                // Inner ring - Budget allocation (narrower)
-                if totalBudget > 0 {
+                // Inner ring - Budget allocation (narrower) - toggleable
+                if showBudgetRing && totalBudget > 0 {
                     ForEach(Array(categories.enumerated()), id: \.element.id) { index, category in
                         if category.budgetAmount != nil {
                             BudgetDonutSlice(
                                 startAngle: budgetStartAngle(for: index),
                                 endAngle: budgetEndAngle(for: index),
                                 color: category.color.opacity(0.5),
-                                innerRadiusRatio: 0.42,  // Narrower inner ring
-                                outerRadiusRatio: 0.52
+                                innerRadiusRatio: 0.35,  // Narrower inner ring
+                                outerRadiusRatio: 0.47,
+                                isSelected: false,
+                                isAnySelected: false
                             )
                         }
                     }
@@ -641,40 +717,97 @@ struct BudgetDonutSlice: View {
     let color: Color
     let innerRadiusRatio: CGFloat
     let outerRadiusRatio: CGFloat
+    let isSelected: Bool
+    let isAnySelected: Bool
+
+    // Calculate effective color based on selection state
+    var effectiveColor: Color {
+        if isSelected {
+            return color  // Full brightness when selected
+        } else if isAnySelected {
+            return color.opacity(0.3)  // Dimmed when another is selected
+        } else {
+            return color  // Normal when nothing selected
+        }
+    }
+
+    // Scale factor for selected slice
+    var scaleFactor: CGFloat {
+        isSelected ? 1.05 : 1.0
+    }
 
     var body: some View {
         GeometryReader { geometry in
-            Path { path in
-                let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                let maxRadius = min(geometry.size.width, geometry.size.height) / 2
-                let outerRadius = maxRadius * outerRadiusRatio
-                let innerRadius = maxRadius * innerRadiusRatio
+            ZStack {
+                // Main slice
+                Path { path in
+                    let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                    let maxRadius = min(geometry.size.width, geometry.size.height) / 2
+                    let outerRadius = maxRadius * outerRadiusRatio * scaleFactor
+                    let innerRadius = maxRadius * innerRadiusRatio
 
-                path.addArc(
-                    center: center,
-                    radius: outerRadius,
-                    startAngle: startAngle,
-                    endAngle: endAngle,
-                    clockwise: false
-                )
+                    path.addArc(
+                        center: center,
+                        radius: outerRadius,
+                        startAngle: startAngle,
+                        endAngle: endAngle,
+                        clockwise: false
+                    )
 
-                let endRad = endAngle.radians
-                path.addLine(to: CGPoint(
-                    x: center.x + innerRadius * CGFloat(cos(endRad)),
-                    y: center.y + innerRadius * CGFloat(sin(endRad))
-                ))
+                    let endRad = endAngle.radians
+                    path.addLine(to: CGPoint(
+                        x: center.x + innerRadius * CGFloat(cos(endRad)),
+                        y: center.y + innerRadius * CGFloat(sin(endRad))
+                    ))
 
-                path.addArc(
-                    center: center,
-                    radius: innerRadius,
-                    startAngle: endAngle,
-                    endAngle: startAngle,
-                    clockwise: true
-                )
+                    path.addArc(
+                        center: center,
+                        radius: innerRadius,
+                        startAngle: endAngle,
+                        endAngle: startAngle,
+                        clockwise: true
+                    )
 
-                path.closeSubpath()
+                    path.closeSubpath()
+                }
+                .fill(effectiveColor)
+
+                // Glow effect when selected
+                if isSelected {
+                    Path { path in
+                        let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                        let maxRadius = min(geometry.size.width, geometry.size.height) / 2
+                        let outerRadius = maxRadius * outerRadiusRatio * scaleFactor
+                        let innerRadius = maxRadius * innerRadiusRatio
+
+                        path.addArc(
+                            center: center,
+                            radius: outerRadius,
+                            startAngle: startAngle,
+                            endAngle: endAngle,
+                            clockwise: false
+                        )
+
+                        let endRad = endAngle.radians
+                        path.addLine(to: CGPoint(
+                            x: center.x + innerRadius * CGFloat(cos(endRad)),
+                            y: center.y + innerRadius * CGFloat(sin(endRad))
+                        ))
+
+                        path.addArc(
+                            center: center,
+                            radius: innerRadius,
+                            startAngle: endAngle,
+                            endAngle: startAngle,
+                            clockwise: true
+                        )
+
+                        path.closeSubpath()
+                    }
+                    .stroke(color, lineWidth: 3)
+                    .shadow(color: color.opacity(0.5), radius: 8, x: 0, y: 0)
+                }
             }
-            .fill(color)
         }
     }
 }
