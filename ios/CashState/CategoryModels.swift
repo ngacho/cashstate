@@ -70,6 +70,14 @@ struct SeedDefaultsResponse: Codable {
     let budgetsCreated: Int
     let monthlyBudget: Double
     let budgetPerCategory: Double
+
+    enum CodingKeys: String, CodingKey {
+        case categoriesCreated = "categories_created"
+        case subcategoriesCreated = "subcategories_created"
+        case budgetsCreated = "budgets_created"
+        case monthlyBudget = "monthly_budget"
+        case budgetPerCategory = "budget_per_category"
+    }
 }
 
 // MARK: - Budget Models (Backend API)

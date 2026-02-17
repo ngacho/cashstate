@@ -1,6 +1,95 @@
 import Foundation
 import SwiftUI
 
+// MARK: - Budget Template Models (Phase 2)
+
+struct BudgetTemplate: Identifiable, Codable {
+    let id: String
+    let userId: String
+    let name: String
+    let totalAmount: Double
+    let isDefault: Bool
+    let accountIds: [String]
+    let createdAt: Date
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case name
+        case totalAmount = "total_amount"
+        case isDefault = "is_default"
+        case accountIds = "account_ids"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct BudgetTemplateListResponse: Codable {
+    let items: [BudgetTemplate]
+    let total: Int
+}
+
+struct CategoryBudget: Identifiable, Codable {
+    let id: String
+    let templateId: String
+    let categoryId: String
+    let amount: Double
+    let createdAt: Date
+    let updatedAt: Date
+    var spent: Double?  // Spending data added by API
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case templateId = "template_id"
+        case categoryId = "category_id"
+        case amount
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case spent
+    }
+}
+
+struct SubcategoryBudget: Identifiable, Codable {
+    let id: String
+    let templateId: String
+    let subcategoryId: String
+    let amount: Double
+    let createdAt: Date
+    let updatedAt: Date
+    var spent: Double?  // Spending data added by API
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case templateId = "template_id"
+        case subcategoryId = "subcategory_id"
+        case amount
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case spent
+    }
+}
+
+struct MonthlyBudget: Codable {
+    let template: BudgetTemplate
+    let categories: [CategoryBudget]
+    let subcategories: [SubcategoryBudget]
+    let subcategorySpending: [String: Double]
+    let periodMonth: String
+    let totalSpent: Double
+    let hasOverride: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case template
+        case categories
+        case subcategories
+        case subcategorySpending = "subcategory_spending"
+        case periodMonth = "period_month"
+        case totalSpent = "total_spent"
+        case hasOverride = "has_override"
+    }
+}
+
 // MARK: - Budget Category
 
 struct BudgetCategory: Identifiable, Codable, Hashable {
@@ -12,7 +101,7 @@ struct BudgetCategory: Identifiable, Codable, Hashable {
     static func == (lhs: BudgetCategory, rhs: BudgetCategory) -> Bool {
         lhs.id == rhs.id
     }
-    let id: String
+    let id: String  // Category ID
     let name: String
     let icon: String
     let colorHex: String  // Store hex string directly from database
@@ -20,6 +109,10 @@ struct BudgetCategory: Identifiable, Codable, Hashable {
     var subcategories: [BudgetSubcategory]
     var budgetAmount: Double?
     var spentAmount: Double
+
+    // Budget template metadata (for updates)
+    var budgetId: String?  // ID from budget_categories table
+    var templateId: String?  // Template this budget belongs to
 
     enum CategoryType: String, Codable, CaseIterable {
         case expense = "Expense"
@@ -95,12 +188,16 @@ struct BudgetSubcategory: Identifiable, Codable, Hashable {
     static func == (lhs: BudgetSubcategory, rhs: BudgetSubcategory) -> Bool {
         lhs.id == rhs.id
     }
-    let id: String
+    let id: String  // Subcategory ID
     let name: String
     let icon: String
     var budgetAmount: Double?
     var spentAmount: Double
     var transactionCount: Int
+
+    // Budget template metadata (for updates)
+    var budgetId: String?  // ID from budget_subcategories table
+    var templateId: String?  // Template this budget belongs to
 }
 
 // MARK: - Budget

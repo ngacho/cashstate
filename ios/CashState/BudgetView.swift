@@ -23,6 +23,7 @@ struct BudgetView: View {
     // Loading state
     @State private var isLoading = true
     @State private var loadError: String?
+    @State private var loadTask: Task<Void, Never>?
 
     // Filter toggle
     @State private var showIncomeInBudget = false
@@ -79,7 +80,7 @@ struct BudgetView: View {
                         isLoading: $isLoading,
                         error: $loadError
                     ) {
-                        Task { await loadData() }
+                        reloadData()
                     }
                 } else {
                     // Show main budget UI
@@ -128,7 +129,7 @@ struct BudgetView: View {
             .onChange(of: showManualCategorization) { oldValue, newValue in
                 // Reload data when categorization sheet is dismissed
                 if oldValue == true && newValue == false {
-                    Task { await loadData() }
+                    reloadData()
                 }
             }
             .sheet(isPresented: $showAddCategory) {
@@ -138,15 +139,13 @@ struct BudgetView: View {
             }
         }
         .task {
-            await loadData()
+            reloadData()
         }
         .onChange(of: selectedMonth) { oldValue, newValue in
             // Reload data when the selected month changes (skip initial load)
             if oldValue != newValue {
                 isLoading = true  // Show loading state immediately
-                Task {
-                    await loadData()
-                }
+                reloadData()
             }
         }
     }
@@ -308,7 +307,7 @@ struct BudgetView: View {
                             Menu {
                                 Button(action: {
                                     showIncomeInBudget.toggle()
-                                    Task { await loadData() }
+                                    reloadData()
                                 }) {
                                     Label(
                                         showIncomeInBudget ? "Hide Income" : "Show Income",
@@ -396,6 +395,11 @@ struct BudgetView: View {
             .background(Theme.Colors.background)
         }
 
+    private func reloadData() {
+        loadTask?.cancel()
+        loadTask = Task { await loadData() }
+    }
+
     private func loadData() async {
         isLoading = true
         loadError = nil
@@ -405,19 +409,82 @@ struct BudgetView: View {
         uncategorizedTransactions = []
 
         do {
-            // Fetch categories tree
+            // Get year and month from selectedMonth
+            let calendar = Calendar.current
+            let components = calendar.dateComponents([.year, .month], from: selectedMonth)
+            guard let year = components.year, let month = components.month else {
+                throw NSError(domain: "BudgetView", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid date"])
+            }
+
+            // Fetch budget for month with spending calculated by backend
+            let monthlyBudget = try await apiClient.getBudgetForMonth(year: year, month: month)
+
+            // Fetch categories tree for full category info (names, icons, colors)
             let categoriesTree = try await apiClient.fetchCategoriesTree()
 
-            // Fetch budgets
-            let budgets = try await apiClient.fetchBudgets()
+            // Build category lookup
+            var categoryLookup: [String: CategoryWithSubcategories] = [:]
+            for cat in categoriesTree {
+                categoryLookup[cat.id] = cat
+            }
 
-            // Fetch transactions for the selected month to calculate spending
-            let calendar = Calendar.current
+            // Build subcategory lookup and count
+            var subcategoryLookup: [String: Subcategory] = [:]
+            var subcategoryTransactionCount: [String: Int] = [:]
+            for cat in categoriesTree {
+                for sub in cat.subcategories {
+                    subcategoryLookup[sub.id] = sub
+                    // TODO: Get transaction counts from API
+                    subcategoryTransactionCount[sub.id] = 0
+                }
+            }
+
+            // Build a lookup for subcategory budget entries (by subcategory ID)
+            var subcategoryBudgetMap: [String: SubcategoryBudget] = [:]
+            for subBudget in monthlyBudget.subcategories {
+                subcategoryBudgetMap[subBudget.subcategoryId] = subBudget
+            }
+
+            // Convert API response to BudgetCategory format
+            self.categories = monthlyBudget.categories.compactMap { categoryBudget in
+                guard let cat = categoryLookup[categoryBudget.categoryId] else {
+                    return nil
+                }
+
+                // Build subcategories from the categories tree (all of them),
+                // merging in budget/spending data where it exists
+                let subcategories: [BudgetSubcategory] = cat.subcategories.map { sub in
+                    let subBudget = subcategoryBudgetMap[sub.id]
+                    let spent = monthlyBudget.subcategorySpending[sub.id] ?? 0
+                    return BudgetSubcategory(
+                        id: sub.id,
+                        name: sub.name,
+                        icon: sub.icon,
+                        budgetAmount: subBudget?.amount,
+                        spentAmount: spent,
+                        transactionCount: subcategoryTransactionCount[sub.id] ?? 0,
+                        budgetId: subBudget?.id,
+                        templateId: subBudget?.templateId
+                    )
+                }
+
+                return BudgetCategory(
+                    id: cat.id,
+                    name: cat.name,
+                    icon: cat.icon,
+                    colorHex: cat.color,
+                    type: .expense,
+                    subcategories: subcategories,
+                    budgetAmount: categoryBudget.amount,
+                    spentAmount: categoryBudget.spent ?? 0,
+                    budgetId: categoryBudget.id,  // Store budget ID for updates
+                    templateId: categoryBudget.templateId  // Store template ID for updates
+                )
+            }
+
+            // Load uncategorized transactions for this month
             let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: selectedMonth))!
             let startTimestamp = Int(startOfMonth.timeIntervalSince1970)
-
-            // Calculate start of NEXT month (exclusive end point)
-            // Backend uses lt (less than) so this will get all transactions in the selected month
             let startOfNextMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth)!
             let endTimestamp = Int(startOfNextMonth.timeIntervalSince1970)
 
@@ -428,77 +495,12 @@ struct BudgetView: View {
                 offset: 0
             )
 
-            let transactions = response.items
             hasPreviousData = response.hasPreviousMonth
             hasNextData = response.hasNextMonth
 
-            // Build category spending map
-            // IMPORTANT: Only count expenses (negative amounts) in budget tracking
-            // Income/credits (positive amounts) are excluded unless toggle is enabled
-            var categorySpending: [String: Double] = [:]
-            var subcategorySpending: [String: Double] = [:]
-            var subcategoryTransactionCount: [String: Int] = [:]
-
-            for transaction in transactions {
-                // Skip income/credits unless toggle is enabled
-                let isExpense = transaction.amount < 0
-                if !isExpense && !showIncomeInBudget {
-                    continue
-                }
-
-                let amount = abs(transaction.amount)
-
-                if let categoryId = transaction.categoryId {
-                    categorySpending[categoryId, default: 0] += amount
-
-                    if let subcategoryId = transaction.subcategoryId {
-                        subcategorySpending[subcategoryId, default: 0] += amount
-                        subcategoryTransactionCount[subcategoryId, default: 0] += 1
-                    }
-                }
-            }
-
-            // Build budget map
-            var budgetMap: [String: Double] = [:]
-            for budget in budgets {
-                budgetMap[budget.categoryId] = budget.amount
-            }
-
-            // Convert to BudgetCategory (filter out non-expense categories)
-            self.categories = categoriesTree
-                .filter { cat in
-                    // Only include expense categories in budget view
-                    // Income and Transfers should not appear in expense budgeting
-                    let categoryType = cat.type ?? "expense"  // Default to expense if not set
-                    return categoryType == "expense"
-                }
-                .map { cat in
-                let subcategories = cat.subcategories.map { sub in
-                    BudgetSubcategory(
-                        id: sub.id,
-                        name: sub.name,
-                        icon: sub.icon,
-                        budgetAmount: nil, // Subcategories don't have budgets yet
-                        spentAmount: subcategorySpending[sub.id] ?? 0,
-                        transactionCount: subcategoryTransactionCount[sub.id] ?? 0
-                    )
-                }
-
-                return BudgetCategory(
-                    id: cat.id,
-                    name: cat.name,
-                    icon: cat.icon,
-                    colorHex: cat.color,  // Use hex color directly from database
-                    type: .expense, // Default to expense for now
-                    subcategories: subcategories,
-                    budgetAmount: budgetMap[cat.id],
-                    spentAmount: categorySpending[cat.id] ?? 0
-                )
-            }
-
             // Load uncategorized transactions (transactions without category_id)
             // Only show uncategorized EXPENSES by default (income/credits excluded unless toggle is on)
-            self.uncategorizedTransactions = transactions
+            self.uncategorizedTransactions = response.items
                 .filter { tx in
                     let hasNoCategory = tx.categoryId == nil
                     let isExpense = tx.amount < 0
@@ -1196,7 +1198,7 @@ struct ExpandableCategoryCard: View {
                     }
 
                     // Expand indicator
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    Image(systemName: "chevron.down")
                         .font(.caption)
                         .foregroundColor(Theme.Colors.textSecondary)
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
@@ -1288,7 +1290,8 @@ struct ExpandableCategoryCard: View {
         .sheet(isPresented: $showEditCategoryBudget) {
             CategoryBudgetView(
                 category: $category,
-                isPresented: $showEditCategoryBudget
+                isPresented: $showEditCategoryBudget,
+                apiClient: apiClient
             )
         }
         .sheet(isPresented: $showAddSubcategory) {
@@ -1422,7 +1425,8 @@ struct SubcategoryRow: View {
             SubcategoryBudgetView(
                 subcategory: $subcategory,
                 categoryColor: categoryColor,
-                isPresented: $showEditBudget
+                isPresented: $showEditBudget,
+                apiClient: apiClient
             )
         }
     }

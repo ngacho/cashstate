@@ -3,12 +3,16 @@ import SwiftUI
 struct CategoryBudgetView: View {
     @Binding var category: BudgetCategory
     @Binding var isPresented: Bool
+    let apiClient: APIClient
 
     @State private var budgetAmount: String
+    @State private var isSaving: Bool = false
+    @State private var errorMessage: String?
 
-    init(category: Binding<BudgetCategory>, isPresented: Binding<Bool>) {
+    init(category: Binding<BudgetCategory>, isPresented: Binding<Bool>, apiClient: APIClient) {
         self._category = category
         self._isPresented = isPresented
+        self.apiClient = apiClient
 
         if let budget = category.wrappedValue.budgetAmount {
             _budgetAmount = State(initialValue: String(format: "%.0f", budget))
@@ -165,6 +169,21 @@ struct CategoryBudgetView: View {
                         }
                     }
 
+                    // Error message
+                    if let error = errorMessage {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.red)
+                            Text(error)
+                                .font(.caption)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                        .padding()
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(Theme.CornerRadius.md)
+                        .padding(.horizontal)
+                    }
+
                     Spacer()
                 }
             }
@@ -178,10 +197,17 @@ struct CategoryBudgetView: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
-                        saveBudget()
+                    if isSaving {
+                        ProgressView()
+                    } else {
+                        Button("Save") {
+                            Task {
+                                await saveBudget()
+                            }
+                        }
+                        .fontWeight(.semibold)
+                        .disabled(isSaving)
                     }
-                    .fontWeight(.semibold)
                 }
             }
         }
@@ -209,19 +235,55 @@ struct CategoryBudgetView: View {
         return suggestions.sorted()
     }
 
-    private func saveBudget() {
-        if let amount = Double(budgetAmount), amount > 0 {
-            category.budgetAmount = amount
-        } else {
-            category.budgetAmount = nil
+    private func saveBudget() async {
+        guard let templateId = category.templateId else {
+            errorMessage = "Missing template ID. Please try again."
+            return
         }
-        isPresented = false
+
+        // Validate amount
+        guard let amount = Double(budgetAmount), amount > 0 else {
+            errorMessage = "Please enter a valid budget amount"
+            return
+        }
+
+        isSaving = true
+        errorMessage = nil
+
+        do {
+            if let budgetId = category.budgetId {
+                // Update existing budget
+                let updated = try await apiClient.updateCategoryBudget(
+                    templateId: templateId,
+                    categoryBudgetId: budgetId,
+                    amount: amount
+                )
+                category.budgetAmount = updated.amount
+                category.budgetId = updated.id
+            } else {
+                // Create new budget
+                let created = try await apiClient.addCategoryBudget(
+                    templateId: templateId,
+                    categoryId: category.id,
+                    amount: amount
+                )
+                category.budgetAmount = created.amount
+                category.budgetId = created.id
+            }
+
+            isSaving = false
+            isPresented = false
+        } catch {
+            isSaving = false
+            errorMessage = "Failed to save: \(error.localizedDescription)"
+        }
     }
 }
 
 #Preview {
     CategoryBudgetView(
         category: .constant(BudgetCategory.mockCategories[0]),
-        isPresented: .constant(true)
+        isPresented: .constant(true),
+        apiClient: APIClient()
     )
 }

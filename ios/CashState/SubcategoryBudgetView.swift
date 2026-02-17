@@ -4,13 +4,17 @@ struct SubcategoryBudgetView: View {
     @Binding var subcategory: BudgetSubcategory
     let categoryColor: Color
     @Binding var isPresented: Bool
+    let apiClient: APIClient
 
     @State private var budgetAmount: String
+    @State private var isSaving: Bool = false
+    @State private var errorMessage: String?
 
-    init(subcategory: Binding<BudgetSubcategory>, categoryColor: Color, isPresented: Binding<Bool>) {
+    init(subcategory: Binding<BudgetSubcategory>, categoryColor: Color, isPresented: Binding<Bool>, apiClient: APIClient) {
         self._subcategory = subcategory
         self.categoryColor = categoryColor
         self._isPresented = isPresented
+        self.apiClient = apiClient
 
         if let budget = subcategory.wrappedValue.budgetAmount {
             _budgetAmount = State(initialValue: String(format: "%.0f", budget))
@@ -138,6 +142,21 @@ struct SubcategoryBudgetView: View {
                         }
                     }
 
+                    // Error message
+                    if let error = errorMessage {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.red)
+                            Text(error)
+                                .font(.caption)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                        .padding()
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(Theme.CornerRadius.md)
+                        .padding(.horizontal)
+                    }
+
                     Spacer()
                 }
             }
@@ -151,10 +170,17 @@ struct SubcategoryBudgetView: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
-                        saveBudget()
+                    if isSaving {
+                        ProgressView()
+                    } else {
+                        Button("Save") {
+                            Task {
+                                await saveBudget()
+                            }
+                        }
+                        .fontWeight(.semibold)
+                        .disabled(isSaving)
                     }
-                    .fontWeight(.semibold)
                 }
             }
         }
@@ -173,13 +199,48 @@ struct SubcategoryBudgetView: View {
         ].sorted().uniqued()
     }
 
-    private func saveBudget() {
-        if let amount = Double(budgetAmount), amount > 0 {
-            subcategory.budgetAmount = amount
-        } else {
-            subcategory.budgetAmount = nil
+    private func saveBudget() async {
+        guard let templateId = subcategory.templateId else {
+            errorMessage = "Missing template ID. Please try again."
+            return
         }
-        isPresented = false
+
+        // Validate amount
+        guard let amount = Double(budgetAmount), amount > 0 else {
+            errorMessage = "Please enter a valid budget amount"
+            return
+        }
+
+        isSaving = true
+        errorMessage = nil
+
+        do {
+            if let budgetId = subcategory.budgetId {
+                // Update existing budget
+                let updated = try await apiClient.updateSubcategoryBudget(
+                    templateId: templateId,
+                    subcategoryBudgetId: budgetId,
+                    amount: amount
+                )
+                subcategory.budgetAmount = updated.amount
+                subcategory.budgetId = updated.id
+            } else {
+                // Create new budget
+                let created = try await apiClient.addSubcategoryBudget(
+                    templateId: templateId,
+                    subcategoryId: subcategory.id,
+                    amount: amount
+                )
+                subcategory.budgetAmount = created.amount
+                subcategory.budgetId = created.id
+            }
+
+            isSaving = false
+            isPresented = false
+        } catch {
+            isSaving = false
+            errorMessage = "Failed to save: \(error.localizedDescription)"
+        }
     }
 }
 
@@ -203,6 +264,7 @@ extension Array where Element: Hashable {
             transactionCount: 3
         )),
         categoryColor: .blue,
-        isPresented: .constant(true)
+        isPresented: .constant(true),
+        apiClient: APIClient()
     )
 }
