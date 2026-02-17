@@ -1032,9 +1032,12 @@ struct AllBudgetsView: View {
     @State private var loadError: String?
     @State private var showCreateTemplate = false
     @State private var showCreatePeriod = false
+    @State private var templateToRename: BudgetTemplate?
+    @State private var renameText = ""
+    @State private var showRenameAlert = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Group {
                 if isLoading {
                     ProgressView("Loading...")
@@ -1052,12 +1055,36 @@ struct AllBudgetsView: View {
                     List {
                         Section("Templates") {
                             ForEach(templates) { template in
-                                TemplateListRow(
-                                    template: template,
-                                    onDelete: { await deleteTemplate(template) },
-                                    onSetDefault: { await setDefaultTemplate(template) },
-                                    onRename: { newName in await renameTemplate(template, name: newName) }
-                                )
+                                NavigationLink(value: template) {
+                                    TemplateListRowContent(template: template)
+                                }
+                                .swipeActions(edge: .trailing) {
+                                    if !template.isDefault {
+                                        Button(role: .destructive) {
+                                            Task { await deleteTemplate(template) }
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
+                                    Button {
+                                        templateToRename = template
+                                        renameText = template.name
+                                        showRenameAlert = true
+                                    } label: {
+                                        Label("Rename", systemImage: "pencil")
+                                    }
+                                    .tint(.orange)
+                                }
+                                .swipeActions(edge: .leading) {
+                                    if !template.isDefault {
+                                        Button {
+                                            Task { await setDefaultTemplate(template) }
+                                        } label: {
+                                            Label("Set Default", systemImage: "star.fill")
+                                        }
+                                        .tint(Theme.Colors.primary)
+                                    }
+                                }
                             }
                             Button {
                                 showCreateTemplate = true
@@ -1082,6 +1109,13 @@ struct AllBudgetsView: View {
                             .disabled(templates.count < 2)
                         }
                     }
+                    .navigationDestination(for: BudgetTemplate.self) { template in
+                        TemplateBudgetDetailView(
+                            template: template,
+                            apiClient: apiClient,
+                            onSave: { await loadData() }
+                        )
+                    }
                 }
             }
             .navigationTitle("All Budgets")
@@ -1099,6 +1133,16 @@ struct AllBudgetsView: View {
             .sheet(isPresented: $showCreatePeriod) {
                 CreatePeriodSheet(templates: templates, apiClient: apiClient) { newPeriod in
                     periods.append(newPeriod)
+                }
+            }
+            .alert("Rename Template", isPresented: $showRenameAlert) {
+                TextField("Template name", text: $renameText)
+                Button("Cancel", role: .cancel) { }
+                Button("Save") {
+                    if let t = templateToRename {
+                        let name = renameText
+                        Task { await renameTemplate(t, name: name) }
+                    }
                 }
             }
         }
@@ -1151,16 +1195,10 @@ struct AllBudgetsView: View {
     }
 }
 
-// MARK: - Template List Row
+// MARK: - Template List Row Content
 
-struct TemplateListRow: View {
+struct TemplateListRowContent: View {
     let template: BudgetTemplate
-    let onDelete: () async -> Void
-    let onSetDefault: () async -> Void
-    let onRename: (String) async -> Void
-
-    @State private var showRenameAlert = false
-    @State private var newName = ""
 
     var body: some View {
         HStack {
@@ -1184,40 +1222,6 @@ struct TemplateListRow: View {
                     .foregroundColor(Theme.Colors.textSecondary)
             }
             Spacer()
-        }
-        .swipeActions(edge: .trailing) {
-            if !template.isDefault {
-                Button(role: .destructive) {
-                    Task { await onDelete() }
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-            }
-            Button {
-                newName = template.name
-                showRenameAlert = true
-            } label: {
-                Label("Rename", systemImage: "pencil")
-            }
-            .tint(.orange)
-        }
-        .swipeActions(edge: .leading) {
-            if !template.isDefault {
-                Button {
-                    Task { await onSetDefault() }
-                } label: {
-                    Label("Set Default", systemImage: "star.fill")
-                }
-                .tint(Theme.Colors.primary)
-            }
-        }
-        .alert("Rename Template", isPresented: $showRenameAlert) {
-            TextField("Template name", text: $newName)
-            Button("Cancel", role: .cancel) { }
-            Button("Save") {
-                let name = newName
-                Task { await onRename(name) }
-            }
         }
     }
 }
@@ -1401,6 +1405,282 @@ struct CreatePeriodSheet: View {
             self.error = error.localizedDescription
         }
         isSaving = false
+    }
+}
+
+// MARK: - Template Budget Detail View
+
+private struct TemplateEditSubrow: Identifiable {
+    var id: String        // subcategory id
+    var budgetId: String?
+    var name: String
+    var icon: String
+    var amount: String    // text field value
+}
+
+private struct TemplateEditRow: Identifiable {
+    var id: String        // category id
+    var budgetId: String?
+    var name: String
+    var icon: String
+    var color: Color
+    var amount: String    // text field value
+    var subcategories: [TemplateEditSubrow]
+}
+
+struct TemplateBudgetDetailView: View {
+    let template: BudgetTemplate
+    let apiClient: APIClient
+    let onSave: () async -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var rows: [TemplateEditRow] = []
+    @State private var isLoading = true
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    var liveTotal: Double {
+        rows.compactMap { Double($0.amount) }.reduce(0, +)
+    }
+
+    var body: some View {
+        Group {
+            if isLoading {
+                ProgressView("Loading...")
+            } else {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Live total header
+                        VStack(spacing: 4) {
+                            Text("$\(String(format: "%.0f", liveTotal))")
+                                .font(.system(size: 44, weight: .bold))
+                                .foregroundColor(Theme.Colors.textPrimary)
+                            Text("Monthly Budget")
+                                .font(.subheadline)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, Theme.Spacing.lg)
+                        .background(Theme.Colors.cardBackground)
+
+                        Divider()
+
+                        // Category rows
+                        ForEach($rows) { $row in
+                            TemplateCategoryEditRow(row: $row) {
+                                Task { await deleteCategory(row: row) }
+                            }
+                        }
+
+                        if rows.isEmpty {
+                            Text("No categories yet. Add some from the Budget tab.")
+                                .font(.subheadline)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(Theme.Spacing.xl)
+                        }
+
+                        if let error = errorMessage {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                                .padding()
+                        }
+
+                        Spacer(minLength: Theme.Spacing.xl)
+                    }
+                }
+                .background(Theme.Colors.background)
+            }
+        }
+        .navigationTitle(template.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                if isSaving {
+                    ProgressView()
+                } else {
+                    Button("Save") {
+                        Task { await saveAll() }
+                    }
+                    .fontWeight(.semibold)
+                    .foregroundColor(Theme.Colors.primary)
+                }
+            }
+        }
+        .task { await loadData() }
+    }
+
+    private func loadData() async {
+        isLoading = true
+        do {
+            async let catsResult = apiClient.fetchCategoriesTree()
+            async let tmplResult = apiClient.fetchTemplate(templateId: template.id)
+            let (cats, tmpl) = try await (catsResult, tmplResult)
+
+            let catBudgetMap = Dictionary(uniqueKeysWithValues: tmpl.categories.map { ($0.categoryId, $0) })
+            let subBudgetMap = Dictionary(uniqueKeysWithValues: tmpl.subcategories.map { ($0.subcategoryId, $0) })
+
+            rows = cats.map { cat in
+                let catBudget = catBudgetMap[cat.id]
+                let subrows = cat.subcategories.map { sub -> TemplateEditSubrow in
+                    let subBudget = subBudgetMap[sub.id]
+                    return TemplateEditSubrow(
+                        id: sub.id,
+                        budgetId: subBudget?.id,
+                        name: sub.name,
+                        icon: sub.icon,
+                        amount: subBudget.map { String(format: "%.0f", $0.amount) } ?? ""
+                    )
+                }
+                return TemplateEditRow(
+                    id: cat.id,
+                    budgetId: catBudget?.id,
+                    name: cat.name,
+                    icon: cat.icon,
+                    color: ColorPalette(rawValue: cat.color)?.color ?? .blue,
+                    amount: catBudget.map { String(format: "%.0f", $0.amount) } ?? "",
+                    subcategories: subrows
+                )
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+
+    private func saveAll() async {
+        isSaving = true
+        errorMessage = nil
+        do {
+            for row in rows {
+                let catAmt = Double(row.amount) ?? 0
+                if catAmt > 0 {
+                    if let bid = row.budgetId {
+                        _ = try await apiClient.updateCategoryBudget(templateId: template.id, categoryBudgetId: bid, amount: catAmt)
+                    } else {
+                        _ = try await apiClient.addCategoryBudget(templateId: template.id, categoryId: row.id, amount: catAmt)
+                    }
+                } else if let bid = row.budgetId {
+                    try await apiClient.deleteCategoryBudget(templateId: template.id, categoryBudgetId: bid)
+                }
+                for sub in row.subcategories {
+                    let subAmt = Double(sub.amount) ?? 0
+                    if subAmt > 0 {
+                        if let bid = sub.budgetId {
+                            _ = try await apiClient.updateSubcategoryBudget(templateId: template.id, subcategoryBudgetId: bid, amount: subAmt)
+                        } else {
+                            _ = try await apiClient.addSubcategoryBudget(templateId: template.id, subcategoryId: sub.id, amount: subAmt)
+                        }
+                    } else if let bid = sub.budgetId {
+                        try await apiClient.deleteSubcategoryBudget(templateId: template.id, subcategoryBudgetId: bid)
+                    }
+                }
+            }
+            await onSave()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isSaving = false
+    }
+
+    private func deleteCategory(row: TemplateEditRow) async {
+        do {
+            if let bid = row.budgetId {
+                try await apiClient.deleteCategoryBudget(templateId: template.id, categoryBudgetId: bid)
+            }
+            try await apiClient.deleteCategory(categoryId: row.id)
+            rows.removeAll { $0.id == row.id }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct TemplateCategoryEditRow: View {
+    @Binding var row: TemplateEditRow
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Category row
+            HStack(spacing: Theme.Spacing.sm) {
+                Text(row.icon)
+                    .font(.title3)
+                    .frame(width: 36, height: 36)
+                    .overlay(Circle().strokeBorder(row.color, lineWidth: 2))
+
+                Text(row.name)
+                    .font(.body)
+                    .fontWeight(.medium)
+                    .foregroundColor(Theme.Colors.textPrimary)
+
+                Spacer()
+
+                HStack(spacing: 2) {
+                    Text("$")
+                        .font(.body)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                    TextField("0", text: $row.amount)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 80)
+                        .font(.body)
+                        .fontWeight(.medium)
+                        .foregroundColor(Theme.Colors.textPrimary)
+                }
+
+                Button(action: onDelete) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(Theme.Colors.textSecondary.opacity(0.6))
+                        .font(.title3)
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.sm)
+            .background(Theme.Colors.cardBackground)
+
+            // Subcategory rows
+            ForEach($row.subcategories) { $sub in
+                HStack(spacing: Theme.Spacing.sm) {
+                    // Indent line
+                    Rectangle()
+                        .fill(row.color.opacity(0.4))
+                        .frame(width: 2, height: 28)
+                        .padding(.leading, Theme.Spacing.lg)
+
+                    Text(sub.icon)
+                        .font(.subheadline)
+                        .frame(width: 28, height: 28)
+                        .overlay(Circle().strokeBorder(row.color.opacity(0.5), lineWidth: 1.5))
+
+                    Text(sub.name)
+                        .font(.subheadline)
+                        .foregroundColor(Theme.Colors.textPrimary)
+
+                    Spacer()
+
+                    HStack(spacing: 2) {
+                        Text("$")
+                            .font(.subheadline)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                        TextField("0", text: $sub.amount)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 70)
+                            .font(.subheadline)
+                            .foregroundColor(Theme.Colors.textPrimary)
+                    }
+                    // Spacer to align with X button above
+                    .padding(.trailing, 28 + Theme.Spacing.sm)
+                }
+                .padding(.vertical, 6)
+                .background(Theme.Colors.cardBackground.opacity(0.6))
+            }
+
+            Divider()
+        }
     }
 }
 

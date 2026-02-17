@@ -3,7 +3,7 @@ import SwiftUI
 
 // MARK: - Budget Template Models (Phase 2)
 
-struct BudgetTemplate: Identifiable, Codable {
+struct BudgetTemplate: Identifiable, Codable, Hashable {
     let id: String
     let userId: String
     let name: String
@@ -28,6 +28,26 @@ struct BudgetTemplate: Identifiable, Codable {
 struct BudgetTemplateListResponse: Codable {
     let items: [BudgetTemplate]
     let total: Int
+}
+
+struct BudgetTemplateWithAllocations: Identifiable, Codable {
+    let id: String
+    let userId: String
+    let name: String
+    let totalAmount: Double
+    let isDefault: Bool
+    let accountIds: [String]
+    let createdAt: Date
+    let updatedAt: Date
+    let categories: [CategoryBudget]
+    let subcategories: [SubcategoryBudget]
+
+    enum CodingKeys: String, CodingKey {
+        case id; case userId = "user_id"; case name
+        case totalAmount = "total_amount"; case isDefault = "is_default"
+        case accountIds = "account_ids"; case createdAt = "created_at"; case updatedAt = "updated_at"
+        case categories; case subcategories
+    }
 }
 
 struct CategoryBudget: Identifiable, Codable {

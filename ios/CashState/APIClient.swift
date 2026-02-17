@@ -866,6 +866,10 @@ actor APIClient {
         }
     }
 
+    func fetchTemplate(templateId: String) async throws -> BudgetTemplateWithAllocations {
+        return try await request(endpoint: "/budget-templates/\(templateId)", method: "GET")
+    }
+
     func createBudgetTemplate(name: String, isDefault: Bool, accountIds: [String] = []) async throws -> BudgetTemplate {
         guard let url = URL(string: Config.apiBaseURL + "/budget-templates") else {
             throw APIError.invalidURL
