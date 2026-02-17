@@ -588,7 +588,9 @@ class Database:
     def create_budget_category(self, category_data: dict) -> dict:
         """Create a category budget within a template."""
         result = self.client.table("budget_categories").insert(category_data).execute()
-        return result.data[0]
+        created = result.data[0]
+        self._recalculate_template_total(created["template_id"])
+        return created
 
     def get_budget_categories(self, template_id: str) -> list[dict]:
         """Get all category budgets for a template."""
@@ -598,11 +600,24 @@ class Database:
     def update_budget_category(self, category_budget_id: str, update_data: dict) -> dict | None:
         """Update a category budget."""
         result = self.client.table("budget_categories").update(update_data).eq("id", category_budget_id).execute()
-        return result.data[0] if result.data else None
+        updated = result.data[0] if result.data else None
+        if updated:
+            self._recalculate_template_total(updated["template_id"])
+        return updated
 
     def delete_budget_category(self, category_budget_id: str) -> None:
         """Delete a category budget."""
+        # Fetch template_id first so we can recalculate after delete
+        fetch_result = self.client.table("budget_categories").select("template_id").eq("id", category_budget_id).execute()
         self.client.table("budget_categories").delete().eq("id", category_budget_id).execute()
+        if fetch_result.data:
+            self._recalculate_template_total(fetch_result.data[0]["template_id"])
+
+    def _recalculate_template_total(self, template_id: str) -> None:
+        """Recalculate and update total_amount for a template based on category budgets."""
+        result = self.client.table("budget_categories").select("amount").eq("template_id", template_id).execute()
+        total = sum(row["amount"] for row in result.data)
+        self.client.table("budget_templates").update({"total_amount": total}).eq("id", template_id).execute()
 
     # ========================================================================
     # Budget Subcategories
@@ -643,6 +658,17 @@ class Database:
             .select("*")
             .eq("user_id", user_id)
             .eq("period_month", period_month)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def get_budget_period_by_id(self, user_id: str, period_id: str) -> dict | None:
+        """Get budget period by its UUID (for ownership check before delete)."""
+        result = (
+            self.client.table("budget_periods")
+            .select("*")
+            .eq("id", period_id)
+            .eq("user_id", user_id)
             .execute()
         )
         return result.data[0] if result.data else None

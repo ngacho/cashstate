@@ -86,6 +86,69 @@ async def list_templates(
     )
 
 
+# ============================================================================
+# Budget Periods Endpoints (must be before /{template_id} to avoid route conflict)
+# ============================================================================
+
+
+@router.get("/periods", response_model=BudgetPeriodListResponse)
+async def list_periods(
+    user: dict = Depends(get_current_user),
+    db: Database = Depends(get_database),
+):
+    """List all budget periods (monthly overrides)."""
+    periods = db.get_budget_periods(user["id"])
+    return BudgetPeriodListResponse(
+        items=[BudgetPeriodResponse(**p) for p in periods],
+        total=len(periods),
+    )
+
+
+@router.post("/periods", response_model=BudgetPeriodResponse, status_code=201)
+async def create_period(
+    period: BudgetPeriodCreate,
+    user: dict = Depends(get_current_user),
+    db: Database = Depends(get_database),
+):
+    """Apply a template to a specific month."""
+    # Check template ownership
+    template = db.get_budget_template(period.template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    if template["user_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # Parse period_month and convert to YYYY-MM-01 format
+    period_month = f"{period.period_month}-01"
+
+    # Create period
+    period_data = {
+        "user_id": user["id"],
+        "template_id": period.template_id,
+        "period_month": period_month,
+    }
+    created = db.create_budget_period(period_data)
+    return BudgetPeriodResponse(**created)
+
+
+@router.delete("/periods/{period_id}", response_model=SuccessResponse)
+async def delete_period(
+    period_id: str,
+    user: dict = Depends(get_current_user),
+    db: Database = Depends(get_database),
+):
+    """Delete a budget period (reverts to default template)."""
+    # Check ownership via period
+    period = db.get_budget_period_by_id(user["id"], period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Period not found")
+
+    # Delete
+    db.delete_budget_period(period_id)
+    return SuccessResponse(message="Period deleted successfully (reverted to default template)")
+
+
 @router.get("/{template_id}", response_model=TemplateWithCategories)
 async def get_template(
     template_id: str,
@@ -353,64 +416,3 @@ async def delete_subcategory_budget(
     return SuccessResponse(message="Subcategory budget deleted successfully")
 
 
-# ============================================================================
-# Budget Periods Endpoints
-# ============================================================================
-
-
-@router.get("/periods", response_model=BudgetPeriodListResponse)
-async def list_periods(
-    user: dict = Depends(get_current_user),
-    db: Database = Depends(get_database),
-):
-    """List all budget periods (monthly overrides)."""
-    periods = db.get_budget_periods(user["id"])
-    return BudgetPeriodListResponse(
-        items=[BudgetPeriodResponse(**p) for p in periods],
-        total=len(periods),
-    )
-
-
-@router.post("/periods", response_model=BudgetPeriodResponse, status_code=201)
-async def create_period(
-    period: BudgetPeriodCreate,
-    user: dict = Depends(get_current_user),
-    db: Database = Depends(get_database),
-):
-    """Apply a template to a specific month."""
-    # Check template ownership
-    template = db.get_budget_template(period.template_id)
-    if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
-
-    if template["user_id"] != user["id"]:
-        raise HTTPException(status_code=403, detail="Not authorized")
-
-    # Parse period_month and convert to YYYY-MM-01 format
-    period_month = f"{period.period_month}-01"
-
-    # Create period
-    period_data = {
-        "user_id": user["id"],
-        "template_id": period.template_id,
-        "period_month": period_month,
-    }
-    created = db.create_budget_period(period_data)
-    return BudgetPeriodResponse(**created)
-
-
-@router.delete("/periods/{period_id}", response_model=SuccessResponse)
-async def delete_period(
-    period_id: str,
-    user: dict = Depends(get_current_user),
-    db: Database = Depends(get_database),
-):
-    """Delete a budget period (reverts to default template)."""
-    # Check ownership via period
-    period = db.get_budget_period(user["id"], period_id)
-    if not period:
-        raise HTTPException(status_code=404, detail="Period not found")
-
-    # Delete
-    db.delete_budget_period(period_id)
-    return SuccessResponse(message="Period deleted successfully (reverted to default template)")

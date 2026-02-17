@@ -13,7 +13,7 @@ class BudgetTemplateBase(BaseModel):
     """Base budget template fields."""
 
     name: str = Field(..., min_length=1, max_length=100, description="Template name (e.g., 'Regular Budget')")
-    total_amount: float = Field(..., gt=0, description="Total budget amount")
+    total_amount: float = Field(default=0, ge=0, description="Total budget amount")
     is_default: bool = Field(default=False, description="Set as default template")
     account_ids: list[str] = Field(
         default_factory=list,
