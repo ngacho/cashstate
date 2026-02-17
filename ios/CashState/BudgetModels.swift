@@ -90,6 +90,34 @@ struct MonthlyBudget: Codable {
     }
 }
 
+// MARK: - Budget Period (Monthly Override)
+
+struct BudgetPeriodModel: Identifiable, Codable {
+    let id: String
+    let userId: String
+    let templateId: String
+    let periodMonth: String   // "YYYY-MM-01"
+    let createdAt: Date
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case templateId = "template_id"
+        case periodMonth = "period_month"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    /// Returns "YYYY-MM" for API calls
+    var apiMonth: String { String(periodMonth.prefix(7)) }
+}
+
+struct BudgetPeriodListResponse: Codable {
+    let items: [BudgetPeriodModel]
+    let total: Int
+}
+
 // MARK: - Budget Category
 
 struct BudgetCategory: Identifiable, Codable, Hashable {

@@ -110,7 +110,7 @@ struct BudgetView: View {
                 }
             }
             .sheet(isPresented: $showAllBudgets) {
-                AllBudgetsView(isPresented: $showAllBudgets)
+                AllBudgetsView(isPresented: $showAllBudgets, apiClient: apiClient)
             }
             .sheet(item: $selectedCategory) { category in
                 CategoryDetailView(category: category, isPresented: .init(
@@ -353,7 +353,14 @@ struct BudgetView: View {
                         // Category list with expandable subcategories
                         VStack(spacing: Theme.Spacing.sm) {
                             ForEach($categories) { $category in
-                                ExpandableCategoryCard(category: $category, apiClient: apiClient)
+                                ExpandableCategoryCard(
+                                    category: $category,
+                                    apiClient: apiClient,
+                                    onDeleteCategoryBudget: category.budgetId != nil ? {
+                                        let c = category
+                                        await deleteCategoryBudget(category: c)
+                                    } : nil
+                                )
                             }
 
                             // Add Category button
@@ -598,6 +605,21 @@ struct BudgetView: View {
             aiCategorizationError = "Failed to categorize: \(error.localizedDescription)"
             isAICategorizationRunning = false
             aiCategorizationProgress = 0
+        }
+    }
+
+    func deleteCategoryBudget(category: BudgetCategory) async {
+        guard let budgetId = category.budgetId,
+              let templateId = category.templateId else { return }
+        do {
+            try await apiClient.deleteCategoryBudget(templateId: templateId, categoryBudgetId: budgetId)
+            if let idx = categories.firstIndex(where: { $0.id == category.id }) {
+                categories[idx].budgetId = nil
+                categories[idx].budgetAmount = nil
+                categories[idx].templateId = nil
+            }
+        } catch {
+            // Budget delete failed silently — user can retry via context menu
         }
     }
 }
@@ -981,35 +1003,387 @@ struct BudgetDonutSlice: View {
     }
 }
 
-// MARK: - All Budgets View (Stub)
+// MARK: - All Budgets View
 
 struct AllBudgetsView: View {
     @Binding var isPresented: Bool
+    let apiClient: APIClient
+
+    @State private var templates: [BudgetTemplate] = []
+    @State private var periods: [BudgetPeriodModel] = []
+    @State private var isLoading = true
+    @State private var loadError: String?
+    @State private var showCreateTemplate = false
+    @State private var showCreatePeriod = false
 
     var body: some View {
         NavigationView {
-            VStack(spacing: 20) {
-                Image(systemName: "chart.bar.doc.horizontal")
-                    .font(.system(size: 60))
-                    .foregroundColor(.secondary)
-                Text("Budget history coming soon")
-                    .font(.headline)
-                Text("You'll be able to view and compare past budgets here")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
+            Group {
+                if isLoading {
+                    ProgressView("Loading...")
+                } else if let error = loadError {
+                    VStack(spacing: Theme.Spacing.md) {
+                        Text("Error loading budgets")
+                            .font(.headline)
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                        Button("Retry") { Task { await loadData() } }
+                            .foregroundColor(Theme.Colors.primary)
+                    }
+                } else {
+                    List {
+                        Section("Templates") {
+                            ForEach(templates) { template in
+                                TemplateListRow(
+                                    template: template,
+                                    onDelete: { await deleteTemplate(template) },
+                                    onSetDefault: { await setDefaultTemplate(template) },
+                                    onRename: { newName in await renameTemplate(template, name: newName) }
+                                )
+                            }
+                            Button {
+                                showCreateTemplate = true
+                            } label: {
+                                Label("New Budget Template", systemImage: "plus")
+                            }
+                        }
+
+                        Section("Monthly Overrides") {
+                            ForEach(periods) { period in
+                                PeriodListRow(
+                                    period: period,
+                                    templates: templates,
+                                    onDelete: { await deletePeriod(period) }
+                                )
+                            }
+                            Button {
+                                showCreatePeriod = true
+                            } label: {
+                                Label("Override a Month", systemImage: "calendar.badge.plus")
+                            }
+                            .disabled(templates.count < 2)
+                        }
+                    }
+                }
             }
             .navigationTitle("All Budgets")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        isPresented = false
-                    }
+                    Button("Done") { isPresented = false }
+                }
+            }
+            .sheet(isPresented: $showCreateTemplate) {
+                CreateTemplateSheet(apiClient: apiClient) { newTemplate in
+                    templates.append(newTemplate)
+                }
+            }
+            .sheet(isPresented: $showCreatePeriod) {
+                CreatePeriodSheet(templates: templates, apiClient: apiClient) { newPeriod in
+                    periods.append(newPeriod)
                 }
             }
         }
+        .task { await loadData() }
+    }
+
+    private func loadData() async {
+        isLoading = true
+        loadError = nil
+        do {
+            async let templatesResult = apiClient.fetchBudgetTemplates()
+            async let periodsResult = apiClient.listBudgetPeriods()
+            let (t, p) = try await (templatesResult, periodsResult)
+            templates = t
+            periods = p
+        } catch {
+            loadError = error.localizedDescription
+        }
+        isLoading = false
+    }
+
+    private func deleteTemplate(_ template: BudgetTemplate) async {
+        do {
+            try await apiClient.deleteTemplate(templateId: template.id)
+            templates.removeAll { $0.id == template.id }
+        } catch { }
+    }
+
+    private func setDefaultTemplate(_ template: BudgetTemplate) async {
+        do {
+            _ = try await apiClient.setDefaultTemplate(templateId: template.id)
+            await loadData()
+        } catch { }
+    }
+
+    private func renameTemplate(_ template: BudgetTemplate, name: String) async {
+        do {
+            let updated = try await apiClient.updateTemplate(templateId: template.id, name: name)
+            if let idx = templates.firstIndex(where: { $0.id == template.id }) {
+                templates[idx] = updated
+            }
+        } catch { }
+    }
+
+    private func deletePeriod(_ period: BudgetPeriodModel) async {
+        do {
+            try await apiClient.deleteBudgetPeriod(periodId: period.id)
+            periods.removeAll { $0.id == period.id }
+        } catch { }
+    }
+}
+
+// MARK: - Template List Row
+
+struct TemplateListRow: View {
+    let template: BudgetTemplate
+    let onDelete: () async -> Void
+    let onSetDefault: () async -> Void
+    let onRename: (String) async -> Void
+
+    @State private var showRenameAlert = false
+    @State private var newName = ""
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(template.name)
+                        .font(.body)
+                    if template.isDefault {
+                        Text("DEFAULT")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Theme.Colors.primary)
+                            .cornerRadius(4)
+                    }
+                }
+                Text("$\(String(format: "%.2f", template.totalAmount)) total")
+                    .font(.caption)
+                    .foregroundColor(Theme.Colors.textSecondary)
+            }
+            Spacer()
+        }
+        .swipeActions(edge: .trailing) {
+            if !template.isDefault {
+                Button(role: .destructive) {
+                    Task { await onDelete() }
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+            Button {
+                newName = template.name
+                showRenameAlert = true
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            .tint(.orange)
+        }
+        .swipeActions(edge: .leading) {
+            if !template.isDefault {
+                Button {
+                    Task { await onSetDefault() }
+                } label: {
+                    Label("Set Default", systemImage: "star.fill")
+                }
+                .tint(Theme.Colors.primary)
+            }
+        }
+        .alert("Rename Template", isPresented: $showRenameAlert) {
+            TextField("Template name", text: $newName)
+            Button("Cancel", role: .cancel) { }
+            Button("Save") {
+                let name = newName
+                Task { await onRename(name) }
+            }
+        }
+    }
+}
+
+// MARK: - Period List Row
+
+struct PeriodListRow: View {
+    let period: BudgetPeriodModel
+    let templates: [BudgetTemplate]
+    let onDelete: () async -> Void
+
+    var templateName: String {
+        templates.first { $0.id == period.templateId }?.name ?? "Unknown Template"
+    }
+
+    var formattedMonth: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        if let date = formatter.date(from: period.periodMonth) {
+            let displayFormatter = DateFormatter()
+            displayFormatter.dateFormat = "MMMM yyyy"
+            return displayFormatter.string(from: date)
+        }
+        return period.apiMonth
+    }
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(formattedMonth)
+                    .font(.body)
+                Text(templateName)
+                    .font(.caption)
+                    .foregroundColor(Theme.Colors.textSecondary)
+            }
+            Spacer()
+        }
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                Task { await onDelete() }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+    }
+}
+
+// MARK: - Create Template Sheet
+
+struct CreateTemplateSheet: View {
+    let apiClient: APIClient
+    let onCreate: (BudgetTemplate) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var isDefault = false
+    @State private var isSaving = false
+    @State private var error: String?
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section {
+                    TextField("Template Name", text: $name)
+                    Toggle("Set as default", isOn: $isDefault)
+                }
+                Section {
+                    HStack(spacing: 6) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                            .font(.caption)
+                        Text("Total budget is auto-calculated from category budgets.")
+                            .font(.caption)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                }
+                if let error = error {
+                    Text(error)
+                        .foregroundColor(.red)
+                        .font(.caption)
+                }
+            }
+            .navigationTitle("New Template")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") {
+                        Task { await createTemplate() }
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
+                }
+            }
+        }
+    }
+
+    private func createTemplate() async {
+        isSaving = true
+        do {
+            let template = try await apiClient.createBudgetTemplate(name: name, isDefault: isDefault)
+            onCreate(template)
+            dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
+        isSaving = false
+    }
+}
+
+// MARK: - Create Period Sheet
+
+struct CreatePeriodSheet: View {
+    let templates: [BudgetTemplate]
+    let apiClient: APIClient
+    let onCreate: (BudgetPeriodModel) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedDate = Date()
+    @State private var selectedTemplateId = ""
+    @State private var isSaving = false
+    @State private var error: String?
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("Month") {
+                    DatePicker(
+                        "Select Month",
+                        selection: $selectedDate,
+                        in: ...Date(),
+                        displayedComponents: [.date]
+                    )
+                    .datePickerStyle(.compact)
+                }
+                Section("Template") {
+                    Picker("Template", selection: $selectedTemplateId) {
+                        ForEach(templates) { template in
+                            Text(template.name).tag(template.id)
+                        }
+                    }
+                }
+                if let error = error {
+                    Text(error)
+                        .foregroundColor(.red)
+                        .font(.caption)
+                }
+            }
+            .navigationTitle("Override a Month")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Apply") {
+                        Task { await createPeriod() }
+                    }
+                    .disabled(selectedTemplateId.isEmpty || isSaving)
+                }
+            }
+            .onAppear {
+                if let first = templates.first {
+                    selectedTemplateId = first.id
+                }
+            }
+        }
+    }
+
+    private func createPeriod() async {
+        isSaving = true
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+        let periodMonth = formatter.string(from: selectedDate)
+        do {
+            let period = try await apiClient.createBudgetPeriod(templateId: selectedTemplateId, periodMonth: periodMonth)
+            onCreate(period)
+            dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
+        isSaving = false
     }
 }
 
@@ -1119,6 +1493,7 @@ struct CategoryTransactionsDestination: Hashable {
 struct ExpandableCategoryCard: View {
     @Binding var category: BudgetCategory
     let apiClient: APIClient
+    var onDeleteCategoryBudget: (() async -> Void)? = nil
     @State private var isExpanded: Bool = false
     @State private var showEditCategoryBudget: Bool = false
     @State private var showAddSubcategory: Bool = false
@@ -1207,6 +1582,20 @@ struct ExpandableCategoryCard: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .contextMenu {
+                Button {
+                    showEditCategoryBudget = true
+                } label: {
+                    Label("Edit Category Budget", systemImage: "pencil")
+                }
+                if let onDelete = onDeleteCategoryBudget {
+                    Button(role: .destructive) {
+                        Task { await onDelete() }
+                    } label: {
+                        Label("Remove Category Budget", systemImage: "trash")
+                    }
+                }
+            }
 
             // Progress bar
             if category.budgetAmount != nil {
@@ -1251,7 +1640,11 @@ struct ExpandableCategoryCard: View {
                             category: category,
                             subcategory: $subcategory,
                             categoryColor: category.color,
-                            apiClient: apiClient
+                            apiClient: apiClient,
+                            onDeleteSubcategoryBudget: subcategory.budgetId != nil ? {
+                                let sub = subcategory
+                                await deleteSubcategoryBudget(subcategory: sub)
+                            } : nil
                         )
                     }
 
@@ -1303,6 +1696,22 @@ struct ExpandableCategoryCard: View {
             }
         }
     }
+
+    private func deleteSubcategoryBudget(subcategory: BudgetSubcategory) async {
+        guard let budgetId = subcategory.budgetId,
+              let templateId = subcategory.templateId else { return }
+        do {
+            try await apiClient.deleteSubcategoryBudget(templateId: templateId, subcategoryBudgetId: budgetId)
+            // Clear budget fields — subcategory still exists, just without a budget allocation
+            if let idx = category.subcategories.firstIndex(where: { $0.id == subcategory.id }) {
+                category.subcategories[idx].budgetId = nil
+                category.subcategories[idx].budgetAmount = nil
+                category.subcategories[idx].templateId = nil
+            }
+        } catch {
+            // Delete failed silently — user can retry via context menu
+        }
+    }
 }
 
 // MARK: - Subcategory Row
@@ -1312,6 +1721,7 @@ struct SubcategoryRow: View {
     @Binding var subcategory: BudgetSubcategory
     let categoryColor: Color
     let apiClient: APIClient
+    var onDeleteSubcategoryBudget: (() async -> Void)? = nil
     @State private var showEditBudget = false
 
     var percentageUsed: Double {
@@ -1421,6 +1831,20 @@ struct SubcategoryRow: View {
         }
         .background(Theme.Colors.background.opacity(0.5))
         .cornerRadius(Theme.CornerRadius.sm)
+        .contextMenu {
+            Button {
+                showEditBudget = true
+            } label: {
+                Label("Edit Subcategory Budget", systemImage: "pencil")
+            }
+            if let onDelete = onDeleteSubcategoryBudget {
+                Button(role: .destructive) {
+                    Task { await onDelete() }
+                } label: {
+                    Label("Remove Subcategory Budget", systemImage: "trash")
+                }
+            }
+        }
         .sheet(isPresented: $showEditBudget) {
             SubcategoryBudgetView(
                 subcategory: $subcategory,

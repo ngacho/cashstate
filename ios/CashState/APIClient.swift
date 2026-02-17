@@ -840,7 +840,7 @@ actor APIClient {
         }
     }
 
-    func createBudgetTemplate(name: String, totalAmount: Double, isDefault: Bool, accountIds: [String] = []) async throws -> BudgetTemplate {
+    func createBudgetTemplate(name: String, isDefault: Bool, accountIds: [String] = []) async throws -> BudgetTemplate {
         guard let url = URL(string: Config.apiBaseURL + "/budget-templates") else {
             throw APIError.invalidURL
         }
@@ -855,7 +855,6 @@ actor APIClient {
 
         let body = [
             "name": name,
-            "total_amount": totalAmount,
             "is_default": isDefault,
             "account_ids": accountIds
         ] as [String : Any]
@@ -893,6 +892,77 @@ actor APIClient {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom(Self.customDateDecoder)
         return try decoder.decode(BudgetTemplate.self, from: data)
+    }
+
+    func deleteCategoryBudget(templateId: String, categoryBudgetId: String) async throws {
+        struct SuccessResponse: Codable { let success: Bool; let message: String }
+        let _: SuccessResponse = try await request(
+            endpoint: "/budget-templates/\(templateId)/categories/\(categoryBudgetId)",
+            method: "DELETE"
+        )
+    }
+
+    func deleteSubcategoryBudget(templateId: String, subcategoryBudgetId: String) async throws {
+        struct SuccessResponse: Codable { let success: Bool; let message: String }
+        let _: SuccessResponse = try await request(
+            endpoint: "/budget-templates/\(templateId)/subcategories/\(subcategoryBudgetId)",
+            method: "DELETE"
+        )
+    }
+
+    func deleteTemplate(templateId: String) async throws {
+        struct SuccessResponse: Codable { let success: Bool; let message: String }
+        let _: SuccessResponse = try await request(
+            endpoint: "/budget-templates/\(templateId)",
+            method: "DELETE"
+        )
+    }
+
+    func setDefaultTemplate(templateId: String) async throws -> BudgetTemplate {
+        return try await request(
+            endpoint: "/budget-templates/\(templateId)/set-default",
+            method: "POST"
+        )
+    }
+
+    func updateTemplate(templateId: String, name: String) async throws -> BudgetTemplate {
+        struct UpdateBody: Encodable { let name: String }
+        return try await request(
+            endpoint: "/budget-templates/\(templateId)",
+            method: "PATCH",
+            body: UpdateBody(name: name)
+        )
+    }
+
+    func listBudgetPeriods() async throws -> [BudgetPeriodModel] {
+        let response: BudgetPeriodListResponse = try await request(
+            endpoint: "/budget-templates/periods"
+        )
+        return response.items
+    }
+
+    func createBudgetPeriod(templateId: String, periodMonth: String) async throws -> BudgetPeriodModel {
+        struct CreateBody: Encodable {
+            let templateId: String
+            let periodMonth: String
+            enum CodingKeys: String, CodingKey {
+                case templateId = "template_id"
+                case periodMonth = "period_month"
+            }
+        }
+        return try await request(
+            endpoint: "/budget-templates/periods",
+            method: "POST",
+            body: CreateBody(templateId: templateId, periodMonth: periodMonth)
+        )
+    }
+
+    func deleteBudgetPeriod(periodId: String) async throws {
+        struct SuccessResponse: Codable { let success: Bool; let message: String }
+        let _: SuccessResponse = try await request(
+            endpoint: "/budget-templates/periods/\(periodId)",
+            method: "DELETE"
+        )
     }
 
     func addCategoryBudget(templateId: String, categoryId: String, amount: Double) async throws -> CategoryBudget {
