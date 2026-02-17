@@ -130,9 +130,9 @@ struct BudgetCategory: Identifiable, Codable, Hashable {
         lhs.id == rhs.id
     }
     let id: String  // Category ID
-    let name: String
-    let icon: String
-    let colorHex: String  // Store hex string directly from database
+    var name: String
+    var icon: String
+    var colorHex: String  // Store hex string directly from database
     let type: CategoryType
     var subcategories: [BudgetSubcategory]
     var budgetAmount: Double?

@@ -133,7 +133,7 @@ struct BudgetView: View {
                 }
             }
             .sheet(isPresented: $showAddCategory) {
-                AddCategoryView(isPresented: $showAddCategory) { newCategory in
+                AddCategoryView(isPresented: $showAddCategory, apiClient: apiClient) { newCategory in
                     categories.append(newCategory)
                 }
             }
@@ -359,7 +359,11 @@ struct BudgetView: View {
                                     onDeleteCategoryBudget: category.budgetId != nil ? {
                                         let c = category
                                         await deleteCategoryBudget(category: c)
-                                    } : nil
+                                    } : nil,
+                                    onDeleteCategory: {
+                                        let c = category
+                                        await deleteCategory(category: c)
+                                    }
                                 )
                             }
 
@@ -620,6 +624,19 @@ struct BudgetView: View {
             }
         } catch {
             // Budget delete failed silently — user can retry via context menu
+        }
+    }
+
+    func deleteCategory(category: BudgetCategory) async {
+        // Remove budget allocation first so server recalculates template total
+        if category.budgetId != nil {
+            await deleteCategoryBudget(category: category)
+        }
+        do {
+            try await apiClient.deleteCategory(categoryId: category.id)
+            categories.removeAll { $0.id == category.id }
+        } catch {
+            // Deletion failed silently
         }
     }
 }
@@ -1494,9 +1511,12 @@ struct ExpandableCategoryCard: View {
     @Binding var category: BudgetCategory
     let apiClient: APIClient
     var onDeleteCategoryBudget: (() async -> Void)? = nil
+    var onDeleteCategory: (() async -> Void)? = nil
     @State private var isExpanded: Bool = false
     @State private var showEditCategoryBudget: Bool = false
+    @State private var showEditCategory: Bool = false
     @State private var showAddSubcategory: Bool = false
+    @State private var showDeleteCategoryConfirmation: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1584,6 +1604,12 @@ struct ExpandableCategoryCard: View {
             .buttonStyle(.plain)
             .contextMenu {
                 Button {
+                    showEditCategory = true
+                } label: {
+                    Label("Edit Category", systemImage: "square.and.pencil")
+                }
+                Divider()
+                Button {
                     showEditCategoryBudget = true
                 } label: {
                     Label("Edit Category Budget", systemImage: "pencil")
@@ -1592,7 +1618,15 @@ struct ExpandableCategoryCard: View {
                     Button(role: .destructive) {
                         Task { await onDelete() }
                     } label: {
-                        Label("Remove Category Budget", systemImage: "trash")
+                        Label("Remove Category Budget", systemImage: "minus.circle")
+                    }
+                }
+                Divider()
+                if onDeleteCategory != nil {
+                    Button(role: .destructive) {
+                        showDeleteCategoryConfirmation = true
+                    } label: {
+                        Label("Delete Category", systemImage: "trash")
                     }
                 }
             }
@@ -1687,12 +1721,41 @@ struct ExpandableCategoryCard: View {
                 apiClient: apiClient
             )
         }
+        .sheet(isPresented: $showEditCategory) {
+            EditCategoryView(
+                category: $category,
+                isPresented: $showEditCategory,
+                apiClient: apiClient
+            )
+        }
         .sheet(isPresented: $showAddSubcategory) {
             AddSubcategoryView(
                 parentCategory: category,
                 isPresented: $showAddSubcategory
             ) { newSubcategory in
                 category.subcategories.append(newSubcategory)
+            }
+        }
+        .confirmationDialog(
+            "Delete \"\(category.name)\"?",
+            isPresented: $showDeleteCategoryConfirmation,
+            titleVisibility: .visible
+        ) {
+            if category.budgetId != nil {
+                Button("Remove Budget & Delete Category", role: .destructive) {
+                    Task { await onDeleteCategory?() }
+                }
+            } else {
+                Button("Delete Category", role: .destructive) {
+                    Task { await onDeleteCategory?() }
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            if category.budgetId != nil {
+                Text("This will remove the $\(String(format: "%.0f", category.budgetAmount ?? 0)) budget allocation and delete the category. Transactions will become uncategorized.")
+            } else {
+                Text("This category will be deleted. Transactions will become uncategorized.")
             }
         }
     }

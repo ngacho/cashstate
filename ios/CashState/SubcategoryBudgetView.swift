@@ -140,6 +140,11 @@ struct SubcategoryBudgetView: View {
                             .foregroundColor(Theme.Colors.expense)
                             .padding(.vertical, Theme.Spacing.sm)
                         }
+                        if budgetAmount.isEmpty {
+                            Text("Tap Save to confirm removal")
+                                .font(.caption)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
                     }
 
                     // Error message
@@ -200,23 +205,45 @@ struct SubcategoryBudgetView: View {
     }
 
     private func saveBudget() async {
-        guard let templateId = subcategory.templateId else {
-            errorMessage = "Missing template ID. Please try again."
-            return
-        }
-
-        // Validate amount
-        guard let amount = Double(budgetAmount), amount > 0 else {
-            errorMessage = "Please enter a valid budget amount"
-            return
-        }
-
         isSaving = true
         errorMessage = nil
 
+        // Budget cleared — delete existing allocation if one exists
+        if budgetAmount.trimmingCharacters(in: .whitespaces).isEmpty {
+            if let budgetId = subcategory.budgetId, let templateId = subcategory.templateId {
+                do {
+                    try await apiClient.deleteSubcategoryBudget(
+                        templateId: templateId,
+                        subcategoryBudgetId: budgetId
+                    )
+                    subcategory.budgetId = nil
+                    subcategory.budgetAmount = nil
+                    subcategory.templateId = nil
+                } catch {
+                    errorMessage = "Failed to remove budget: \(error.localizedDescription)"
+                    isSaving = false
+                    return
+                }
+            }
+            isSaving = false
+            isPresented = false
+            return
+        }
+
+        guard let templateId = subcategory.templateId else {
+            errorMessage = "Missing template ID. Please try again."
+            isSaving = false
+            return
+        }
+
+        guard let amount = Double(budgetAmount), amount > 0 else {
+            errorMessage = "Please enter a valid budget amount"
+            isSaving = false
+            return
+        }
+
         do {
             if let budgetId = subcategory.budgetId {
-                // Update existing budget
                 let updated = try await apiClient.updateSubcategoryBudget(
                     templateId: templateId,
                     subcategoryBudgetId: budgetId,
@@ -225,7 +252,6 @@ struct SubcategoryBudgetView: View {
                 subcategory.budgetAmount = updated.amount
                 subcategory.budgetId = updated.id
             } else {
-                // Create new budget
                 let created = try await apiClient.addSubcategoryBudget(
                     templateId: templateId,
                     subcategoryId: subcategory.id,
@@ -233,6 +259,7 @@ struct SubcategoryBudgetView: View {
                 )
                 subcategory.budgetAmount = created.amount
                 subcategory.budgetId = created.id
+                subcategory.templateId = created.templateId
             }
 
             isSaving = false

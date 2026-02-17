@@ -5,6 +5,7 @@ struct CategorySelectionView: View {
     @Binding var includedCategories: Set<String>
     @Binding var excludedCategories: Set<String>
     @Binding var isPresented: Bool
+    let apiClient: APIClient
 
     @State private var showAddCategory = false
 
@@ -146,7 +147,7 @@ struct CategorySelectionView: View {
                 }
             }
             .sheet(isPresented: $showAddCategory) {
-                AddCategoryView(isPresented: $showAddCategory) { newCategory in
+                AddCategoryView(isPresented: $showAddCategory, apiClient: apiClient) { newCategory in
                     categories.append(newCategory)
                     includedCategories.insert(newCategory.id)
                 }
@@ -238,6 +239,7 @@ struct CategorySelectButton: View {
         categories: .constant(BudgetCategory.mockCategories),
         includedCategories: .constant(Set(["1", "2"])),
         excludedCategories: .constant(Set(["3"])),
-        isPresented: .constant(true)
+        isPresented: .constant(true),
+        apiClient: APIClient()
     )
 }

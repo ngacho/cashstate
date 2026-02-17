@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AddCategoryView: View {
     @Binding var isPresented: Bool
+    let apiClient: APIClient
     var onSave: ((BudgetCategory) -> Void)?
 
     @State private var categoryName: String = ""
@@ -12,6 +13,8 @@ struct AddCategoryView: View {
     @State private var subcategories: [SubcategoryItem] = []
     @State private var showAddSubcategory = false
     @State private var showSubcategoryInfo = false
+    @State private var isSaving = false
+    @State private var errorMessage: String?
 
 
     let availableIcons = [
@@ -225,19 +228,32 @@ struct AddCategoryView: View {
                         }
                     }
 
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .padding(.horizontal)
+                    }
+
                     // Add Category Button
                     Button {
-                        saveCategory()
+                        Task { await saveCategory() }
                     } label: {
-                        Text("Add Category")
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(categoryName.isEmpty ? Color.gray.opacity(0.3) : selectedColor.color)
-                            .foregroundColor(.white)
-                            .cornerRadius(Theme.CornerRadius.md)
+                        if isSaving {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                        } else {
+                            Text("Add Category")
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                        }
                     }
-                    .disabled(categoryName.isEmpty)
+                    .background(categoryName.isEmpty || isSaving ? Color.gray.opacity(0.3) : selectedColor.color)
+                    .foregroundColor(.white)
+                    .cornerRadius(Theme.CornerRadius.md)
+                    .disabled(categoryName.isEmpty || isSaving)
                     .padding(.horizontal)
                     .padding(.top, Theme.Spacing.md)
 
@@ -263,33 +279,53 @@ struct AddCategoryView: View {
         }
     }
 
-    private func saveCategory() {
+    private func saveCategory() async {
         guard !categoryName.isEmpty else { return }
+        isSaving = true
+        errorMessage = nil
 
-        let budgetSubcategories = subcategories.map { item in
-            BudgetSubcategory(
-                id: UUID().uuidString,
-                name: item.name,
-                icon: item.icon,
-                budgetAmount: nil,
-                spentAmount: 0.0,
-                transactionCount: 0
+        do {
+            let created = try await apiClient.createCategory(
+                name: categoryName,
+                icon: selectedIcon,
+                color: selectedColor.rawValue
             )
+
+            var createdSubcategories: [BudgetSubcategory] = []
+            for item in subcategories {
+                let sub = try await apiClient.createSubcategory(
+                    categoryId: created.id,
+                    name: item.name,
+                    icon: item.icon
+                )
+                createdSubcategories.append(BudgetSubcategory(
+                    id: sub.id,
+                    name: sub.name,
+                    icon: sub.icon,
+                    budgetAmount: nil,
+                    spentAmount: 0.0,
+                    transactionCount: 0
+                ))
+            }
+
+            let newCategory = BudgetCategory(
+                id: created.id,
+                name: created.name,
+                icon: created.icon,
+                colorHex: created.color,
+                type: selectedType,
+                subcategories: createdSubcategories,
+                budgetAmount: nil,
+                spentAmount: 0.0
+            )
+
+            onSave?(newCategory)
+            isPresented = false
+        } catch {
+            errorMessage = error.localizedDescription
         }
 
-        let newCategory = BudgetCategory(
-            id: UUID().uuidString,
-            name: categoryName,
-            icon: selectedIcon,
-            colorHex: selectedColor.rawValue,  // Use hex string from color palette
-            type: selectedType,
-            subcategories: budgetSubcategories,
-            budgetAmount: nil,
-            spentAmount: 0.0
-        )
-
-        onSave?(newCategory)
-        isPresented = false
+        isSaving = false
     }
 }
 
@@ -412,6 +448,192 @@ struct AddSubcategoryToNewCategoryView: View {
     }
 }
 
+// MARK: - Edit Category View
+
+struct EditCategoryView: View {
+    @Binding var category: BudgetCategory
+    @Binding var isPresented: Bool
+    let apiClient: APIClient
+
+    @State private var categoryName: String
+    @State private var selectedIcon: String
+    @State private var selectedColor: ColorPalette
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    let availableIcons = [
+        "🍿", "🍔", "🚗", "🏠", "❤️", "🛍️", "✈️", "🎮",
+        "📱", "💼", "🎓", "⚽", "🎵", "🎨", "🍕", "☕",
+        "🎁", "💰", "🏋️", "🎬", "📚", "🌳", "🍜", "🎤"
+    ]
+
+    init(category: Binding<BudgetCategory>, isPresented: Binding<Bool>, apiClient: APIClient) {
+        self._category = category
+        self._isPresented = isPresented
+        self.apiClient = apiClient
+        _categoryName = State(initialValue: category.wrappedValue.name)
+        _selectedIcon = State(initialValue: category.wrappedValue.icon)
+        _selectedColor = State(initialValue: ColorPalette(rawValue: category.wrappedValue.colorHex) ?? .blue)
+    }
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: Theme.Spacing.lg) {
+                    // Icon Preview and Name
+                    HStack(spacing: Theme.Spacing.md) {
+                        Text(selectedIcon)
+                            .font(.system(size: 48))
+                            .frame(width: 100, height: 100)
+                            .background(selectedColor.color.opacity(0.2))
+                            .cornerRadius(Theme.CornerRadius.lg)
+
+                        TextField("Name", text: $categoryName)
+                            .font(.title3)
+                            .fontWeight(.medium)
+                            .foregroundColor(Theme.Colors.textPrimary)
+                            .padding()
+                            .background(Theme.Colors.cardBackground.opacity(0.5))
+                            .cornerRadius(Theme.CornerRadius.md)
+                    }
+                    .padding(.horizontal)
+
+                    // Color Selection
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Theme.Spacing.md) {
+                            ForEach(ColorPalette.allCases) { color in
+                                Button {
+                                    selectedColor = color
+                                } label: {
+                                    Circle()
+                                        .fill(color.color)
+                                        .frame(width: 50, height: 50)
+                                        .overlay(
+                                            Circle()
+                                                .stroke(selectedColor == color ? Color.white : Color.clear, lineWidth: 3)
+                                                .padding(3)
+                                        )
+                                        .overlay(
+                                            Circle()
+                                                .stroke(selectedColor == color ? color.color : Color.clear, lineWidth: 2)
+                                        )
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+
+                    // Icon Selection
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text("Select Icon")
+                            .font(.subheadline)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                            .padding(.horizontal)
+
+                        LazyVGrid(columns: [
+                            GridItem(.flexible()),
+                            GridItem(.flexible()),
+                            GridItem(.flexible()),
+                            GridItem(.flexible()),
+                            GridItem(.flexible()),
+                            GridItem(.flexible())
+                        ], spacing: Theme.Spacing.sm) {
+                            ForEach(availableIcons, id: \.self) { icon in
+                                Button {
+                                    selectedIcon = icon
+                                } label: {
+                                    Text(icon)
+                                        .font(.title2)
+                                        .frame(width: 50, height: 50)
+                                        .background(
+                                            selectedIcon == icon
+                                            ? selectedColor.color.opacity(0.2)
+                                            : Theme.Colors.cardBackground.opacity(0.5)
+                                        )
+                                        .cornerRadius(Theme.CornerRadius.sm)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: Theme.CornerRadius.sm)
+                                                .stroke(
+                                                    selectedIcon == icon ? selectedColor.color : Color.clear,
+                                                    lineWidth: 2
+                                                )
+                                        )
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .padding(.horizontal)
+                    }
+
+                    // Save Button
+                    Button {
+                        Task { await saveCategory() }
+                    } label: {
+                        if isSaving {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                        } else {
+                            Text("Save Changes")
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                        }
+                    }
+                    .background(categoryName.isEmpty || isSaving ? Color.gray.opacity(0.3) : selectedColor.color)
+                    .foregroundColor(.white)
+                    .cornerRadius(Theme.CornerRadius.md)
+                    .disabled(categoryName.isEmpty || isSaving)
+                    .padding(.horizontal)
+                    .padding(.top, Theme.Spacing.md)
+
+                    Spacer(minLength: Theme.Spacing.xl)
+                }
+                .padding(.vertical)
+            }
+            .background(Theme.Colors.background)
+            .navigationTitle("Edit Category")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        isPresented = false
+                    }
+                }
+            }
+        }
+    }
+
+    private func saveCategory() async {
+        guard !categoryName.isEmpty else { return }
+        isSaving = true
+        errorMessage = nil
+
+        do {
+            let updated = try await apiClient.updateCategory(
+                categoryId: category.id,
+                name: categoryName,
+                icon: selectedIcon,
+                color: selectedColor.rawValue
+            )
+            category.name = updated.name
+            category.icon = updated.icon
+            category.colorHex = updated.color
+            isPresented = false
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isSaving = false
+    }
+}
+
 #Preview {
-    AddCategoryView(isPresented: .constant(true))
+    AddCategoryView(isPresented: .constant(true), apiClient: APIClient())
 }

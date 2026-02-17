@@ -79,7 +79,7 @@ struct BudgetEmptyStateView: View {
             Spacer()
         }
         .sheet(isPresented: $showAddCategory) {
-            AddCategoryView(isPresented: $showAddCategory) { _ in
+            AddCategoryView(isPresented: $showAddCategory, apiClient: apiClient) { _ in
                 onCategoriesAdded()
             }
         }

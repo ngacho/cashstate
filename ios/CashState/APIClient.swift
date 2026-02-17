@@ -657,6 +657,32 @@ actor APIClient {
         return treeResponse.items
     }
 
+    func createSubcategory(categoryId: String, name: String, icon: String) async throws -> Subcategory {
+        struct CreateBody: Encodable { let name: String; let icon: String }
+        return try await request(
+            endpoint: "/categories/\(categoryId)/subcategories",
+            method: "POST",
+            body: CreateBody(name: name, icon: icon)
+        )
+    }
+
+    func updateCategory(categoryId: String, name: String, icon: String, color: String) async throws -> Category {
+        struct UpdateBody: Encodable { let name: String; let icon: String; let color: String }
+        return try await request(
+            endpoint: "/categories/\(categoryId)",
+            method: "PATCH",
+            body: UpdateBody(name: name, icon: icon, color: color)
+        )
+    }
+
+    func deleteCategory(categoryId: String) async throws {
+        struct SuccessResponse: Codable { let success: Bool; let message: String }
+        let _: SuccessResponse = try await request(
+            endpoint: "/categories/\(categoryId)",
+            method: "DELETE"
+        )
+    }
+
     func createCategory(name: String, icon: String, color: String) async throws -> Category {
         guard let url = URL(string: Config.apiBaseURL + "/categories") else {
             throw APIError.invalidURL

@@ -4,6 +4,7 @@ struct EditBudgetView: View {
     @Binding var budget: Budget
     @Binding var categories: [BudgetCategory]
     @Binding var isPresented: Bool
+    let apiClient: APIClient
 
     @State private var budgetName: String
     @State private var budgetAmount: String
@@ -16,10 +17,11 @@ struct EditBudgetView: View {
     @State private var excludedCategories: Set<String>
     @State private var showCategorySelection = false
 
-    init(budget: Binding<Budget>, categories: Binding<[BudgetCategory]>, isPresented: Binding<Bool>) {
+    init(budget: Binding<Budget>, categories: Binding<[BudgetCategory]>, isPresented: Binding<Bool>, apiClient: APIClient) {
         self._budget = budget
         self._categories = categories
         self._isPresented = isPresented
+        self.apiClient = apiClient
 
         let budgetValue = budget.wrappedValue
         _budgetName = State(initialValue: budgetValue.name)
@@ -310,7 +312,8 @@ struct EditBudgetView: View {
                     categories: $categories,
                     includedCategories: $includedCategories,
                     excludedCategories: $excludedCategories,
-                    isPresented: $showCategorySelection
+                    isPresented: $showCategorySelection,
+                    apiClient: apiClient
                 )
             }
         }
@@ -459,6 +462,7 @@ struct FlowLayout: Layout {
     EditBudgetView(
         budget: .constant(Budget.mockBudgets[0]),
         categories: .constant(BudgetCategory.mockCategories),
-        isPresented: .constant(true)
+        isPresented: .constant(true),
+        apiClient: APIClient()
     )
 }
