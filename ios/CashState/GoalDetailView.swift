@@ -103,8 +103,7 @@ struct GoalDetailView: View {
                     Text(detail.goalType == .debtPayment ? "Balance" : "Current")
                         .font(.caption)
                         .foregroundColor(Theme.Colors.textSecondary)
-                    // Debt: show actual current balance (abs). Savings: show attributed amount.
-                    Text(String(format: "$%.2f", detail.goalType == .debtPayment
+                    Text(formatBalance(detail.goalType == .debtPayment
                         ? debtCurrentBalance(detail)
                         : detail.currentAmount))
                         .font(.title2)
@@ -116,8 +115,7 @@ struct GoalDetailView: View {
                     Text(detail.goalType == .debtPayment ? "Goal balance" : "Target")
                         .font(.caption)
                         .foregroundColor(Theme.Colors.textSecondary)
-                    // Debt: show the balance to reach (starting − payoff amount). Savings: target amount.
-                    Text(String(format: "$%.2f", detail.goalType == .debtPayment
+                    Text(formatBalance(detail.goalType == .debtPayment
                         ? debtTargetBalance(detail)
                         : detail.targetAmount))
                         .font(.title2)
@@ -160,7 +158,6 @@ struct GoalDetailView: View {
                     .font(.headline)
                     .foregroundColor(Theme.Colors.textPrimary)
                 Spacer()
-                // Range selector
                 HStack(spacing: 4) {
                     ForEach(ranges, id: \.self) { range in
                         Button(range) {
@@ -180,65 +177,60 @@ struct GoalDetailView: View {
             }
 
             if #available(iOS 16.0, *) {
-                if detail.progressData.isEmpty {
-                    Text("No balance history yet. Sync your accounts to see progress.")
-                        .font(.caption)
-                        .foregroundColor(Theme.Colors.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .frame(height: 180)
-                } else {
-                    // Debt: chart target = starting balance − payoff target (e.g. 22432 − 6000 = 16432)
-                    // Savings: chart target = target amount
-                    let chartTarget = detail.goalType == .debtPayment
-                        ? debtTargetBalance(detail)
-                        : detail.targetAmount
+                let points = extrapolatedBalancePoints(for: detail)
+                let goalBalance = detail.goalType == .debtPayment
+                    ? debtTargetBalance(detail)
+                    : detail.targetAmount
+                // Green if current balance has crossed the goal balance, red for debt in progress
+                let currentBalance = points.last?.balance ?? 0
+                let lineColor: Color = currentBalance >= goalBalance
+                    ? Theme.Colors.income
+                    : (detail.goalType == .debtPayment ? Theme.Colors.expense : Theme.Colors.income)
 
-                    Chart {
-                        ForEach(detail.progressData) { snapshot in
-                            AreaMark(
-                                x: .value("Date", snapshot.dateValue),
-                                y: .value("Balance", snapshot.balance)
+                Chart {
+                    ForEach(points) { point in
+                        AreaMark(
+                            x: .value("Date", point.date),
+                            y: .value("Balance", point.balance)
+                        )
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [lineColor.opacity(0.25), lineColor.opacity(0.03)],
+                                startPoint: .top,
+                                endPoint: .bottom
                             )
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [Theme.Colors.primary.opacity(0.3), Theme.Colors.primary.opacity(0.05)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            LineMark(
-                                x: .value("Date", snapshot.dateValue),
-                                y: .value("Balance", snapshot.balance)
-                            )
-                            .foregroundStyle(Theme.Colors.primary)
-                            .lineStyle(StrokeStyle(lineWidth: 2))
+                        )
+                        LineMark(
+                            x: .value("Date", point.date),
+                            y: .value("Balance", point.balance)
+                        )
+                        .foregroundStyle(lineColor)
+                        .lineStyle(StrokeStyle(lineWidth: 2))
+                    }
+
+                    RuleMark(y: .value("Goal balance", goalBalance))
+                        .foregroundStyle(Theme.Colors.income.opacity(0.6))
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [6, 3]))
+                        .annotation(position: .top, alignment: .trailing) {
+                            Text("Goal \(formatBalance(goalBalance))")
+                                .font(.caption2)
+                                .foregroundColor(Theme.Colors.income)
                         }
-
-                        // Target line at the right value for each goal type
-                        RuleMark(y: .value("Target", chartTarget))
-                            .foregroundStyle(Theme.Colors.income.opacity(0.6))
-                            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [6, 3]))
-                            .annotation(position: .top, alignment: .trailing) {
-                                Text("$\(Int(chartTarget))")
+                }
+                .frame(height: 180)
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                        AxisGridLine()
+                        AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks { value in
+                        AxisGridLine()
+                        AxisValueLabel {
+                            if let v = value.as(Double.self) {
+                                Text(formatBalance(v))
                                     .font(.caption2)
-                                    .foregroundColor(Theme.Colors.income)
-                            }
-                    }
-                    .frame(height: 180)
-                    .chartXAxis {
-                        AxisMarks(values: .automatic(desiredCount: 4)) { _ in
-                            AxisGridLine()
-                            AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                        }
-                    }
-                    .chartYAxis {
-                        AxisMarks { value in
-                            AxisGridLine()
-                            AxisValueLabel {
-                                if let v = value.as(Double.self) {
-                                    Text("$\(Int(v))")
-                                        .font(.caption2)
-                                }
                             }
                         }
                     }
@@ -254,6 +246,63 @@ struct GoalDetailView: View {
         .background(Theme.Colors.cardBackground)
         .cornerRadius(Theme.CornerRadius.md)
         .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+    }
+
+    // MARK: - Chart helpers
+
+    struct BalancePoint: Identifiable {
+        let id: String
+        let date: Date
+        let balance: Double
+    }
+
+    /// Fills the full date range with real snapshot data where available,
+    /// carrying the last known balance forward for missing periods.
+    /// Falls back to the raw current account balance when no history exists.
+    private func extrapolatedBalancePoints(for detail: GoalDetail) -> [BalancePoint] {
+        let (startDate, _) = dateRange(for: selectedRange)
+        let today = Date()
+        let calendar = Calendar.current
+        let granularity = granularityMap[selectedRange] ?? "day"
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+
+        // Real snapshot lookup by date string
+        var dataByDate: [String: Double] = [:]
+        for snapshot in detail.progressData {
+            dataByDate[snapshot.date] = snapshot.balance
+        }
+        let sortedKeys = dataByDate.keys.sorted()
+
+        // Current raw account balance used as fallback
+        let rawCurrent = detail.accounts.reduce(0.0) { $0 + $1.currentBalance }
+
+        // Generate date ticks
+        var ticks: [Date] = []
+        var cursor = calendar.startOfDay(for: startDate)
+        let endDay = calendar.startOfDay(for: today)
+        while cursor <= endDay {
+            ticks.append(cursor)
+            switch granularity {
+            case "week":  cursor = calendar.date(byAdding: .weekOfYear, value: 1, to: cursor) ?? cursor
+            case "month": cursor = calendar.date(byAdding: .month, value: 1, to: cursor) ?? cursor
+            default:      cursor = calendar.date(byAdding: .day, value: 1, to: cursor) ?? cursor
+            }
+        }
+        if ticks.last.map({ !calendar.isDateInToday($0) }) ?? true { ticks.append(endDay) }
+
+        return ticks.map { date in
+            let dateStr = formatter.string(from: date)
+            if calendar.isDateInToday(date) || date >= today {
+                return BalancePoint(id: dateStr, date: date, balance: rawCurrent)
+            }
+            if let val = dataByDate[dateStr] {
+                return BalancePoint(id: dateStr, date: date, balance: val)
+            }
+            let lastKey = sortedKeys.last { $0 <= dateStr }
+            let balance = lastKey.flatMap { dataByDate[$0] } ?? rawCurrent
+            return BalancePoint(id: dateStr, date: date, balance: balance)
+        }
     }
 
     private func accountsSection(detail: GoalDetail) -> some View {
@@ -335,18 +384,25 @@ struct GoalDetailView: View {
         return (start, end)
     }
 
-    /// Current debt balance (abs), summed across all linked accounts.
+    /// Raw current balance summed across accounts (negative for debt, e.g. -22432.09).
     private func debtCurrentBalance(_ detail: GoalDetail) -> Double {
-        detail.accounts.reduce(0) { $0 + abs($1.currentBalance) }
+        detail.accounts.reduce(0) { $0 + $1.currentBalance }
     }
 
-    /// The balance to reach: starting total − payoff target (e.g. 22432 − 6000 = 16432).
-    /// Falls back to currentBalance if starting not recorded.
+    /// The goal balance to reach: startingTotal + targetAmount
+    /// e.g. starting -22432, pay off 6000 → goal balance = -16432 (still negative debt).
     private func debtTargetBalance(_ detail: GoalDetail) -> Double {
-        let startingTotal = detail.accounts.reduce(0) {
-            $0 + abs($1.startingBalance ?? $1.currentBalance)
+        let startingTotal = detail.accounts.reduce(0.0) {
+            $0 + ($1.startingBalance ?? $1.currentBalance)
         }
-        return max(0, startingTotal - detail.targetAmount)
+        return startingTotal + detail.targetAmount
+    }
+
+    /// Formats a balance correctly regardless of sign: -$22,432.09 or $5,000.00
+    private func formatBalance(_ value: Double) -> String {
+        value < 0
+            ? String(format: "-$%.2f", abs(value))
+            : String(format: "$%.2f", value)
     }
 
     private func progressColor(for pct: Double, isCompleted: Bool) -> Color {
