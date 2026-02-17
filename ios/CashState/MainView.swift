@@ -16,9 +16,9 @@ struct MainView: View {
                     Label("Budget", systemImage: "chart.pie.fill")
                 }
 
-            InsightsView(apiClient: apiClient)
+            GoalsView(apiClient: apiClient)
                 .tabItem {
-                    Label("Insights", systemImage: "chart.pie.fill")
+                    Label("Goals", systemImage: "target")
                 }
 
             AccountsView(isAuthenticated: $isAuthenticated, apiClient: apiClient)

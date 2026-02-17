@@ -121,7 +121,7 @@ actor APIClient {
             print("← \(httpResponse.statusCode) \(endpoint)")
         }
 
-        guard httpResponse.statusCode == 200 else {
+        guard (200...299).contains(httpResponse.statusCode) else {
             if httpResponse.statusCode == 401 {
                 throw APIError.unauthorized
             }
@@ -1336,4 +1336,102 @@ struct AICategorizationResult: Codable {
     let subcategoryId: String?
     let confidence: Double
     let reasoning: String?
+}
+
+// MARK: - Goals API extension (defined at end of file for clarity)
+extension APIClient {
+
+    // MARK: Goals
+
+    func fetchGoals() async throws -> [Goal] {
+        let response: GoalListResponse = try await request(endpoint: "/goals")
+        return response.items
+    }
+
+    func createGoal(
+        name: String,
+        description: String?,
+        goalType: GoalType,
+        targetAmount: Double,
+        targetDate: String?,
+        accounts: [GoalAccountRequest]
+    ) async throws -> Goal {
+        let body = GoalCreate(
+            name: name,
+            description: description,
+            goalType: goalType,
+            targetAmount: targetAmount,
+            targetDate: targetDate,
+            accounts: accounts
+        )
+        return try await request(endpoint: "/goals", method: "POST", body: body)
+    }
+
+    func fetchGoalDetail(
+        goalId: String,
+        startDate: Date? = nil,
+        endDate: Date? = nil,
+        granularity: String = "day"
+    ) async throws -> GoalDetail {
+        var components = URLComponents(string: Config.apiBaseURL + "/goals/\(goalId)")
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "granularity", value: granularity)
+        ]
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+
+        if let startDate = startDate {
+            queryItems.append(URLQueryItem(name: "start_date", value: formatter.string(from: startDate)))
+        }
+        if let endDate = endDate {
+            queryItems.append(URLQueryItem(name: "end_date", value: formatter.string(from: endDate)))
+        }
+        components?.queryItems = queryItems
+
+        guard let url = components?.url else { throw APIError.invalidURL }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token = accessToken {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        guard http.statusCode == 200 else {
+            if http.statusCode == 401 { throw APIError.unauthorized }
+            var msg: String?
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let detail = json["detail"] as? String { msg = detail }
+            throw APIError.serverError(http.statusCode, msg)
+        }
+        let decoder = JSONDecoder()
+        return try decoder.decode(GoalDetail.self, from: data)
+    }
+
+    func updateGoal(
+        goalId: String,
+        name: String? = nil,
+        description: String? = nil,
+        targetAmount: Double? = nil,
+        targetDate: String? = nil,
+        isCompleted: Bool? = nil,
+        accounts: [GoalAccountRequest]? = nil
+    ) async throws -> Goal {
+        let body = GoalUpdate(
+            name: name,
+            description: description,
+            targetAmount: targetAmount,
+            targetDate: targetDate,
+            isCompleted: isCompleted,
+            accounts: accounts
+        )
+        return try await request(endpoint: "/goals/\(goalId)", method: "PUT", body: body)
+    }
+
+    func deleteGoal(goalId: String) async throws {
+        struct DeleteResponse: Codable { let success: Bool; let message: String }
+        let _: DeleteResponse = try await request(endpoint: "/goals/\(goalId)", method: "DELETE")
+    }
 }

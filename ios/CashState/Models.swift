@@ -234,3 +234,148 @@ struct SnapshotsResponse: Codable {
         case data
     }
 }
+
+// MARK: - Goals
+
+enum GoalType: String, Codable, CaseIterable {
+    case savings
+    case debtPayment = "debt_payment"
+
+    var displayName: String {
+        switch self {
+        case .savings: return "Savings"
+        case .debtPayment: return "Debt Payoff"
+        }
+    }
+}
+
+struct GoalAccountRequest: Codable {
+    let simplefinAccountId: String
+    let allocationPercentage: Double
+
+    enum CodingKeys: String, CodingKey {
+        case simplefinAccountId = "simplefin_account_id"
+        case allocationPercentage = "allocation_percentage"
+    }
+}
+
+struct GoalCreate: Codable {
+    let name: String
+    let description: String?
+    let goalType: GoalType
+    let targetAmount: Double
+    let targetDate: String?
+    let accounts: [GoalAccountRequest]
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case description
+        case goalType = "goal_type"
+        case targetAmount = "target_amount"
+        case targetDate = "target_date"
+        case accounts
+    }
+}
+
+struct GoalUpdate: Codable {
+    let name: String?
+    let description: String?
+    let targetAmount: Double?
+    let targetDate: String?
+    let isCompleted: Bool?
+    let accounts: [GoalAccountRequest]?
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case description
+        case targetAmount = "target_amount"
+        case targetDate = "target_date"
+        case isCompleted = "is_completed"
+        case accounts
+    }
+}
+
+struct GoalAccountResponse: Codable, Identifiable {
+    let id: String
+    let simplefinAccountId: String
+    let accountName: String
+    let allocationPercentage: Double
+    let currentBalance: Double
+    let startingBalance: Double?  // debt_payment goals only — balance at creation
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case simplefinAccountId = "simplefin_account_id"
+        case accountName = "account_name"
+        case allocationPercentage = "allocation_percentage"
+        case currentBalance = "current_balance"
+        case startingBalance = "starting_balance"
+    }
+}
+
+struct Goal: Codable, Identifiable {
+    let id: String
+    let name: String
+    let description: String?
+    let goalType: GoalType
+    let targetAmount: Double
+    let targetDate: String?
+    let isCompleted: Bool
+    let currentAmount: Double
+    let progressPercent: Double
+    let accounts: [GoalAccountResponse]
+    let createdAt: String
+    let updatedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case description
+        case goalType = "goal_type"
+        case targetAmount = "target_amount"
+        case targetDate = "target_date"
+        case isCompleted = "is_completed"
+        case currentAmount = "current_amount"
+        case progressPercent = "progress_percent"
+        case accounts
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct GoalDetail: Codable {
+    let id: String
+    let name: String
+    let description: String?
+    let goalType: GoalType
+    let targetAmount: Double
+    let targetDate: String?
+    let isCompleted: Bool
+    let currentAmount: Double
+    let progressPercent: Double
+    let accounts: [GoalAccountResponse]
+    let progressData: [SnapshotData]
+    let createdAt: String
+    let updatedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case description
+        case goalType = "goal_type"
+        case targetAmount = "target_amount"
+        case targetDate = "target_date"
+        case isCompleted = "is_completed"
+        case currentAmount = "current_amount"
+        case progressPercent = "progress_percent"
+        case accounts
+        case progressData = "progress_data"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct GoalListResponse: Codable {
+    let items: [Goal]
+    let total: Int
+}
