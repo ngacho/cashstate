@@ -11,6 +11,7 @@ from app.routers import (
     auth_router,
     budget_templates_router,
     categories_router,
+    goals_router,
     plaid_router,
     simplefin_router,
     snapshots_router,
@@ -104,6 +105,7 @@ api_prefix = settings.api_v1_prefix
 app.include_router(auth_router, prefix=api_prefix)
 app.include_router(budget_templates_router, prefix=api_prefix)
 app.include_router(categories_router, prefix=api_prefix)
+app.include_router(goals_router, prefix=api_prefix)
 app.include_router(plaid_router, prefix=api_prefix)
 app.include_router(simplefin_router, prefix=api_prefix)
 app.include_router(snapshots_router, prefix=api_prefix)

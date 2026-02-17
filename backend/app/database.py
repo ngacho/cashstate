@@ -821,6 +821,178 @@ class Database:
     # Transaction Categorization
     # ========================================================================
 
+    # ========================================================================
+    # Goals
+    # ========================================================================
+
+    def create_goal(self, data: dict) -> dict:
+        """Create a new goal."""
+        result = self.client.table("goals").insert(data).execute()
+        return result.data[0]
+
+    def get_user_goals(self, user_id: str) -> list[dict]:
+        """Get all goals for a user."""
+        result = (
+            self.client.table("goals")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return result.data
+
+    def get_goal(self, goal_id: str) -> dict | None:
+        """Get a goal by ID."""
+        result = self.client.table("goals").select("*").eq("id", goal_id).execute()
+        return result.data[0] if result.data else None
+
+    def update_goal(self, goal_id: str, data: dict) -> dict | None:
+        """Update a goal."""
+        result = self.client.table("goals").update(data).eq("id", goal_id).execute()
+        return result.data[0] if result.data else None
+
+    def delete_goal(self, goal_id: str) -> None:
+        """Delete a goal (cascades to goal_accounts)."""
+        self.client.table("goals").delete().eq("id", goal_id).execute()
+
+    # ========================================================================
+    # Goal Accounts
+    # ========================================================================
+
+    def get_goal_accounts(self, goal_id: str) -> list[dict]:
+        """Get all account associations for a goal, joined with account details."""
+        result = (
+            self.client.table("goal_accounts")
+            .select("*, simplefin_accounts(id, name, balance, currency)")
+            .eq("goal_id", goal_id)
+            .execute()
+        )
+        # Flatten the joined data
+        rows = []
+        for row in result.data:
+            account = row.pop("simplefin_accounts", {}) or {}
+            row["account_name"] = account.get("name", "")
+            row["current_balance"] = float(account.get("balance") or 0.0)
+            if row.get("starting_balance") is not None:
+                row["starting_balance"] = float(row["starting_balance"])
+            rows.append(row)
+        return rows
+
+    def get_account_total_allocation(
+        self, account_id: str, exclude_goal_id: str | None = None
+    ) -> float:
+        """Get sum of allocation_percentage for an account across all goals."""
+        query = (
+            self.client.table("goal_accounts")
+            .select("allocation_percentage")
+            .eq("simplefin_account_id", account_id)
+        )
+        if exclude_goal_id:
+            query = query.neq("goal_id", exclude_goal_id)
+        result = query.execute()
+        return sum(row["allocation_percentage"] for row in result.data)
+
+    def create_goal_account(self, data: dict) -> dict:
+        """Create a goal-account association."""
+        result = self.client.table("goal_accounts").insert(data).execute()
+        return result.data[0]
+
+    def delete_goal_account(self, goal_account_id: str) -> None:
+        """Delete a goal-account association."""
+        self.client.table("goal_accounts").delete().eq("id", goal_account_id).execute()
+
+    def delete_goal_accounts_for_goal(self, goal_id: str) -> None:
+        """Delete all account associations for a goal."""
+        self.client.table("goal_accounts").delete().eq("goal_id", goal_id).execute()
+
+    def get_goal_snapshots(
+        self,
+        goal_id: str,
+        start_date: str,
+        end_date: str,
+        granularity: str = "day",
+        goal_type: str = "savings",
+    ) -> list[dict]:
+        """Compute progress over time for a goal.
+
+        Savings:      balance at each date × allocation% (attributed balance)
+        Debt payoff:  abs(starting_balance) - abs(balance_at_date)
+                      = amount paid off since goal creation (starts at 0, grows)
+        """
+        from collections import defaultdict
+
+        goal_accounts = self.get_goal_accounts(goal_id)
+        if not goal_accounts:
+            return []
+
+        account_ids = [ga["simplefin_account_id"] for ga in goal_accounts]
+        allocation_map = {
+            ga["simplefin_account_id"]: ga["allocation_percentage"] / 100.0
+            for ga in goal_accounts
+        }
+
+        # Fetch balance history for all linked accounts in date range
+        result = (
+            self.client.table("account_balance_history")
+            .select("simplefin_account_id, snapshot_date, balance")
+            .in_("simplefin_account_id", account_ids)
+            .gte("snapshot_date", start_date)
+            .lte("snapshot_date", end_date)
+            .order("snapshot_date")
+            .execute()
+        )
+
+        # Aggregate per date
+        daily_totals: dict[str, float] = defaultdict(float)
+        for row in result.data:
+            date = row["snapshot_date"]
+            balance = float(row["balance"] or 0)
+            account_id = row["simplefin_account_id"]
+
+            if goal_type == "debt_payment":
+                # Show the actual debt balance (positive number) over time.
+                # e.g. -22432 → displayed as 22432, going DOWN toward target balance.
+                daily_totals[date] += abs(balance)
+            else:
+                alloc = allocation_map.get(account_id, 0)
+                daily_totals[date] += balance * alloc
+
+        # Apply granularity (day = all, week/month/year = keep last per period)
+        if granularity == "day":
+            snapshots = [
+                {"date": d, "balance": round(b, 2)}
+                for d, b in sorted(daily_totals.items())
+            ]
+        else:
+            from datetime import date as date_type
+
+            def period_key(date_str: str) -> str:
+                d = date_type.fromisoformat(date_str)
+                if granularity == "week":
+                    return f"{d.isocalendar()[0]}-W{d.isocalendar()[1]:02d}"
+                elif granularity == "month":
+                    return f"{d.year}-{d.month:02d}"
+                elif granularity == "year":
+                    return str(d.year)
+                return date_str
+
+            # Keep last balance per period
+            period_last: dict[str, tuple[str, float]] = {}
+            for date_str, balance in sorted(daily_totals.items()):
+                key = period_key(date_str)
+                period_last[key] = (date_str, balance)
+
+            snapshots = [
+                {"date": v[0], "balance": round(v[1], 2)}
+                for v in sorted(period_last.values(), key=lambda x: x[0])
+            ]
+
+        return snapshots
+
+    # ========================================================================
+    # Transaction Categorization
+    # ========================================================================
+
     def update_transaction_category(
         self, transaction_id: str, category_id: str | None, subcategory_id: str | None
     ) -> dict | None:
