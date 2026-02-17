@@ -18,14 +18,19 @@ DROP VIEW IF EXISTS public.transactions_view CASCADE;
 -- Drop Tables (in reverse dependency order)
 -- ============================================================================
 
--- Budget-related tables
+-- Budget Template tables (Phase 2)
+DROP TABLE IF EXISTS public.budget_periods CASCADE;
+DROP TABLE IF EXISTS public.budget_subcategories CASCADE;
+DROP TABLE IF EXISTS public.budget_categories CASCADE;
+DROP TABLE IF EXISTS public.budget_template_accounts CASCADE;
+DROP TABLE IF EXISTS public.budget_templates CASCADE;
+
+-- Old Budget tables (deprecated)
 DROP TABLE IF EXISTS public.budget_accounts CASCADE;
-DROP TABLE IF EXISTS public.budget_subcategories CASCADE;  -- Future phase
-DROP TABLE IF EXISTS public.budget_periods CASCADE;        -- Future phase
 DROP TABLE IF EXISTS public.budgets CASCADE;
 
 -- Categorization tables
-DROP TABLE IF EXISTS public.categorization_feedback CASCADE;  -- Future phase
+DROP TABLE IF EXISTS public.categorization_feedback CASCADE;
 DROP TABLE IF EXISTS public.subcategories CASCADE;
 DROP TABLE IF EXISTS public.categories CASCADE;
 
@@ -53,13 +58,20 @@ SELECT
 FROM pg_tables
 WHERE schemaname = 'public'
     AND tablename IN (
-        'budget_accounts',
-        'budget_subcategories',
+        -- Budget Template tables (Phase 2)
         'budget_periods',
+        'budget_subcategories',
+        'budget_categories',
+        'budget_template_accounts',
+        'budget_templates',
+        -- Old Budget tables
+        'budget_accounts',
         'budgets',
+        -- Categorization tables
         'categorization_feedback',
         'subcategories',
         'categories',
+        -- SimpleFin tables
         'simplefin_sync_jobs',
         'simplefin_transactions',
         'account_balance_history',

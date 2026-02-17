@@ -52,7 +52,8 @@ async def seed_default_categories(
     onboarding_service = get_onboarding_service(db)
     result = onboarding_service.seed_default_categories(
         user_id=user["id"],
-        monthly_budget=request.monthly_budget
+        monthly_budget=request.monthly_budget,
+        account_ids=request.account_ids,
     )
 
     return SeedDefaultsResponse(**result)

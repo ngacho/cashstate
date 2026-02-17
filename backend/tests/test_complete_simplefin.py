@@ -780,3 +780,169 @@ class TestCompleteSimplefinFlow:
                 if cat_result.get('reasoning'):
                     print(f"      Reasoning: {cat_result['reasoning']}")
                 print()
+
+    # =========================================
+    # Step 20: Budget Templates
+    # =========================================
+    def test_20_create_budget_template(self):
+        """Create a budget template."""
+        response = self.client.post(
+            f"{self.base_url}/budget-templates",
+            headers=self.get_headers(),
+            json={
+                "name": "Test Budget",
+                "total_amount": 3000.00,
+                "is_default": True,
+                "account_ids": [],
+            },
+        )
+        assert response.status_code == 201, f"Failed to create template: {response.json()}"
+
+        template = response.json()
+        assert template["name"] == "Test Budget"
+        assert template["total_amount"] == 3000.00
+        assert template["is_default"] is True
+
+        self.__class__.template_id = template["id"]
+        print(f"   ✅ Created template: {template['id']}")
+
+    def test_21_add_category_budget(self):
+        """Add category budget to template."""
+        response = self.client.post(
+            f"{self.base_url}/budget-templates/{self.template_id}/categories",
+            headers=self.get_headers(),
+            json={
+                "category_id": self.category_id,
+                "amount": 500.00,
+            },
+        )
+        assert response.status_code == 201, f"Failed to add category budget: {response.json()}"
+
+        cat_budget = response.json()
+        assert cat_budget["category_id"] == self.category_id
+        assert cat_budget["amount"] == 500.00
+
+        self.__class__.category_budget_id = cat_budget["id"]
+        print(f"   ✅ Added category budget: ${cat_budget['amount']}")
+
+    def test_22_add_subcategory_budget(self):
+        """Add subcategory budget to template."""
+        response = self.client.post(
+            f"{self.base_url}/budget-templates/{self.template_id}/subcategories",
+            headers=self.get_headers(),
+            json={
+                "subcategory_id": self.subcategory_id,
+                "amount": 200.00,
+            },
+        )
+        assert response.status_code == 201, f"Failed to add subcategory budget: {response.json()}"
+
+        subcat_budget = response.json()
+        assert subcat_budget["subcategory_id"] == self.subcategory_id
+        assert subcat_budget["amount"] == 200.00
+
+        print(f"   ✅ Added subcategory budget: ${subcat_budget['amount']}")
+
+    def test_23_get_budget_for_month(self):
+        """Get budget for current month with spending."""
+        import datetime
+        now = datetime.datetime.now()
+
+        response = self.client.get(
+            f"{self.base_url}/budget-templates/for-month",
+            headers=self.get_headers(),
+            params={
+                "year": now.year,
+                "month": now.month,
+            },
+        )
+        assert response.status_code == 200, f"Failed to get budget: {response.json()}"
+
+        budget = response.json()
+        assert "template" in budget
+        assert "categories" in budget
+        assert "subcategories" in budget
+        assert "total_spent" in budget
+        assert budget["has_override"] is False  # No period override yet
+
+        print(f"   ✅ Budget for {now.year}-{now.month:02d}")
+        print(f"      Template: {budget['template']['name']}")
+        print(f"      Total spent: ${budget['total_spent']}")
+        print(f"      Categories: {len(budget['categories'])}")
+
+    def test_24_create_vacation_budget(self):
+        """Create vacation budget template."""
+        response = self.client.post(
+            f"{self.base_url}/budget-templates",
+            headers=self.get_headers(),
+            json={
+                "name": "Vacation Budget",
+                "total_amount": 5000.00,
+                "is_default": False,
+                "account_ids": [],
+            },
+        )
+        assert response.status_code == 201, f"Failed to create vacation template: {response.json()}"
+
+        template = response.json()
+        self.__class__.vacation_template_id = template["id"]
+        print(f"   ✅ Created vacation template: {template['id']}")
+
+    def test_25_apply_vacation_to_next_month(self):
+        """Apply vacation budget to next month."""
+        import datetime
+        now = datetime.datetime.now()
+        next_month = now.month + 1 if now.month < 12 else 1
+        next_year = now.year if now.month < 12 else now.year + 1
+
+        response = self.client.post(
+            f"{self.base_url}/budget-templates/periods",
+            headers=self.get_headers(),
+            json={
+                "template_id": self.vacation_template_id,
+                "period_month": f"{next_year}-{next_month:02d}",
+            },
+        )
+        assert response.status_code == 201, f"Failed to create period: {response.json()}"
+
+        period = response.json()
+        self.__class__.period_id = period["id"]
+        print(f"   ✅ Applied vacation budget to {next_year}-{next_month:02d}")
+
+    def test_26_get_budget_with_override(self):
+        """Get budget for month with period override."""
+        import datetime
+        now = datetime.datetime.now()
+        next_month = now.month + 1 if now.month < 12 else 1
+        next_year = now.year if now.month < 12 else now.year + 1
+
+        response = self.client.get(
+            f"{self.base_url}/budget-templates/for-month",
+            headers=self.get_headers(),
+            params={
+                "year": next_year,
+                "month": next_month,
+            },
+        )
+        assert response.status_code == 200, f"Failed to get budget: {response.json()}"
+
+        budget = response.json()
+        assert budget["template"]["id"] == self.vacation_template_id
+        assert budget["has_override"] is True
+
+        print(f"   ✅ Verified override for {next_year}-{next_month:02d}")
+        print(f"      Using: {budget['template']['name']}")
+
+    def test_27_list_budget_templates(self):
+        """List all budget templates."""
+        response = self.client.get(
+            f"{self.base_url}/budget-templates",
+            headers=self.get_headers(),
+        )
+        assert response.status_code == 200, f"Failed to list templates: {response.json()}"
+
+        data = response.json()
+        assert data["total"] >= 2
+        assert len(data["items"]) >= 2
+
+        print(f"   ✅ Found {data['total']} budget templates")

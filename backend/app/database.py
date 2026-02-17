@@ -458,21 +458,338 @@ class Database:
         self.client.table("subcategories").delete().eq("id", subcategory_id).execute()
 
     # ========================================================================
-    # Budgets
+    # Budget Templates
     # ========================================================================
 
-    def create_budget(self, budget_data: dict) -> dict:
-        """Create a new budget entry."""
-        result = self.client.table("budgets").insert(budget_data).execute()
+    def create_budget_template(self, template_data: dict) -> dict:
+        """Create a new budget template with optional account associations."""
+        # Extract account_ids before inserting
+        account_ids = template_data.pop("account_ids", [])
+
+        # If setting as default, unset other defaults first
+        if template_data.get("is_default"):
+            self.client.table("budget_templates").update({"is_default": False}).eq(
+                "user_id", template_data["user_id"]
+            ).execute()
+
+        # Create template
+        result = self.client.table("budget_templates").insert(template_data).execute()
+        template = result.data[0]
+
+        # Create account associations
+        if account_ids:
+            self._create_template_accounts(template["id"], account_ids)
+
+        template["account_ids"] = account_ids
+        return template
+
+    def get_budget_templates(self, user_id: str) -> list[dict]:
+        """Get all budget templates for a user."""
+        result = self.client.table("budget_templates").select("*").eq("user_id", user_id).execute()
+        templates = result.data
+
+        # Fetch account associations
+        for template in templates:
+            template["account_ids"] = self._get_template_account_ids(template["id"])
+
+        return templates
+
+    def get_budget_template(self, template_id: str) -> dict | None:
+        """Get a single budget template by ID."""
+        result = self.client.table("budget_templates").select("*").eq("id", template_id).execute()
+        if not result.data:
+            return None
+
+        template = result.data[0]
+        template["account_ids"] = self._get_template_account_ids(template_id)
+        return template
+
+    def get_default_budget_template(self, user_id: str) -> dict | None:
+        """Get the default budget template for a user."""
+        result = (
+            self.client.table("budget_templates")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("is_default", True)
+            .execute()
+        )
+        if not result.data:
+            return None
+
+        template = result.data[0]
+        template["account_ids"] = self._get_template_account_ids(template["id"])
+        return template
+
+    def update_budget_template(self, template_id: str, update_data: dict) -> dict | None:
+        """Update a budget template."""
+        # Extract account_ids for separate handling
+        account_ids = update_data.pop("account_ids", None)
+
+        # If setting as default, unset other defaults first
+        if update_data.get("is_default"):
+            # Get user_id of this template
+            template = self.get_budget_template(template_id)
+            if template:
+                self.client.table("budget_templates").update({"is_default": False}).eq(
+                    "user_id", template["user_id"]
+                ).execute()
+
+        # Update template fields
+        if update_data:
+            result = self.client.table("budget_templates").update(update_data).eq("id", template_id).execute()
+            if not result.data:
+                return None
+            template = result.data[0]
+        else:
+            template = self.get_budget_template(template_id)
+
+        # Update account associations
+        if account_ids is not None:
+            self._delete_template_accounts(template_id)
+            if account_ids:
+                self._create_template_accounts(template_id, account_ids)
+
+        template["account_ids"] = self._get_template_account_ids(template_id)
+        return template
+
+    def delete_budget_template(self, template_id: str) -> None:
+        """Delete a budget template (cascades to categories, subcategories, accounts, periods)."""
+        self.client.table("budget_templates").delete().eq("id", template_id).execute()
+
+    def _create_template_accounts(self, template_id: str, account_ids: list[str]) -> None:
+        """Create template-account associations."""
+        if not account_ids:
+            return
+
+        associations = [
+            {"template_id": template_id, "account_id": account_id}
+            for account_id in account_ids
+        ]
+        self.client.table("budget_template_accounts").insert(associations).execute()
+
+    def _get_template_account_ids(self, template_id: str) -> list[str]:
+        """Get account IDs associated with a template."""
+        result = (
+            self.client.table("budget_template_accounts")
+            .select("account_id")
+            .eq("template_id", template_id)
+            .execute()
+        )
+        return [row["account_id"] for row in result.data]
+
+    def _delete_template_accounts(self, template_id: str) -> None:
+        """Delete all account associations for a template."""
+        self.client.table("budget_template_accounts").delete().eq("template_id", template_id).execute()
+
+    # ========================================================================
+    # Budget Categories
+    # ========================================================================
+
+    def create_budget_category(self, category_data: dict) -> dict:
+        """Create a category budget within a template."""
+        result = self.client.table("budget_categories").insert(category_data).execute()
         return result.data[0]
 
-    def get_budgets(self, user_id: str, category_id: str = None) -> list[dict]:
-        """Get budgets for a user, optionally filtered by category."""
-        query = self.client.table("budgets").select("*").eq("user_id", user_id)
-        if category_id:
-            query = query.eq("category_id", category_id)
-        result = query.execute()
+    def get_budget_categories(self, template_id: str) -> list[dict]:
+        """Get all category budgets for a template."""
+        result = self.client.table("budget_categories").select("*").eq("template_id", template_id).execute()
         return result.data
+
+    def update_budget_category(self, category_budget_id: str, update_data: dict) -> dict | None:
+        """Update a category budget."""
+        result = self.client.table("budget_categories").update(update_data).eq("id", category_budget_id).execute()
+        return result.data[0] if result.data else None
+
+    def delete_budget_category(self, category_budget_id: str) -> None:
+        """Delete a category budget."""
+        self.client.table("budget_categories").delete().eq("id", category_budget_id).execute()
+
+    # ========================================================================
+    # Budget Subcategories
+    # ========================================================================
+
+    def create_budget_subcategory(self, subcategory_data: dict) -> dict:
+        """Create a subcategory budget within a template."""
+        result = self.client.table("budget_subcategories").insert(subcategory_data).execute()
+        return result.data[0]
+
+    def get_budget_subcategories(self, template_id: str) -> list[dict]:
+        """Get all subcategory budgets for a template."""
+        result = self.client.table("budget_subcategories").select("*").eq("template_id", template_id).execute()
+        return result.data
+
+    def update_budget_subcategory(self, subcategory_budget_id: str, update_data: dict) -> dict | None:
+        """Update a subcategory budget."""
+        result = self.client.table("budget_subcategories").update(update_data).eq("id", subcategory_budget_id).execute()
+        return result.data[0] if result.data else None
+
+    def delete_budget_subcategory(self, subcategory_budget_id: str) -> None:
+        """Delete a subcategory budget."""
+        self.client.table("budget_subcategories").delete().eq("id", subcategory_budget_id).execute()
+
+    # ========================================================================
+    # Budget Periods
+    # ========================================================================
+
+    def create_budget_period(self, period_data: dict) -> dict:
+        """Apply a template to a specific month."""
+        result = self.client.table("budget_periods").insert(period_data).execute()
+        return result.data[0]
+
+    def get_budget_period(self, user_id: str, period_month: str) -> dict | None:
+        """Get budget period for a specific month (YYYY-MM-DD format)."""
+        result = (
+            self.client.table("budget_periods")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("period_month", period_month)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def get_budget_periods(self, user_id: str) -> list[dict]:
+        """Get all budget periods for a user."""
+        result = self.client.table("budget_periods").select("*").eq("user_id", user_id).order("period_month", desc=True).execute()
+        return result.data
+
+    def delete_budget_period(self, period_id: str) -> None:
+        """Delete a budget period (reverts to default template)."""
+        self.client.table("budget_periods").delete().eq("id", period_id).execute()
+
+    def get_budget_for_month(self, user_id: str, year: int, month: int) -> dict | None:
+        """Get budget for a specific month with inheritance logic and spending.
+
+        Returns template + categories + subcategories + spending data.
+        Implements inheritance: checks for period override, falls back to default.
+        """
+        from datetime import date
+
+        # Format period_month as YYYY-MM-01
+        period_month = date(year, month, 1)
+
+        # Check if user has override for this month
+        period = self.get_budget_period(user_id, period_month.isoformat())
+
+        if period:
+            # User selected specific template for this month
+            template_id = period["template_id"]
+        else:
+            # Use default template
+            template = self.get_default_budget_template(user_id)
+            if not template:
+                return None
+            template_id = template["id"]
+
+        # Load template details
+        template = self.get_budget_template(template_id)
+        if not template:
+            return None
+
+        # Get categories and subcategories
+        categories = self.get_budget_categories(template_id)
+        subcategories = self.get_budget_subcategories(template_id)
+
+        # Calculate spending for this month
+        start_date = period_month
+        if month == 12:
+            end_date = date(year + 1, 1, 1)
+        else:
+            end_date = date(year, month + 1, 1)
+
+        spending = self.get_spending_by_category(
+            user_id=user_id,
+            start_date=start_date,
+            end_date=end_date,
+            account_ids=template.get("account_ids", [])
+        )
+
+        # Attach spending to categories
+        for cat in categories:
+            cat["spent"] = spending["categories"].get(cat["category_id"], 0)
+
+        # Attach spending to subcategories
+        for subcat in subcategories:
+            subcat["spent"] = spending["subcategories"].get(subcat["subcategory_id"], 0)
+
+        return {
+            "template": template,
+            "categories": categories,
+            "subcategories": subcategories,
+            "subcategory_spending": spending["subcategories"],
+            "period_month": period_month.isoformat(),
+            "total_spent": spending["total"],
+            "has_override": period is not None,
+        }
+
+    def get_spending_by_category(
+        self, user_id: str, start_date, end_date, account_ids: list[str] = None
+    ) -> dict:
+        """Calculate spending by category and subcategory for a date range.
+
+        Only counts negative amounts (expenses), not income.
+        Filters by account_ids if provided (empty = all accounts).
+
+        Returns:
+            {
+                "total": float,
+                "categories": {category_id: amount},
+                "subcategories": {subcategory_id: amount}
+            }
+        """
+        from datetime import datetime, date
+
+        # Convert date to datetime if needed
+        if isinstance(start_date, date) and not isinstance(start_date, datetime):
+            start_dt = datetime.combine(start_date, datetime.min.time())
+        else:
+            start_dt = start_date
+
+        if isinstance(end_date, date) and not isinstance(end_date, datetime):
+            end_dt = datetime.combine(end_date, datetime.min.time())
+        else:
+            end_dt = end_date
+
+        # Build query
+        query = (
+            self.client.table("simplefin_transactions")
+            .select("amount, category_id, subcategory_id, simplefin_account_id")
+            .eq("user_id", user_id)
+            .lt("amount", 0)  # Only expenses (negative amounts)
+            .gte("transaction_date", int(start_dt.timestamp()))
+            .lt("transaction_date", int(end_dt.timestamp()))
+        )
+
+        # Filter by accounts if specified
+        if account_ids:
+            query = query.in_("simplefin_account_id", account_ids)
+
+        result = query.execute()
+        transactions = result.data
+
+        # Aggregate spending
+        total = 0
+        categories = {}
+        subcategories = {}
+
+        for txn in transactions:
+            amount = abs(txn["amount"])  # Convert to positive for spending
+            total += amount
+
+            # Aggregate by category
+            if txn.get("category_id"):
+                cat_id = txn["category_id"]
+                categories[cat_id] = categories.get(cat_id, 0) + amount
+
+            # Aggregate by subcategory
+            if txn.get("subcategory_id"):
+                sub_id = txn["subcategory_id"]
+                subcategories[sub_id] = subcategories.get(sub_id, 0) + amount
+
+        return {
+            "total": total,
+            "categories": categories,
+            "subcategories": subcategories,
+        }
 
     # ========================================================================
     # Transaction Categorization

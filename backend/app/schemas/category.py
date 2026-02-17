@@ -165,6 +165,10 @@ class SeedDefaultsRequest(BaseModel):
         gt=0,
         description="Total monthly budget to distribute across categories (e.g., 3000.00)",
     )
+    account_ids: list[str] = Field(
+        default_factory=list,
+        description="Account IDs to track for budgets. Empty = all accounts",
+    )
 
 
 class SeedDefaultsResponse(BaseModel):

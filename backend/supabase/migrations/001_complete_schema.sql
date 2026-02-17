@@ -194,74 +194,170 @@ CREATE TRIGGER subcategories_updated_at
     FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
 -- ============================================================================
--- Budgets Table
+-- Budget Templates Table
 -- ============================================================================
--- Stores user-specific budget allocations per category
-CREATE TABLE IF NOT EXISTS public.budgets (
+-- Reusable budget structures (e.g., "Regular Budget", "Vacation Budget")
+-- Can be applied to different months via budget_periods
+CREATE TABLE IF NOT EXISTS public.budget_templates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+
+    -- Template metadata
+    name TEXT NOT NULL,
+    total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (total_amount >= 0),
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.budget_templates ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.budget_templates TO authenticated;
+
+CREATE POLICY "Users can manage own budget templates"
+    ON public.budget_templates FOR ALL
+    USING ((SELECT auth.uid()) = user_id)
+    WITH CHECK ((SELECT auth.uid()) = user_id);
+
+CREATE INDEX idx_budget_templates_user_id ON public.budget_templates(user_id);
+CREATE INDEX idx_budget_templates_is_default ON public.budget_templates(user_id, is_default);
+
+-- One default template per user
+CREATE UNIQUE INDEX idx_budget_templates_default
+    ON public.budget_templates(user_id)
+    WHERE is_default = TRUE;
+
+CREATE TRIGGER budget_templates_updated_at
+    BEFORE UPDATE ON public.budget_templates
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+-- ============================================================================
+-- Budget Template Accounts Table
+-- ============================================================================
+-- Links budget templates to specific accounts for tracking
+-- Empty = track all accounts
+CREATE TABLE IF NOT EXISTS public.budget_template_accounts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    template_id UUID NOT NULL REFERENCES public.budget_templates(id) ON DELETE CASCADE,
+    account_id UUID NOT NULL REFERENCES public.simplefin_accounts(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    UNIQUE(template_id, account_id)
+);
+
+ALTER TABLE public.budget_template_accounts ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, DELETE ON public.budget_template_accounts TO authenticated;
+
+CREATE POLICY "Users can manage own budget template accounts"
+    ON public.budget_template_accounts FOR ALL
+    USING (
+        template_id IN (
+            SELECT id FROM public.budget_templates WHERE user_id = (SELECT auth.uid())
+        )
+    );
+
+CREATE INDEX idx_budget_template_accounts_template_id ON public.budget_template_accounts(template_id);
+CREATE INDEX idx_budget_template_accounts_account_id ON public.budget_template_accounts(account_id);
+
+-- ============================================================================
+-- Budget Categories Table
+-- ============================================================================
+-- Category-level budgets within a template
+CREATE TABLE IF NOT EXISTS public.budget_categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    template_id UUID NOT NULL REFERENCES public.budget_templates(id) ON DELETE CASCADE,
     category_id UUID NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
-
-    -- Budget amount (monthly)
     amount NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (amount >= 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    -- Time period
-    period TEXT NOT NULL DEFAULT 'monthly' CHECK (period IN ('weekly', 'monthly', 'yearly')),
+    UNIQUE(template_id, category_id)
+);
 
-    -- Active/inactive
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+ALTER TABLE public.budget_categories ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.budget_categories TO authenticated;
+
+CREATE POLICY "Users can manage own budget categories"
+    ON public.budget_categories FOR ALL
+    USING (
+        template_id IN (
+            SELECT id FROM public.budget_templates WHERE user_id = (SELECT auth.uid())
+        )
+    );
+
+CREATE INDEX idx_budget_categories_template_id ON public.budget_categories(template_id);
+CREATE INDEX idx_budget_categories_category_id ON public.budget_categories(category_id);
+
+CREATE TRIGGER budget_categories_updated_at
+    BEFORE UPDATE ON public.budget_categories
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+-- ============================================================================
+-- Budget Subcategories Table
+-- ============================================================================
+-- Subcategory-level budgets within a template
+CREATE TABLE IF NOT EXISTS public.budget_subcategories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    template_id UUID NOT NULL REFERENCES public.budget_templates(id) ON DELETE CASCADE,
+    subcategory_id UUID NOT NULL REFERENCES public.subcategories(id) ON DELETE CASCADE,
+    amount NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (amount >= 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    UNIQUE(template_id, subcategory_id)
+);
+
+ALTER TABLE public.budget_subcategories ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.budget_subcategories TO authenticated;
+
+CREATE POLICY "Users can manage own budget subcategories"
+    ON public.budget_subcategories FOR ALL
+    USING (
+        template_id IN (
+            SELECT id FROM public.budget_templates WHERE user_id = (SELECT auth.uid())
+        )
+    );
+
+CREATE INDEX idx_budget_subcategories_template_id ON public.budget_subcategories(template_id);
+CREATE INDEX idx_budget_subcategories_subcategory_id ON public.budget_subcategories(subcategory_id);
+
+CREATE TRIGGER budget_subcategories_updated_at
+    BEFORE UPDATE ON public.budget_subcategories
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+-- ============================================================================
+-- Budget Periods Table
+-- ============================================================================
+-- Apply a template to a specific month (override default template)
+CREATE TABLE IF NOT EXISTS public.budget_periods (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    template_id UUID NOT NULL REFERENCES public.budget_templates(id) ON DELETE CASCADE,
+
+    -- The month this budget applies to (YYYY-MM-01 format)
+    period_month DATE NOT NULL,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    -- One budget per category per user per period
-    UNIQUE(user_id, category_id, period)
+    -- One template per month per user
+    UNIQUE(user_id, period_month)
 );
 
-ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.budgets TO authenticated;
+ALTER TABLE public.budget_periods ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.budget_periods TO authenticated;
 
-CREATE POLICY "Users can manage own budgets"
-    ON public.budgets FOR ALL
+CREATE POLICY "Users can manage own budget periods"
+    ON public.budget_periods FOR ALL
     USING ((SELECT auth.uid()) = user_id)
     WITH CHECK ((SELECT auth.uid()) = user_id);
 
-CREATE INDEX idx_budgets_user_id ON public.budgets(user_id);
-CREATE INDEX idx_budgets_category_id ON public.budgets(category_id);
-CREATE INDEX idx_budgets_user_category ON public.budgets(user_id, category_id);
-CREATE INDEX idx_budgets_is_active ON public.budgets(is_active);
+CREATE INDEX idx_budget_periods_user_month ON public.budget_periods(user_id, period_month DESC);
+CREATE INDEX idx_budget_periods_template_id ON public.budget_periods(template_id);
 
-CREATE TRIGGER budgets_updated_at
-    BEFORE UPDATE ON public.budgets
+CREATE TRIGGER budget_periods_updated_at
+    BEFORE UPDATE ON public.budget_periods
     FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
-
--- ============================================================================
--- Budget Accounts Table
--- ============================================================================
--- Links budgets to specific accounts for tracking
--- Empty = track all accounts
-CREATE TABLE IF NOT EXISTS public.budget_accounts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    budget_id UUID NOT NULL REFERENCES public.budgets(id) ON DELETE CASCADE,
-    account_id UUID NOT NULL REFERENCES public.simplefin_accounts(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    UNIQUE(budget_id, account_id)
-);
-
-ALTER TABLE public.budget_accounts ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, DELETE ON public.budget_accounts TO authenticated;
-
-CREATE POLICY "Users can manage own budget accounts"
-    ON public.budget_accounts FOR ALL
-    USING (
-        budget_id IN (
-            SELECT id FROM public.budgets WHERE user_id = (SELECT auth.uid())
-        )
-    );
-
-CREATE INDEX idx_budget_accounts_budget_id ON public.budget_accounts(budget_id);
-CREATE INDEX idx_budget_accounts_account_id ON public.budget_accounts(account_id);
 
 -- SimpleFin Transactions Table
 -- ============================================================================

@@ -259,12 +259,15 @@ class OnboardingService:
     def __init__(self, db: Database):
         self.db = db
 
-    def seed_default_categories(self, user_id: str, monthly_budget: float = None) -> dict:
+    def seed_default_categories(
+        self, user_id: str, monthly_budget: float = None, account_ids: list[str] = None
+    ) -> dict:
         """Seed default categories and subcategories for a new user.
 
         Args:
             user_id: User ID to seed categories for
             monthly_budget: Optional monthly budget to distribute across categories
+            account_ids: Optional list of account IDs to track. Empty = all accounts
 
         Returns:
             dict with counts of created categories, subcategories, and budgets
@@ -295,7 +298,6 @@ class OnboardingService:
                     "name": cat_data["name"],
                     "icon": cat_data["icon"],
                     "color": cat_data["color"],
-                    "type": "expense",  # All default categories are expenses
                     "is_system": False,  # User's own copy of defaults
                     "display_order": cat_data["display_order"],
                 }
@@ -321,17 +323,24 @@ class OnboardingService:
                 )
                 subcategories_created += 1
 
-        # Create budget entries if monthly_budget was provided
+        # Create budget template if monthly_budget was provided
         if monthly_budget and budget_per_category:
+            # Create default budget template
+            template = self.db.create_budget_template({
+                "user_id": user_id,
+                "name": "My Budget",
+                "total_amount": monthly_budget,
+                "is_default": True,
+                "account_ids": account_ids or [],  # Empty = all accounts
+            })
+
+            # Create category budgets within the template
             for cat_info in created_categories:
                 if cat_info["is_expense"]:
-                    # Create budget for this category
-                    self.db.create_budget({
-                        "user_id": user_id,
+                    self.db.create_budget_category({
+                        "template_id": template["id"],
                         "category_id": cat_info["category"]["id"],
                         "amount": round(budget_per_category, 2),
-                        "period": "monthly",
-                        "is_active": True,
                     })
                     budgets_created += 1
 
@@ -339,11 +348,9 @@ class OnboardingService:
             "categories_created": categories_created,
             "subcategories_created": subcategories_created,
             "budgets_created": budgets_created,
+            "monthly_budget": monthly_budget or 0.0,
+            "budget_per_category": round(budget_per_category, 2) if budget_per_category else 0.0,
         }
-
-        if monthly_budget and budget_per_category:
-            result["monthly_budget"] = monthly_budget
-            result["budget_per_category"] = round(budget_per_category, 2)
 
         return result
 

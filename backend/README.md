@@ -66,11 +66,11 @@ Required variables:
 **NEW DATABASES:**
 1. Go to Supabase Dashboard > SQL Editor
 2. Run `supabase/migrations/001_complete_schema.sql`
-3. Run `supabase/migrations/003_default_categories_and_budgets.sql`
 
 **EXISTING DATABASES:**
 1. Go to Supabase Dashboard > SQL Editor
-2. Run `supabase/migrations/003_default_categories_and_budgets.sql`
+2. Run `supabase/scripts/drop_all_tables.sql`
+3. Run `supabase/migrations/001_complete_schema.sql`
 
 This creates the following tables with RLS policies:
 - `simplefin_items` - SimpleFin connections (encrypted access URLs)
@@ -80,12 +80,17 @@ This creates the following tables with RLS policies:
 - `account_balance_history` - Daily account balance snapshots for net worth tracking
 - `categories` - Transaction categories (20 system defaults + user-custom)
 - `subcategories` - Subcategories under parent categories (100+ defaults)
-- `budgets` - User budget allocations per category
+- `budget_templates` - Reusable budget structures (e.g., "Regular", "Vacation")
+- `budget_template_accounts` - Links templates to specific accounts for tracking
+- `budget_categories` - Category budgets within a template
+- `budget_subcategories` - Subcategory budgets within a template
+- `budget_periods` - Apply template to specific month (overrides default)
 
-**Default Data Included:**
-- 20 system categories (Income, Housing, Food, Shopping, etc.)
-- 100+ subcategories (Rent, Groceries, Gas, Restaurants, etc.)
-- Budget tracking structure
+**Features:**
+- Row-level security (RLS) on all tables
+- Automatic timestamp updates
+- Foreign key constraints with cascade deletion
+- Optimized indexes for queries
 
 **Detailed Instructions:** See `supabase/migrations/MIGRATION_GUIDE.md`
 
