@@ -545,3 +545,72 @@ JOIN public.simplefin_accounts a ON t.simplefin_account_id = a.id;
 -- caller's permissions, not the view creator's permissions. This makes RLS
 -- policies from simplefin_transactions and simplefin_accounts apply properly.
 -- Without this, the view would bypass RLS and expose all users' data!
+
+-- ============================================================================
+-- Goals Table
+-- ============================================================================
+-- Financial targets: savings goals or debt payoff goals
+-- Progress tracked via account_balance_history × allocation_percentage
+CREATE TABLE IF NOT EXISTS public.goals (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    description TEXT,
+    goal_type TEXT NOT NULL DEFAULT 'savings' CHECK (goal_type IN ('savings', 'debt_payment')),
+    target_amount NUMERIC(12, 2) NOT NULL CHECK (target_amount > 0),
+    target_date DATE,
+    is_completed BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.goals ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.goals TO authenticated;
+
+CREATE POLICY "Users can manage own goals"
+    ON public.goals FOR ALL
+    USING ((SELECT auth.uid()) = user_id)
+    WITH CHECK ((SELECT auth.uid()) = user_id);
+
+CREATE INDEX idx_goals_user_id ON public.goals(user_id);
+CREATE INDEX idx_goals_user_type ON public.goals(user_id, goal_type);
+
+CREATE TRIGGER goals_updated_at
+    BEFORE UPDATE ON public.goals
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+-- ============================================================================
+-- Goal Accounts Table
+-- ============================================================================
+-- Links goals to specific accounts with an allocation percentage
+-- e.g., 50% of "Chase Savings" goes toward "Emergency Fund" goal
+CREATE TABLE IF NOT EXISTS public.goal_accounts (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    goal_id UUID NOT NULL REFERENCES public.goals(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    simplefin_account_id UUID NOT NULL REFERENCES public.simplefin_accounts(id) ON DELETE CASCADE,
+    -- savings goals: % of account balance attributed to this goal (e.g. 50%)
+    -- debt_payment goals: always 100 (whole account), not shown in UI
+    allocation_percentage NUMERIC(5, 2) NOT NULL DEFAULT 100 CHECK (allocation_percentage > 0 AND allocation_percentage <= 100),
+    -- debt_payment goals: balance at goal creation time, used to compute amount paid off
+    starting_balance NUMERIC(12, 2),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(goal_id, simplefin_account_id)
+);
+
+ALTER TABLE public.goal_accounts ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.goal_accounts TO authenticated;
+
+CREATE POLICY "Users can manage own goal accounts"
+    ON public.goal_accounts FOR ALL
+    USING ((SELECT auth.uid()) = user_id)
+    WITH CHECK ((SELECT auth.uid()) = user_id);
+
+CREATE INDEX idx_goal_accounts_goal_id ON public.goal_accounts(goal_id);
+CREATE INDEX idx_goal_accounts_user_id ON public.goal_accounts(user_id);
+CREATE INDEX idx_goal_accounts_account_id ON public.goal_accounts(simplefin_account_id);
+
+CREATE TRIGGER goal_accounts_updated_at
+    BEFORE UPDATE ON public.goal_accounts
+    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
