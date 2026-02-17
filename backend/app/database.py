@@ -950,9 +950,9 @@ class Database:
             account_id = row["simplefin_account_id"]
 
             if goal_type == "debt_payment":
-                # Show the actual debt balance (positive number) over time.
-                # e.g. -22432 → displayed as 22432, going DOWN toward target balance.
-                daily_totals[date] += abs(balance)
+                # Raw negative balance over time so the chart trends upward as debt is paid off.
+                # e.g. starts at -22432, moves toward -16432 (goal balance).
+                daily_totals[date] += balance
             else:
                 alloc = allocation_map.get(account_id, 0)
                 daily_totals[date] += balance * alloc
