@@ -2025,32 +2025,33 @@ private struct BudgetEditView: View {
                                 .foregroundColor(Theme.Colors.textSecondary)
                                 .kerning(1.0)
                             Spacer()
-                            Button {
-                                monthPickerDate = Date()
-                                showMonthPicker = true
-                            } label: {
-                                Text("+ Add Month")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(Theme.Colors.primary)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(Theme.Colors.background)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-                                    )
-                                    .cornerRadius(8)
+                            if !isDefault {
+                                Button {
+                                    monthPickerDate = Date()
+                                    showMonthPicker = true
+                                } label: {
+                                    Text("+ Add Month")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(Theme.Colors.primary)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(Theme.Colors.background)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                        )
+                                        .cornerRadius(8)
+                                }
                             }
                         }
 
-                        // Info notification
                         if isDefault {
                             HStack(alignment: .top, spacing: 10) {
                                 Image(systemName: "info.circle.fill")
                                     .foregroundColor(Theme.Colors.primary)
                                     .font(.system(size: 13))
                                     .padding(.top, 1)
-                                Text("This is your default budget and applies to all months automatically. Set a month override on another budget to use it for a specific month instead.")
+                                Text("Month overrides are only available on non-default budgets.")
                                     .font(.system(size: 12))
                                     .foregroundColor(Theme.Colors.textSecondary)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -2080,10 +2081,7 @@ private struct BudgetEditView: View {
                                     .stroke(Color.orange.opacity(0.15), lineWidth: 1)
                             )
                             .cornerRadius(10)
-                        }
-
-                        // Month pills
-                        if !budgetMonths.isEmpty {
+                        } else {
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 110))], spacing: 8) {
                                 ForEach(budgetMonths) { month in
                                     HStack(spacing: 6) {
