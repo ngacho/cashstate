@@ -1283,34 +1283,8 @@ struct AllBudgetsView: View {
             BudgetEditView(
                 budget: budget,
                 apiClient: apiClient,
-                onSave: { updated in
-                    if let idx = budgets.firstIndex(where: { $0.id == updated.id }) {
-                        budgets[idx] = updated
-                    }
-                    if updated.isDefault {
-                        for idx in budgets.indices where budgets[idx].id != updated.id {
-                            if budgets[idx].isDefault {
-                                budgets[idx] = BudgetAPI(
-                                    id: budgets[idx].id,
-                                    userId: budgets[idx].userId,
-                                    name: budgets[idx].name,
-                                    isDefault: false,
-                                    createdAt: budgets[idx].createdAt,
-                                    updatedAt: budgets[idx].updatedAt
-                                )
-                            }
-                        }
-                    }
-                    // Refresh line items for updated budget
-                    Task {
-                        let items = (try? await apiClient.fetchBudgetLineItems(budgetId: updated.id)) ?? []
-                        budgetLineItems[updated.id] = items.filter { $0.subcategoryId == nil }
-                    }
-                },
-                onDelete: { deletedId in
-                    budgets.removeAll { $0.id == deletedId }
-                    budgetLineItems.removeValue(forKey: deletedId)
-                }
+                onSave: handleBudgetSave,
+                onDelete: handleBudgetDelete
             )
         }
         .sheet(isPresented: $showCreateBudget) {
@@ -1322,6 +1296,8 @@ struct AllBudgetsView: View {
                             userId: budgets[idx].userId,
                             name: budgets[idx].name,
                             isDefault: false,
+                            emoji: budgets[idx].emoji,
+                            color: budgets[idx].color,
                             createdAt: budgets[idx].createdAt,
                             updatedAt: budgets[idx].updatedAt
                         )
@@ -1332,6 +1308,37 @@ struct AllBudgetsView: View {
             }
         }
         .task { await loadData() }
+    }
+
+    private func handleBudgetSave(_ updated: BudgetAPI) {
+        if let idx = budgets.firstIndex(where: { $0.id == updated.id }) {
+            budgets[idx] = updated
+        }
+        if updated.isDefault {
+            for idx in budgets.indices where budgets[idx].id != updated.id {
+                if budgets[idx].isDefault {
+                    budgets[idx] = BudgetAPI(
+                        id: budgets[idx].id,
+                        userId: budgets[idx].userId,
+                        name: budgets[idx].name,
+                        isDefault: false,
+                        emoji: budgets[idx].emoji,
+                        color: budgets[idx].color,
+                        createdAt: budgets[idx].createdAt,
+                        updatedAt: budgets[idx].updatedAt
+                    )
+                }
+            }
+        }
+        Task {
+            let items = (try? await apiClient.fetchBudgetLineItems(budgetId: updated.id)) ?? []
+            budgetLineItems[updated.id] = items.filter { $0.subcategoryId == nil }
+        }
+    }
+
+    private func handleBudgetDelete(_ deletedId: String) {
+        budgets.removeAll { $0.id == deletedId }
+        budgetLineItems.removeValue(forKey: deletedId)
     }
 
     private func loadData() async {
@@ -1365,7 +1372,7 @@ struct AllBudgetsView: View {
 // MARK: - Subcategory Edit Row (for CategoryEditRow expanded section)
 
 private struct SubcategoryEditRow: View {
-    let lineItem: BudgetLineItem
+    let lineItem: BudgetLineItem?
     let subcategory: Subcategory?
     @Binding var amountText: String
     let onAmountCommit: (Double) -> Void
@@ -1411,12 +1418,12 @@ private struct SubcategoryEditRow: View {
                 .padding(.trailing, 16)
             } else {
                 Button {
-                    amountText = String(format: "%.0f", lineItem.amount)
+                    amountText = String(format: "%.0f", lineItem?.amount ?? 0)
                     isEditing = true
                 } label: {
-                    Text("$\(String(format: "%.0f", Double(amountText) ?? lineItem.amount))")
+                    Text("$\(String(format: "%.0f", Double(amountText) ?? lineItem?.amount ?? 0))")
                         .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                        .foregroundColor(lineItem.amount == 0 ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
+                        .foregroundColor((lineItem?.amount ?? 0) == 0 ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(Theme.Colors.background)
@@ -1450,12 +1457,14 @@ private struct CategoryEditRow: View {
     let lineItem: BudgetLineItem
     let category: CategoryWithSubcategories?
     let subcategoryLineItems: [BudgetLineItem]
+    let subcategories: [Subcategory]
     let isExpanded: Bool
     @Binding var amountText: String
     @Binding var editingAmounts: [String: String]
     let onToggleExpand: () -> Void
     let onAmountCommit: (Double) -> Void
     let onSubcategoryAmountCommit: (BudgetLineItem, Double) -> Void
+    let onSubcategoryCreate: (String, Double) -> Void
     let onRemove: () -> Void
 
     @FocusState private var isEditing: Bool
@@ -1470,12 +1479,16 @@ private struct CategoryEditRow: View {
         return fmt.string(from: NSNumber(value: val)) ?? "$\(Int(val))"
     }
 
-    // If subcategories exist, total = sum of subcategory amounts; else category amount
+    // If subcategory budgets are set, sum them; else fall back to category-level amount
     private var headerDisplayAmount: Double {
         if !subcategoryLineItems.isEmpty {
-            return subcategoryLineItems.reduce(0) { sum, item in
-                let text = editingAmounts[item.id] ?? String(format: "%.0f", item.amount)
-                return sum + (Double(text) ?? item.amount)
+            return subcategories.reduce(0.0) { sum, subcat in
+                if let item = subcategoryLineItems.first(where: { $0.subcategoryId == subcat.id }) {
+                    let text = editingAmounts[item.id] ?? String(format: "%.0f", item.amount)
+                    return sum + (Double(text) ?? item.amount)
+                }
+                let text = editingAmounts["new_\(subcat.id)"] ?? "0"
+                return sum + (Double(text) ?? 0)
             }
         }
         return Double(amountText) ?? lineItem.amount
@@ -1496,8 +1509,8 @@ private struct CategoryEditRow: View {
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(Theme.Colors.textPrimary)
                             .lineLimit(1)
-                        if !subcategoryLineItems.isEmpty {
-                            Text("\(subcategoryLineItems.count) subcategories")
+                        if !subcategories.isEmpty {
+                            Text("\(subcategoryLineItems.count) of \(subcategories.count) budgeted")
                                 .font(.system(size: 11))
                                 .foregroundColor(Theme.Colors.textSecondary)
                         }
@@ -1538,7 +1551,7 @@ private struct CategoryEditRow: View {
                         Spacer()
 
                         if subcategoryLineItems.isEmpty {
-                            // Editable when no subcategories
+                            // Editable when no subcategory budgets are set yet
                             if isEditing {
                                 HStack(spacing: 2) {
                                     Text("$")
@@ -1596,27 +1609,42 @@ private struct CategoryEditRow: View {
                     .padding(.vertical, 10)
                     .background(Color(red: 0.95, green: 0.96, blue: 0.96))
 
-                    // Subcategory rows
-                    if !subcategoryLineItems.isEmpty {
+                    // Subcategory rows — rendered from category definition, matched to line items
+                    if !subcategories.isEmpty {
                         Divider()
                             .padding(.leading, 54)
                             .background(Color.gray.opacity(0.1))
 
-                        ForEach(subcategoryLineItems) { subItem in
-                            let subcat = category?.subcategories.first { $0.id == subItem.subcategoryId }
+                        ForEach(subcategories) { subcat in
+                            let subItem = subcategoryLineItems.first { $0.subcategoryId == subcat.id }
                             SubcategoryEditRow(
                                 lineItem: subItem,
                                 subcategory: subcat,
                                 amountText: Binding(
-                                    get: { editingAmounts[subItem.id] ?? String(format: "%.0f", subItem.amount) },
-                                    set: { editingAmounts[subItem.id] = $0 }
+                                    get: {
+                                        if let item = subItem {
+                                            return editingAmounts[item.id] ?? String(format: "%.0f", item.amount)
+                                        }
+                                        return editingAmounts["new_\(subcat.id)"] ?? "0"
+                                    },
+                                    set: {
+                                        if let item = subItem {
+                                            editingAmounts[item.id] = $0
+                                        } else {
+                                            editingAmounts["new_\(subcat.id)"] = $0
+                                        }
+                                    }
                                 ),
                                 onAmountCommit: { amount in
-                                    onSubcategoryAmountCommit(subItem, amount)
+                                    if let item = subItem {
+                                        onSubcategoryAmountCommit(item, amount)
+                                    } else {
+                                        onSubcategoryCreate(subcat.id, amount)
+                                    }
                                 }
                             )
 
-                            if subItem.id != subcategoryLineItems.last?.id {
+                            if subcat.id != subcategories.last?.id {
                                 Divider()
                                     .padding(.leading, 82)
                                     .background(Color.gray.opacity(0.08))
@@ -1873,6 +1901,7 @@ private struct BudgetEditView: View {
                                     lineItem: item,
                                     category: allCategories.first { $0.id == item.categoryId },
                                     subcategoryLineItems: subcategoryLineItemsFor(categoryId: item.categoryId),
+                                    subcategories: allCategories.first { $0.id == item.categoryId }?.subcategories ?? [],
                                     isExpanded: expandedCategories.contains(item.id),
                                     amountText: Binding(
                                         get: { editingAmounts[item.id] ?? String(format: "%.0f", item.amount) },
@@ -1893,6 +1922,9 @@ private struct BudgetEditView: View {
                                     },
                                     onSubcategoryAmountCommit: { subItem, amount in
                                         Task { await updateAmount(lineItem: subItem, newAmount: amount) }
+                                    },
+                                    onSubcategoryCreate: { subcategoryId, amount in
+                                        Task { await createSubcategoryLineItem(categoryId: item.categoryId, subcategoryId: subcategoryId, amount: amount) }
                                     },
                                     onRemove: {
                                         Task { await removeLineItem(item) }
@@ -2084,14 +2116,12 @@ private struct BudgetEditView: View {
         .sheet(isPresented: $showAddLineItem, onDismiss: {
             Task { await loadLineItemsAndCategories() }
         }) {
-            AddBudgetLineItemView(
+            ManageBudgetCategoriesView(
                 budgetId: budget.id,
                 apiClient: apiClient,
                 existingLineItems: lineItems,
                 allCategories: allCategories
-            ) { newItem in
-                lineItems.append(newItem)
-            }
+            )
         }
         .sheet(isPresented: $showMonthPicker) {
             NavigationStack {
@@ -2358,6 +2388,22 @@ private struct BudgetEditView: View {
         }
     }
 
+    private func createSubcategoryLineItem(categoryId: String, subcategoryId: String, amount: Double) async {
+        guard amount > 0 else { return }
+        do {
+            let newItem = try await apiClient.createBudgetLineItem(
+                budgetId: budget.id,
+                categoryId: categoryId,
+                subcategoryId: subcategoryId,
+                amount: amount
+            )
+            lineItems.append(newItem)
+            editingAmounts.removeValue(forKey: "new_\(subcategoryId)")
+        } catch {
+            errorMessage = "Failed to set subcategory budget"
+        }
+    }
+
     private func removeLineItem(_ item: BudgetLineItem) async {
         do {
             try await apiClient.deleteBudgetLineItem(budgetId: budget.id, lineItemId: item.id)
@@ -2370,132 +2416,175 @@ private struct BudgetEditView: View {
     }
 }
 
-// MARK: - Add Budget Line Item View
+// MARK: - Manage Budget Categories View
 
-private struct AddBudgetLineItemView: View {
+private struct ManageBudgetCategoriesView: View {
     let budgetId: String
     let apiClient: APIClient
-    let existingLineItems: [BudgetLineItem]
-    let allCategories: [CategoryWithSubcategories]
-    let onAdd: (BudgetLineItem) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedCategory: CategoryWithSubcategories?
-    @State private var amountText = ""
-    @State private var isSaving = false
+    @State private var categories: [CategoryWithSubcategories] = []
+    @State private var lineItems: [BudgetLineItem] = []
+    @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var selectedForAdd: CategoryWithSubcategories?
+    @State private var showAddCategory = false
+    @State private var addAmountText = ""
+    @State private var isAddingSaving = false
 
-    var availableCategories: [CategoryWithSubcategories] {
-        // Only exclude categories that already have a category-level line item
-        let budgetedIds = Set(existingLineItems.filter { $0.subcategoryId == nil }.map { $0.categoryId })
-        return allCategories.filter { !budgetedIds.contains($0.id) }
+    init(budgetId: String, apiClient: APIClient, existingLineItems: [BudgetLineItem], allCategories: [CategoryWithSubcategories]) {
+        self.budgetId = budgetId
+        self.apiClient = apiClient
+        _lineItems = State(initialValue: existingLineItems)
+        _categories = State(initialValue: allCategories)
+    }
+
+    private func categoryLineItem(for cat: CategoryWithSubcategories) -> BudgetLineItem? {
+        lineItems.first { $0.categoryId == cat.id && $0.subcategoryId == nil }
     }
 
     var body: some View {
-        NavigationView {
-            if selectedCategory == nil {
-                // Step 1: pick a category
-                List {
-                    if availableCategories.isEmpty {
-                        Text("All categories are already in this budget.")
-                            .foregroundColor(Theme.Colors.textSecondary)
-                            .padding(.vertical, Theme.Spacing.sm)
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 12) {
+                    // Create new category button
+                    Button {
+                        showAddCategory = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(Theme.Colors.primary)
+                            Text("Create New Category")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(Theme.Colors.primary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12))
+                                .foregroundColor(Theme.Colors.primary.opacity(0.6))
+                        }
+                        .padding(16)
+                        .background(Theme.Colors.primary.opacity(0.06))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(Theme.Colors.primary.opacity(0.2), lineWidth: 1)
+                        )
+                        .cornerRadius(14)
+                    }
+                    .padding(.horizontal, 16)
+
+                    if isLoading {
+                        ProgressView()
+                            .padding(.top, 40)
                     } else {
-                        Section("Select a Category") {
-                            ForEach(availableCategories) { cat in
-                                Button {
-                                    selectedCategory = cat
-                                } label: {
-                                    HStack(spacing: Theme.Spacing.md) {
-                                        Text(cat.icon)
-                                            .font(.title2)
-                                            .frame(width: 36, height: 36)
-                                        Text(cat.name)
-                                            .foregroundColor(Theme.Colors.textPrimary)
-                                        Spacer()
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption)
-                                            .foregroundColor(Theme.Colors.textSecondary)
-                                    }
+                        ForEach(categories) { cat in
+                            let lineItem = categoryLineItem(for: cat)
+                            CategoryManageRow(
+                                category: cat,
+                                lineItem: lineItem,
+                                onAdd: {
+                                    selectedForAdd = cat
+                                    addAmountText = ""
+                                },
+                                onRemove: {
+                                    Task { await removeCategory(cat) }
                                 }
-                            }
+                            )
+                            .padding(.horizontal, 16)
                         }
                     }
-                }
-                .navigationTitle("Add Category")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button("Cancel") { dismiss() }
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .padding(.horizontal, 16)
                     }
                 }
-            } else {
-                // Step 2: enter amount
-                let cat = selectedCategory!
-                Form {
-                    Section {
-                        VStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                .padding(.top, 16)
+                .padding(.bottom, 32)
+            }
+            .background(Theme.Colors.background)
+            .navigationTitle("Manage Categories")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.primary)
+                }
+            }
+            .sheet(item: $selectedForAdd) { cat in
+                NavigationStack {
+                    VStack(spacing: 24) {
+                        VStack(spacing: 10) {
                             Text(cat.icon)
-                                .font(.system(size: 50))
-                                .frame(width: 80, height: 80)
+                                .font(.system(size: 52))
+                                .frame(width: 90, height: 90)
                                 .background(Color(hex: cat.color).opacity(0.15))
-                                .clipShape(Circle())
+                                .cornerRadius(20)
                             Text(cat.name)
                                 .font(.title2)
                                 .fontWeight(.bold)
                                 .foregroundColor(Theme.Colors.textPrimary)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, Theme.Spacing.sm)
-                    }
+                        .padding(.top, 20)
 
-                    Section("Monthly Budget Amount") {
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text("$")
-                                .font(.title)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Monthly Budget Amount")
+                                .font(.headline)
                                 .foregroundColor(Theme.Colors.textPrimary)
-                            TextField("0", text: $amountText)
-                                .font(.system(size: 36, weight: .bold))
-                                .keyboardType(.decimalPad)
-                                .foregroundColor(Theme.Colors.textPrimary)
+                            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                Text("$")
+                                    .font(.title)
+                                    .foregroundColor(Theme.Colors.textPrimary)
+                                TextField("0", text: $addAmountText)
+                                    .font(.system(size: 36, weight: .bold))
+                                    .keyboardType(.decimalPad)
+                                    .foregroundColor(Theme.Colors.textPrimary)
+                            }
                         }
-                    }
+                        .padding(.horizontal, 32)
 
-                    if let error = errorMessage {
-                        Section {
-                            Text(error)
-                                .font(.caption)
-                                .foregroundColor(.red)
+                        Spacer()
+                    }
+                    .navigationTitle("Set Budget Amount")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("Cancel") { selectedForAdd = nil }
+                        }
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            if isAddingSaving {
+                                ProgressView()
+                            } else {
+                                Button("Add") {
+                                    guard let amount = Double(addAmountText), amount > 0 else { return }
+                                    Task { await addCategory(cat, amount: amount) }
+                                }
+                                .fontWeight(.semibold)
+                                .foregroundColor(Theme.Colors.primary)
+                                .disabled(Double(addAmountText) == nil || addAmountText.isEmpty)
+                            }
                         }
                     }
                 }
-                .navigationTitle("Set Budget")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button("Back") { selectedCategory = nil }
-                    }
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        if isSaving {
-                            ProgressView()
-                        } else {
-                            Button("Add") { Task { await addLineItem(cat: cat) } }
-                                .fontWeight(.semibold)
-                                .disabled(Double(amountText) == nil || amountText.isEmpty || isSaving)
-                        }
-                    }
+                .presentationDetents([.medium])
+            }
+            .sheet(isPresented: $showAddCategory) {
+                AddCategoryView(isPresented: $showAddCategory, apiClient: apiClient) { _ in
+                    // Reload categories after creating one
+                    Task { await reloadCategories() }
                 }
             }
         }
+        .task {
+            isLoading = false
+        }
     }
 
-    private func addLineItem(cat: CategoryWithSubcategories) async {
-        guard let amount = Double(amountText), amount > 0 else {
-            errorMessage = "Please enter a valid amount"
-            return
-        }
-        isSaving = true
-        errorMessage = nil
+    private func addCategory(_ cat: CategoryWithSubcategories, amount: Double) async {
+        isAddingSaving = true
         do {
             let newItem = try await apiClient.createBudgetLineItem(
                 budgetId: budgetId,
@@ -2503,12 +2592,86 @@ private struct AddBudgetLineItemView: View {
                 subcategoryId: nil,
                 amount: amount
             )
-            onAdd(newItem)
-            dismiss()
+            lineItems.append(newItem)
+            selectedForAdd = nil
         } catch {
-            errorMessage = "Failed to add: \(error.localizedDescription)"
-            isSaving = false
+            errorMessage = "Failed to add category: \(error.localizedDescription)"
         }
+        isAddingSaving = false
+    }
+
+    private func removeCategory(_ cat: CategoryWithSubcategories) async {
+        guard let lineItem = lineItems.first(where: { $0.categoryId == cat.id && $0.subcategoryId == nil }) else { return }
+        do {
+            try await apiClient.deleteBudgetLineItem(budgetId: budgetId, lineItemId: lineItem.id)
+            lineItems.removeAll { $0.id == lineItem.id }
+        } catch {
+            errorMessage = "Failed to remove category: \(error.localizedDescription)"
+        }
+    }
+
+    private func reloadCategories() async {
+        if let cats = try? await apiClient.fetchCategoriesTree() {
+            categories = cats
+        }
+    }
+}
+
+// MARK: - Category Manage Row
+
+private struct CategoryManageRow: View {
+    let category: CategoryWithSubcategories
+    let lineItem: BudgetLineItem?
+    let onAdd: () -> Void
+    let onRemove: () -> Void
+
+    var isInBudget: Bool { lineItem != nil }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Text(category.icon)
+                .font(.system(size: 24))
+                .frame(width: 46, height: 46)
+                .background(Color(hex: category.color).opacity(0.15))
+                .cornerRadius(12)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(category.name)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Theme.Colors.textPrimary)
+                    .lineLimit(1)
+                if let lineItem = lineItem {
+                    Text("$\(String(format: "%.0f", lineItem.amount)) / month")
+                        .font(.system(size: 12))
+                        .foregroundColor(Theme.Colors.primary)
+                } else {
+                    Text("Not in budget")
+                        .font(.system(size: 12))
+                        .foregroundColor(Theme.Colors.textSecondary)
+                }
+            }
+
+            Spacer()
+
+            if isInBudget {
+                Button(action: onRemove) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 26))
+                        .foregroundColor(Theme.Colors.primary)
+                }
+            } else {
+                Button(action: onAdd) {
+                    Image(systemName: "plus.circle")
+                        .font(.system(size: 26))
+                        .foregroundColor(Theme.Colors.textSecondary)
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color.white)
+        .cornerRadius(14)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 1)
     }
 }
 
