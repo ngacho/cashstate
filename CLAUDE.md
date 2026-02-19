@@ -4,3 +4,5 @@ Whenever we make changes to @backend/ always run the tests and linter after chan
 
 
 Do not add more sql schemas, always modify @001_complete_schema.sql to avoid churn and confusion. If we need to, call out that we need to delete all tables and run the schema migration again.
+
+A feature is not complete until it's integrated with ios!

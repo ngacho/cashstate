@@ -24,6 +24,10 @@ class TestCompleteSimplefinFlow:
     sync_job_id: str = None
     category_id: str = None
     subcategory_id: str = None
+    budget_id: str = None
+    line_item_id: str = None
+    sub_line_item_id: str = None
+    budget_id_2: str = None
 
     @pytest.fixture(autouse=True)
     def setup(self, client):
@@ -101,7 +105,7 @@ class TestCompleteSimplefinFlow:
             f"{self.base_url}/simplefin/setup",
             json={
                 "setup_token": setup_token,
-                "institution_name": "Test SimpleFin Bank"
+                "institution_name": "Test SimpleFin Bank",
             },
             headers=self.get_headers(),
         )
@@ -195,7 +199,7 @@ class TestCompleteSimplefinFlow:
         for account in accounts:
             print(f"  - {account['name']}: {account['currency']} {account['balance']}")
             print(f"    SimpleFin ID: {account['simplefin_account_id']}")
-            if account.get('organization_name'):
+            if account.get("organization_name"):
                 print(f"    Organization: {account['organization_name']}")
 
     # =========================================
@@ -219,17 +223,20 @@ class TestCompleteSimplefinFlow:
             headers=self.get_headers(),
         )
 
-        assert response.status_code == 200, f"Failed to get transactions: {response.json()}"
+        assert (
+            response.status_code == 200
+        ), f"Failed to get transactions: {response.json()}"
 
-        transactions = response.json()
+        data = response.json()
+        transactions = data["items"]
         assert len(transactions) > 0, "No transactions found after sync"
 
         print(f"\nFound {len(transactions)} transaction(s):")
         for txn in transactions[:10]:  # Show first 10
-            posted_date = datetime.datetime.fromtimestamp(txn['posted_date'])
-            amount = txn['amount']
-            description = txn['description']
-            payee = txn.get('payee', 'N/A')
+            posted_date = datetime.datetime.fromtimestamp(txn["posted_date"])
+            amount = txn["amount"]
+            description = txn["description"]
+            payee = txn.get("payee", "N/A")
             print(f"  - {posted_date.date()} | {amount:>8} | {payee or description}")
 
     # =========================================
@@ -255,7 +262,9 @@ class TestCompleteSimplefinFlow:
                 headers=self.get_headers(),
             )
 
-            assert response.status_code == 200, f"Store snapshots failed for {snapshot_date}: {response.json()}"
+            assert (
+                response.status_code == 200
+            ), f"Store snapshots failed for {snapshot_date}: {response.json()}"
             print(f"  ✅ Stored snapshot for {snapshot_date}")
 
         print("✅ Stored 7 days of account balance snapshots")
@@ -285,7 +294,9 @@ class TestCompleteSimplefinFlow:
             headers=self.get_headers(),
         )
 
-        assert response.status_code == 200, f"Failed to get snapshots: {response.json()}"
+        assert (
+            response.status_code == 200
+        ), f"Failed to get snapshots: {response.json()}"
 
         data = response.json()
         assert "data" in data
@@ -336,7 +347,9 @@ class TestCompleteSimplefinFlow:
             else:
                 pytest.fail(f"Unexpected error: {error}")
 
-        assert response.status_code == 200, f"Failed to get snapshots: {response.json()}"
+        assert (
+            response.status_code == 200
+        ), f"Failed to get snapshots: {response.json()}"
 
         data = response.json()
         assert "data" in data
@@ -385,7 +398,9 @@ class TestCompleteSimplefinFlow:
             else:
                 pytest.fail(f"Unexpected error: {error}")
 
-        assert response.status_code == 200, f"Failed to get snapshots: {response.json()}"
+        assert (
+            response.status_code == 200
+        ), f"Failed to get snapshots: {response.json()}"
 
         data = response.json()
         assert "data" in data
@@ -423,7 +438,9 @@ class TestCompleteSimplefinFlow:
             headers=self.get_headers(),
         )
 
-        assert response.status_code == 200, f"Failed to get snapshots: {response.json()}"
+        assert (
+            response.status_code == 200
+        ), f"Failed to get snapshots: {response.json()}"
 
         data = response.json()
         snapshots = data["data"]
@@ -448,7 +465,9 @@ class TestCompleteSimplefinFlow:
 
             print(f"   ✅ {len(snapshots)} data points ready for line chart")
         else:
-            print(f"\n📈 Net Worth: ${snapshots[0]['balance']:,.2f} (single data point)")
+            print(
+                f"\n📈 Net Worth: ${snapshots[0]['balance']:,.2f} (single data point)"
+            )
 
     # =========================================
     # Step 13: Test transaction snapshots (per-account)
@@ -491,7 +510,9 @@ class TestCompleteSimplefinFlow:
             headers=self.get_headers(),
         )
 
-        assert response.status_code == 200, f"Failed to get account snapshots: {response.json()}"
+        assert (
+            response.status_code == 200
+        ), f"Failed to get account snapshots: {response.json()}"
 
         data = response.json()
         assert "data" in data
@@ -527,6 +548,7 @@ class TestCompleteSimplefinFlow:
 
         # Use timestamp to avoid duplicates
         import time
+
         category_name = f"Test Category {int(time.time())}"
 
         response = self.client.post(
@@ -540,13 +562,15 @@ class TestCompleteSimplefinFlow:
             headers=self.get_headers(),
         )
 
-        assert response.status_code == 201, f"Failed to create category: {response.json()}"
+        assert (
+            response.status_code == 201
+        ), f"Failed to create category: {response.json()}"
 
         category = response.json()
         assert category["name"] == category_name
         assert category["icon"] == "star.fill"
         assert category["color"] == "#FF5733"
-        assert category["is_system"] is False
+        assert category["is_default"] is False
         assert category["user_id"] == self.user_id
 
         TestCompleteSimplefinFlow.category_id = category["id"]
@@ -567,17 +591,21 @@ class TestCompleteSimplefinFlow:
             headers=self.get_headers(),
         )
 
-        assert response.status_code == 200, f"Failed to list categories: {response.json()}"
+        assert (
+            response.status_code == 200
+        ), f"Failed to list categories: {response.json()}"
 
         data = response.json()
         assert "items" in data
         assert "total" in data
         assert data["total"] > 0, "Expected at least one category (user created)"
 
-        print(f"   ✅ Found {data['total']} categor{'y' if data['total'] == 1 else 'ies'}")
+        print(
+            f"   ✅ Found {data['total']} categor{'y' if data['total'] == 1 else 'ies'}"
+        )
 
         for cat in data["items"][:5]:
-            print(f"      - {cat['name']} (system: {cat['is_system']})")
+            print(f"      - {cat['name']} (default: {cat['is_default']})")
 
     # =========================================
     # Step 16: Create a subcategory
@@ -587,7 +615,7 @@ class TestCompleteSimplefinFlow:
         if not self.access_token:
             pytest.skip("Not logged in - run test_01_login first")
 
-        if not hasattr(TestCompleteSimplefinFlow, 'category_id'):
+        if not hasattr(TestCompleteSimplefinFlow, "category_id"):
             pytest.skip("Category not created - run test_14_create_category first")
 
         print("\n📂 Creating a subcategory...")
@@ -603,15 +631,19 @@ class TestCompleteSimplefinFlow:
             headers=self.get_headers(),
         )
 
-        assert response.status_code == 201, f"Failed to create subcategory: {response.json()}"
+        assert (
+            response.status_code == 201
+        ), f"Failed to create subcategory: {response.json()}"
 
         subcategory = response.json()
         assert subcategory["name"] == "Test Subcategory"
         assert subcategory["category_id"] == self.category_id
-        assert subcategory["is_system"] is False
+        assert subcategory["is_default"] is False
 
         TestCompleteSimplefinFlow.subcategory_id = subcategory["id"]
-        print(f"   ✅ Created subcategory: {subcategory['name']} (ID: {subcategory['id']})")
+        print(
+            f"   ✅ Created subcategory: {subcategory['name']} (ID: {subcategory['id']})"
+        )
 
     # =========================================
     # Step 17: Get categories tree
@@ -628,13 +660,17 @@ class TestCompleteSimplefinFlow:
             headers=self.get_headers(),
         )
 
-        assert response.status_code == 200, f"Failed to get categories tree: {response.json()}"
+        assert (
+            response.status_code == 200
+        ), f"Failed to get categories tree: {response.json()}"
 
         data = response.json()
         assert "items" in data
         assert "total" in data
 
-        print(f"   ✅ Found {data['total']} categor{'y' if data['total'] == 1 else 'ies'} with subcategories")
+        print(
+            f"   ✅ Found {data['total']} categor{'y' if data['total'] == 1 else 'ies'} with subcategories"
+        )
 
         # Find our test category and verify it has the subcategory
         for cat in data["items"]:
@@ -656,7 +692,7 @@ class TestCompleteSimplefinFlow:
         if not self.access_token:
             pytest.skip("Not logged in - run test_01_login first")
 
-        if not hasattr(TestCompleteSimplefinFlow, 'category_id'):
+        if not hasattr(TestCompleteSimplefinFlow, "category_id"):
             pytest.skip("Category not created - run test_14_create_category first")
 
         print("\n🏷️  Categorizing a transaction...")
@@ -675,7 +711,7 @@ class TestCompleteSimplefinFlow:
         )
 
         assert response.status_code == 200
-        transactions = response.json()
+        transactions = response.json()["items"]
 
         if not transactions:
             pytest.skip("No transactions found to categorize")
@@ -690,7 +726,7 @@ class TestCompleteSimplefinFlow:
         # For now, this test demonstrates the concept
         print(f"   ✅ Transaction {transaction_id} ready for categorization")
         print(f"      Category ID: {self.category_id}")
-        if hasattr(TestCompleteSimplefinFlow, 'subcategory_id'):
+        if hasattr(TestCompleteSimplefinFlow, "subcategory_id"):
             print(f"      Subcategory ID: {self.subcategory_id}")
 
     # =========================================
@@ -709,7 +745,9 @@ class TestCompleteSimplefinFlow:
         openrouter_key = os.getenv("OPENROUTER_API_KEY")
 
         if not anthropic_key and not openrouter_key:
-            pytest.skip("No AI API key configured (ANTHROPIC_API_KEY or OPENROUTER_API_KEY)")
+            pytest.skip(
+                "No AI API key configured (ANTHROPIC_API_KEY or OPENROUTER_API_KEY)"
+            )
 
         print("\n🤖 Testing AI categorization...")
 
@@ -727,7 +765,7 @@ class TestCompleteSimplefinFlow:
         )
 
         assert response.status_code == 200
-        transactions = response.json()
+        transactions = response.json()["items"]
 
         if not transactions:
             pytest.skip("No transactions found to categorize")
@@ -757,7 +795,9 @@ class TestCompleteSimplefinFlow:
             else:
                 raise Exception(f"AI categorization failed: {error_detail}")
 
-        assert response.status_code == 200, f"AI categorization failed: {response.json()}"
+        assert (
+            response.status_code == 200
+        ), f"AI categorization failed: {response.json()}"
 
         result = response.json()
 
@@ -777,172 +817,246 @@ class TestCompleteSimplefinFlow:
                 print(f"      Category: {cat_result.get('category_id', 'None')}")
                 print(f"      Subcategory: {cat_result.get('subcategory_id', 'None')}")
                 print(f"      Confidence: {cat_result.get('confidence', 0):.2f}")
-                if cat_result.get('reasoning'):
+                if cat_result.get("reasoning"):
                     print(f"      Reasoning: {cat_result['reasoning']}")
                 print()
 
     # =========================================
-    # Step 20: Budget Templates
+    # Step 20: Budgets (new API)
     # =========================================
-    def test_20_create_budget_template(self):
-        """Create a budget template."""
+    def test_20_create_budget(self):
+        """Create a budget."""
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        print("\n💰 Creating a budget...")
+
         response = self.client.post(
-            f"{self.base_url}/budget-templates",
+            f"{self.base_url}/budgets",
             headers=self.get_headers(),
             json={
-                "name": "Test Budget",
-                "total_amount": 3000.00,
+                "name": "Test Monthly Budget",
                 "is_default": True,
-                "account_ids": [],
             },
         )
-        assert response.status_code == 201, f"Failed to create template: {response.json()}"
+        assert (
+            response.status_code == 201
+        ), f"Failed to create budget: {response.json()}"
 
-        template = response.json()
-        assert template["name"] == "Test Budget"
-        assert template["total_amount"] == 3000.00
-        assert template["is_default"] is True
+        budget = response.json()
+        assert budget["name"] == "Test Monthly Budget"
+        assert budget["is_default"] is True
 
-        self.__class__.template_id = template["id"]
-        print(f"   ✅ Created template: {template['id']}")
+        self.__class__.budget_id = budget["id"]
+        print(f"   ✅ Created budget: {budget['id']}")
 
-    def test_21_add_category_budget(self):
-        """Add category budget to template."""
+    def test_21_add_category_line_item(self):
+        """Add category budget line item."""
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        if not hasattr(TestCompleteSimplefinFlow, "budget_id") or not self.budget_id:
+            pytest.skip("Budget not created - run test_20 first")
+
+        if (
+            not hasattr(TestCompleteSimplefinFlow, "category_id")
+            or not self.category_id
+        ):
+            pytest.skip("Category not created - run test_14 first")
+
+        print("\n📊 Adding category line item to budget...")
+
         response = self.client.post(
-            f"{self.base_url}/budget-templates/{self.template_id}/categories",
+            f"{self.base_url}/budgets/{self.budget_id}/line-items",
             headers=self.get_headers(),
             json={
                 "category_id": self.category_id,
                 "amount": 500.00,
             },
         )
-        assert response.status_code == 201, f"Failed to add category budget: {response.json()}"
+        assert (
+            response.status_code == 201
+        ), f"Failed to add line item: {response.json()}"
 
-        cat_budget = response.json()
-        assert cat_budget["category_id"] == self.category_id
-        assert cat_budget["amount"] == 500.00
+        item = response.json()
+        assert item["category_id"] == self.category_id
+        assert item["subcategory_id"] is None
+        assert item["amount"] == 500.00
+        assert item["budget_id"] == self.budget_id
 
-        self.__class__.category_budget_id = cat_budget["id"]
-        print(f"   ✅ Added category budget: ${cat_budget['amount']}")
+        self.__class__.line_item_id = item["id"]
+        print(f"   ✅ Added category line item: ${item['amount']}")
 
-    def test_22_add_subcategory_budget(self):
-        """Add subcategory budget to template."""
+    def test_22_add_subcategory_line_item(self):
+        """Add subcategory budget line item."""
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        if not hasattr(TestCompleteSimplefinFlow, "budget_id") or not self.budget_id:
+            pytest.skip("Budget not created - run test_20 first")
+
+        if (
+            not hasattr(TestCompleteSimplefinFlow, "subcategory_id")
+            or not self.subcategory_id
+        ):
+            pytest.skip("Subcategory not created - run test_16 first")
+
+        print("\n📊 Adding subcategory line item to budget...")
+
         response = self.client.post(
-            f"{self.base_url}/budget-templates/{self.template_id}/subcategories",
+            f"{self.base_url}/budgets/{self.budget_id}/line-items",
             headers=self.get_headers(),
             json={
+                "category_id": self.category_id,
                 "subcategory_id": self.subcategory_id,
                 "amount": 200.00,
             },
         )
-        assert response.status_code == 201, f"Failed to add subcategory budget: {response.json()}"
+        assert (
+            response.status_code == 201
+        ), f"Failed to add subcategory line item: {response.json()}"
 
-        subcat_budget = response.json()
-        assert subcat_budget["subcategory_id"] == self.subcategory_id
-        assert subcat_budget["amount"] == 200.00
+        item = response.json()
+        assert item["category_id"] == self.category_id
+        assert item["subcategory_id"] == self.subcategory_id
+        assert item["amount"] == 200.00
 
-        print(f"   ✅ Added subcategory budget: ${subcat_budget['amount']}")
+        self.__class__.sub_line_item_id = item["id"]
+        print(f"   ✅ Added subcategory line item: ${item['amount']}")
 
-    def test_23_get_budget_for_month(self):
-        """Get budget for current month with spending."""
+    def test_23_get_budget_summary(self):
+        """Get budget summary for current month."""
         import datetime
+
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
         now = datetime.datetime.now()
+        month_str = f"{now.year}-{now.month:02d}"
+
+        print(f"\n📊 Getting budget summary for {month_str}...")
 
         response = self.client.get(
-            f"{self.base_url}/budget-templates/for-month",
+            f"{self.base_url}/budgets/summary",
             headers=self.get_headers(),
-            params={
-                "year": now.year,
-                "month": now.month,
-            },
+            params={"month": month_str},
         )
-        assert response.status_code == 200, f"Failed to get budget: {response.json()}"
+        assert (
+            response.status_code == 200
+        ), f"Failed to get budget summary: {response.json()}"
 
-        budget = response.json()
-        assert "template" in budget
-        assert "categories" in budget
-        assert "subcategories" in budget
-        assert "total_spent" in budget
-        assert budget["has_override"] is False  # No period override yet
+        summary = response.json()
+        assert "budget_id" in summary
+        assert "budget_name" in summary
+        assert "month" in summary
+        assert "total_budgeted" in summary
+        assert "total_spent" in summary
+        assert "line_items" in summary
+        assert "unbudgeted_categories" in summary
+        assert summary["month"] == month_str
 
-        print(f"   ✅ Budget for {now.year}-{now.month:02d}")
-        print(f"      Template: {budget['template']['name']}")
-        print(f"      Total spent: ${budget['total_spent']}")
-        print(f"      Categories: {len(budget['categories'])}")
+        print(f"   ✅ Budget summary for {month_str}")
+        print(f"      Budgeted: ${summary['total_budgeted']}")
+        print(f"      Spent: ${summary['total_spent']}")
+        print(f"      Line items: {len(summary['line_items'])}")
 
-    def test_24_create_vacation_budget(self):
-        """Create vacation budget template."""
+    def test_24_update_line_item(self):
+        """Update a budget line item amount."""
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        if (
+            not hasattr(TestCompleteSimplefinFlow, "line_item_id")
+            or not self.line_item_id
+        ):
+            pytest.skip("Line item not created - run test_21 first")
+
+        print("\n✏️  Updating line item amount...")
+
+        response = self.client.patch(
+            f"{self.base_url}/budgets/{self.budget_id}/line-items/{self.line_item_id}",
+            headers=self.get_headers(),
+            json={"amount": 600.00},
+        )
+        assert (
+            response.status_code == 200
+        ), f"Failed to update line item: {response.json()}"
+
+        item = response.json()
+        assert item["amount"] == 600.00
+
+        print(f"   ✅ Updated line item to ${item['amount']}")
+
+    def test_25_delete_line_item(self):
+        """Delete a budget line item."""
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        if (
+            not hasattr(TestCompleteSimplefinFlow, "sub_line_item_id")
+            or not self.sub_line_item_id
+        ):
+            pytest.skip("Subcategory line item not created - run test_22 first")
+
+        print("\n🗑️  Deleting subcategory line item...")
+
+        response = self.client.delete(
+            f"{self.base_url}/budgets/{self.budget_id}/line-items/{self.sub_line_item_id}",
+            headers=self.get_headers(),
+        )
+        assert (
+            response.status_code == 200
+        ), f"Failed to delete line item: {response.json()}"
+
+        result = response.json()
+        assert "message" in result
+
+        print("   ✅ Deleted subcategory line item")
+
+    def test_26_create_second_budget(self):
+        """Create a second (non-default) budget."""
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        print("\n💰 Creating a second budget...")
+
         response = self.client.post(
-            f"{self.base_url}/budget-templates",
+            f"{self.base_url}/budgets",
             headers=self.get_headers(),
             json={
                 "name": "Vacation Budget",
-                "total_amount": 5000.00,
                 "is_default": False,
-                "account_ids": [],
             },
         )
-        assert response.status_code == 201, f"Failed to create vacation template: {response.json()}"
-
-        template = response.json()
-        self.__class__.vacation_template_id = template["id"]
-        print(f"   ✅ Created vacation template: {template['id']}")
-
-    def test_25_apply_vacation_to_next_month(self):
-        """Apply vacation budget to next month."""
-        import datetime
-        now = datetime.datetime.now()
-        next_month = now.month + 1 if now.month < 12 else 1
-        next_year = now.year if now.month < 12 else now.year + 1
-
-        response = self.client.post(
-            f"{self.base_url}/budget-templates/periods",
-            headers=self.get_headers(),
-            json={
-                "template_id": self.vacation_template_id,
-                "period_month": f"{next_year}-{next_month:02d}",
-            },
-        )
-        assert response.status_code == 201, f"Failed to create period: {response.json()}"
-
-        period = response.json()
-        self.__class__.period_id = period["id"]
-        print(f"   ✅ Applied vacation budget to {next_year}-{next_month:02d}")
-
-    def test_26_get_budget_with_override(self):
-        """Get budget for month with period override."""
-        import datetime
-        now = datetime.datetime.now()
-        next_month = now.month + 1 if now.month < 12 else 1
-        next_year = now.year if now.month < 12 else now.year + 1
-
-        response = self.client.get(
-            f"{self.base_url}/budget-templates/for-month",
-            headers=self.get_headers(),
-            params={
-                "year": next_year,
-                "month": next_month,
-            },
-        )
-        assert response.status_code == 200, f"Failed to get budget: {response.json()}"
+        assert (
+            response.status_code == 201
+        ), f"Failed to create second budget: {response.json()}"
 
         budget = response.json()
-        assert budget["template"]["id"] == self.vacation_template_id
-        assert budget["has_override"] is True
+        assert budget["name"] == "Vacation Budget"
+        assert budget["is_default"] is False
 
-        print(f"   ✅ Verified override for {next_year}-{next_month:02d}")
-        print(f"      Using: {budget['template']['name']}")
+        self.__class__.budget_id_2 = budget["id"]
+        print(f"   ✅ Created second budget: {budget['id']}")
 
-    def test_27_list_budget_templates(self):
-        """List all budget templates."""
+    def test_27_list_budgets(self):
+        """List all budgets."""
+        if not self.access_token:
+            pytest.skip("Not logged in - run test_01_login first")
+
+        print("\n📋 Listing all budgets...")
+
         response = self.client.get(
-            f"{self.base_url}/budget-templates",
+            f"{self.base_url}/budgets",
             headers=self.get_headers(),
         )
-        assert response.status_code == 200, f"Failed to list templates: {response.json()}"
+        assert response.status_code == 200, f"Failed to list budgets: {response.json()}"
 
         data = response.json()
-        assert data["total"] >= 2
-        assert len(data["items"]) >= 2
+        assert "items" in data
+        assert "total" in data
+        assert data["total"] >= 1
 
-        print(f"   ✅ Found {data['total']} budget templates")
+        print(f"   ✅ Found {data['total']} budget(s)")
+        for b in data["items"]:
+            print(f"      - {b['name']} (default: {b['is_default']})")

@@ -228,6 +228,8 @@ CREATE TABLE IF NOT EXISTS public.budgets (
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     is_default BOOLEAN NOT NULL DEFAULT FALSE,
+    emoji TEXT DEFAULT '💰',
+    color TEXT DEFAULT '#00A699',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
