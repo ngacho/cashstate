@@ -8,10 +8,8 @@ struct CategoryComparison: Identifiable {
     let categoryName: String
     let colorHex: String
     let icon: String
-    let thisMonth: Double
-    let lastMonth: Double
-
-    var delta: Double { thisMonth - lastMonth }  // positive = spent more this month
+    let thisMonth: Double   // amount for whichever date thisMonth points to
+    let lastMonth: Double   // amount for whichever date lastMonth points to
 
     var color: Color { Color(hex: colorHex) }
 }
@@ -22,7 +20,6 @@ private struct StackedBarItem: Identifiable {
     let id = UUID()
     let monthLabel: String
     let categoryName: String
-    let categoryIcon: String
     let amount: Double
     let colorHex: String
 
@@ -49,6 +46,8 @@ struct SpendingCompareView: View {
         _lastMonth = State(initialValue: prior)
     }
 
+    // MARK: - Computed helpers
+
     private func monthLabel(for date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM yyyy"
@@ -66,14 +65,28 @@ struct SpendingCompareView: View {
     private var thisMonthLabel: String { monthLabel(for: thisMonth) }
     private var lastMonthLabel: String { monthLabel(for: lastMonth) }
 
-    private var thisMonthTotal: Double { comparisons.reduce(0) { $0 + $1.thisMonth } }
-    private var lastMonthTotal: Double { comparisons.reduce(0) { $0 + $1.lastMonth } }
-    private var totalDelta: Double { thisMonthTotal - lastMonthTotal }
+    // Always show the earlier date on the left, later date on the right
+    private var olderIsThis: Bool { thisMonth <= lastMonth }
+    private var leftDate: Date  { olderIsThis ? thisMonth : lastMonth }
+    private var rightDate: Date { olderIsThis ? lastMonth : thisMonth }
+    private var leftLabel: String  { monthLabel(for: leftDate) }
+    private var rightLabel: String { monthLabel(for: rightDate) }
+
+    private func leftAmount(for comp: CategoryComparison) -> Double {
+        olderIsThis ? comp.thisMonth : comp.lastMonth
+    }
+    private func rightAmount(for comp: CategoryComparison) -> Double {
+        olderIsThis ? comp.lastMonth : comp.thisMonth
+    }
+
+    private var leftTotal: Double  { comparisons.reduce(0) { $0 + leftAmount(for: $1) } }
+    private var rightTotal: Double { comparisons.reduce(0) { $0 + rightAmount(for: $1) } }
+    private var totalDelta: Double { rightTotal - leftTotal }  // positive = spending more now
 
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.lg) {
-                // Month selectors
+                // Month selectors — labels always show which date is selected, order doesn't matter
                 HStack(spacing: Theme.Spacing.sm) {
                     Button { showThisMonthPicker = true } label: {
                         HStack(spacing: 4) {
@@ -136,16 +149,9 @@ struct SpendingCompareView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 200)
                 } else {
-                    // Month totals summary
                     monthTotalsCard
-
-                    // Stacked bar chart
                     stackedChart
-
-                    // Category legend
                     categoryLegend
-
-                    // Per-category detail table
                     summaryList
                 }
             }
@@ -156,10 +162,10 @@ struct SpendingCompareView: View {
         .onChange(of: thisMonth) { _, _ in Task { await loadData() } }
         .onChange(of: lastMonth) { _, _ in Task { await loadData() } }
         .sheet(isPresented: $showThisMonthPicker) {
-            MonthPickerSheet(selectedMonth: $thisMonth, isPresented: $showThisMonthPicker)
+            MonthYearPickerSheet(selectedMonth: $thisMonth, isPresented: $showThisMonthPicker)
         }
         .sheet(isPresented: $showLastMonthPicker) {
-            MonthPickerSheet(selectedMonth: $lastMonth, isPresented: $showLastMonthPicker)
+            MonthYearPickerSheet(selectedMonth: $lastMonth, isPresented: $showLastMonthPicker)
         }
     }
 
@@ -167,19 +173,20 @@ struct SpendingCompareView: View {
 
     private var monthTotalsCard: some View {
         HStack {
+            // Left = older month
             VStack(alignment: .leading, spacing: 4) {
-                Text(thisMonthLabel)
+                Text(leftLabel)
                     .font(.caption)
                     .foregroundColor(Theme.Colors.textSecondary)
-                Text("$\(String(format: "%.0f", thisMonthTotal))")
+                Text("$\(String(format: "%.0f", leftTotal))")
                     .font(.title2)
                     .fontWeight(.bold)
-                    .foregroundColor(Theme.Colors.textPrimary)
+                    .foregroundColor(Theme.Colors.textSecondary)
             }
 
             Spacer()
 
-            // Delta indicator
+            // Delta indicator (older → newer)
             VStack(spacing: 2) {
                 if abs(totalDelta) < 1 {
                     Image(systemName: "equal")
@@ -202,14 +209,15 @@ struct SpendingCompareView: View {
 
             Spacer()
 
+            // Right = newer month
             VStack(alignment: .trailing, spacing: 4) {
-                Text(lastMonthLabel)
+                Text(rightLabel)
                     .font(.caption)
                     .foregroundColor(Theme.Colors.textSecondary)
-                Text("$\(String(format: "%.0f", lastMonthTotal))")
+                Text("$\(String(format: "%.0f", rightTotal))")
                     .font(.title2)
                     .fontWeight(.bold)
-                    .foregroundColor(Theme.Colors.textSecondary)
+                    .foregroundColor(Theme.Colors.primary)
             }
         }
         .padding(Theme.Spacing.md)
@@ -222,25 +230,28 @@ struct SpendingCompareView: View {
     // MARK: - Stacked Bar Chart
 
     private var stackedChart: some View {
-        let sorted = comparisons.sorted { max($0.thisMonth, $0.lastMonth) > max($1.thisMonth, $1.lastMonth) }
+        let sorted = comparisons.sorted {
+            max(leftAmount(for: $0), rightAmount(for: $0)) > max(leftAmount(for: $1), rightAmount(for: $1))
+        }
 
+        // Build bars: older (left) month first so Swift Charts renders it on the left
         var bars: [StackedBarItem] = []
         for comp in sorted {
-            if comp.thisMonth > 0 {
+            let left  = leftAmount(for: comp)
+            let right = rightAmount(for: comp)
+            if left > 0 {
                 bars.append(StackedBarItem(
-                    monthLabel: thisMonthLabel,
+                    monthLabel: leftLabel,
                     categoryName: comp.categoryName,
-                    categoryIcon: comp.icon,
-                    amount: comp.thisMonth,
+                    amount: left,
                     colorHex: comp.colorHex
                 ))
             }
-            if comp.lastMonth > 0 {
+            if right > 0 {
                 bars.append(StackedBarItem(
-                    monthLabel: lastMonthLabel,
+                    monthLabel: rightLabel,
                     categoryName: comp.categoryName,
-                    categoryIcon: comp.icon,
-                    amount: comp.lastMonth,
+                    amount: right,
                     colorHex: comp.colorHex
                 ))
             }
@@ -255,13 +266,13 @@ struct SpendingCompareView: View {
             .cornerRadius(2)
         }
         .chartXAxis {
-            AxisMarks(values: [thisMonthLabel, lastMonthLabel]) { value in
+            AxisMarks(values: [leftLabel, rightLabel]) { value in
                 AxisValueLabel {
                     if let label = value.as(String.self) {
                         Text(label)
                             .font(.subheadline)
                             .fontWeight(.medium)
-                            .foregroundColor(label == thisMonthLabel
+                            .foregroundColor(label == rightLabel
                                 ? Theme.Colors.primary
                                 : Theme.Colors.textSecondary)
                     }
@@ -286,13 +297,14 @@ struct SpendingCompareView: View {
     // MARK: - Category Legend
 
     private var categoryLegend: some View {
-        let sorted = comparisons.sorted { max($0.thisMonth, $0.lastMonth) > max($1.thisMonth, $1.lastMonth) }
+        let sorted = comparisons.sorted {
+            max(leftAmount(for: $0), rightAmount(for: $0)) > max(leftAmount(for: $1), rightAmount(for: $1))
+        }
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Theme.Spacing.xs) {
                 ForEach(sorted) { comp in
                     HStack(spacing: 4) {
-                        Text(comp.icon)
-                            .font(.caption2)
+                        Text(comp.icon).font(.caption2)
                         RoundedRectangle(cornerRadius: 2)
                             .fill(comp.color)
                             .frame(width: 10, height: 10)
@@ -314,16 +326,17 @@ struct SpendingCompareView: View {
 
     private var summaryList: some View {
         VStack(spacing: 0) {
+            // Header — left label (older) first, right label (newer) second
             HStack {
                 Text("Category")
                     .font(.caption).fontWeight(.semibold)
                     .foregroundColor(Theme.Colors.textSecondary)
                 Spacer()
-                Text(thisMonthLabel)
+                Text(leftLabel)
                     .font(.caption).fontWeight(.semibold)
                     .foregroundColor(Theme.Colors.textSecondary)
                     .frame(width: 60, alignment: .trailing)
-                Text(lastMonthLabel)
+                Text(rightLabel)
                     .font(.caption).fontWeight(.semibold)
                     .foregroundColor(Theme.Colors.textSecondary)
                     .frame(width: 60, alignment: .trailing)
@@ -336,11 +349,15 @@ struct SpendingCompareView: View {
             .padding(.vertical, Theme.Spacing.sm)
             .background(Theme.Colors.cardBackground.opacity(0.5))
 
-            ForEach(comparisons.sorted { max($0.thisMonth, $0.lastMonth) > max($1.thisMonth, $1.lastMonth) }) { comp in
+            ForEach(comparisons.sorted {
+                max(leftAmount(for: $0), rightAmount(for: $0)) > max(leftAmount(for: $1), rightAmount(for: $1))
+            }) { comp in
                 ComparisonRow(
                     comparison: comp,
-                    thisMonthLabel: thisMonthLabel,
-                    lastMonthLabel: lastMonthLabel
+                    leftLabel: leftLabel,
+                    rightLabel: rightLabel,
+                    leftAmount: leftAmount(for: comp),
+                    rightAmount: rightAmount(for: comp)
                 )
                 Divider().padding(.leading, Theme.Spacing.md)
             }
@@ -382,6 +399,9 @@ struct SpendingCompareView: View {
                         spending[item.categoryId] = abs(item.spent)
                     }
                 }
+                if let uncategorized = summary.uncategorizedSpending, uncategorized > 0 {
+                    spending["uncategorized"] = uncategorized
+                }
                 return spending
             }
 
@@ -405,6 +425,19 @@ struct SpendingCompareView: View {
                 ))
             }
 
+            let thisUncategorized = thisSpend["uncategorized"] ?? 0
+            let lastUncategorized = lastSpend["uncategorized"] ?? 0
+            if thisUncategorized > 0 || lastUncategorized > 0 {
+                result.append(CategoryComparison(
+                    id: "uncategorized",
+                    categoryName: "Uncategorized",
+                    colorHex: "#9CA3AF",
+                    icon: "❔",
+                    thisMonth: thisUncategorized,
+                    lastMonth: lastUncategorized
+                ))
+            }
+
             comparisons = result
         } catch {
             errorMessage = "Failed to load comparison: \(error.localizedDescription)"
@@ -418,8 +451,12 @@ struct SpendingCompareView: View {
 
 private struct ComparisonRow: View {
     let comparison: CategoryComparison
-    let thisMonthLabel: String
-    let lastMonthLabel: String
+    let leftLabel: String
+    let rightLabel: String
+    let leftAmount: Double   // older month
+    let rightAmount: Double  // newer month
+
+    private var delta: Double { rightAmount - leftAmount }  // positive = spending more in newer month
 
     var body: some View {
         HStack(spacing: Theme.Spacing.sm) {
@@ -434,30 +471,30 @@ private struct ComparisonRow: View {
 
             Spacer()
 
-            Text("$\(String(format: "%.0f", comparison.thisMonth))")
-                .font(.subheadline)
-                .foregroundColor(Theme.Colors.textPrimary)
-                .frame(width: 60, alignment: .trailing)
-
-            Text("$\(String(format: "%.0f", comparison.lastMonth))")
+            Text("$\(String(format: "%.0f", leftAmount))")
                 .font(.subheadline)
                 .foregroundColor(Theme.Colors.textSecondary)
                 .frame(width: 60, alignment: .trailing)
 
+            Text("$\(String(format: "%.0f", rightAmount))")
+                .font(.subheadline)
+                .foregroundColor(Theme.Colors.textPrimary)
+                .frame(width: 60, alignment: .trailing)
+
             Group {
-                if abs(comparison.delta) < 1 {
+                if abs(delta) < 1 {
                     Text("—")
                         .foregroundColor(Theme.Colors.textSecondary)
-                } else if comparison.delta > 0 {
+                } else if delta > 0 {
                     HStack(spacing: 2) {
                         Image(systemName: "arrow.up").font(.caption2)
-                        Text("$\(String(format: "%.0f", comparison.delta))")
+                        Text("$\(String(format: "%.0f", delta))")
                     }
                     .foregroundColor(Theme.Colors.expense)
                 } else {
                     HStack(spacing: 2) {
                         Image(systemName: "arrow.down").font(.caption2)
-                        Text("$\(String(format: "%.0f", -comparison.delta))")
+                        Text("$\(String(format: "%.0f", -delta))")
                     }
                     .foregroundColor(Theme.Colors.income)
                 }
@@ -470,29 +507,72 @@ private struct ComparisonRow: View {
     }
 }
 
-// MARK: - Month Picker Sheet
+// MARK: - Month Year Picker Sheet
 
-struct MonthPickerSheet: View {
+struct MonthYearPickerSheet: View {
     @Binding var selectedMonth: Date
     @Binding var isPresented: Bool
-    @State private var tempMonth: Date
+
+    @State private var pickerYear: Int
+    @State private var pickerMonthIndex: Int  // 1–12
+
+    private static let monthNames = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ]
+
+    private var currentYear: Int {
+        Calendar.current.component(.year, from: Date())
+    }
+    private var currentMonthIndex: Int {
+        Calendar.current.component(.month, from: Date())
+    }
+    private var availableYears: [Int] {
+        Array(2020...currentYear)
+    }
+    private var availableMonths: [Int] {
+        pickerYear == currentYear ? Array(1...currentMonthIndex) : Array(1...12)
+    }
 
     init(selectedMonth: Binding<Date>, isPresented: Binding<Bool>) {
         self._selectedMonth = selectedMonth
         self._isPresented = isPresented
-        _tempMonth = State(initialValue: selectedMonth.wrappedValue)
+        let calendar = Calendar.current
+        let comps = calendar.dateComponents([.year, .month], from: selectedMonth.wrappedValue)
+        _pickerYear = State(initialValue: comps.year ?? Calendar.current.component(.year, from: Date()))
+        _pickerMonthIndex = State(initialValue: comps.month ?? Calendar.current.component(.month, from: Date()))
     }
 
     var body: some View {
         NavigationView {
-            DatePicker(
-                "Select Month",
-                selection: $tempMonth,
-                in: ...Date(),
-                displayedComponents: [.date]
-            )
-            .datePickerStyle(.graphical)
-            .padding()
+            HStack(spacing: 0) {
+                // Month wheel
+                Picker("Month", selection: $pickerMonthIndex) {
+                    ForEach(availableMonths, id: \.self) { m in
+                        Text(Self.monthNames[m - 1]).tag(m)
+                    }
+                }
+                .pickerStyle(.wheel)
+                .frame(maxWidth: .infinity)
+                .clipped()
+
+                // Year wheel
+                Picker("Year", selection: $pickerYear) {
+                    ForEach(availableYears, id: \.self) { y in
+                        Text(String(y)).tag(y)
+                    }
+                }
+                .pickerStyle(.wheel)
+                .frame(maxWidth: .infinity)
+                .clipped()
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .onChange(of: pickerYear) { _, newYear in
+                // If we switched to the current year and the selected month is in the future, clamp it
+                if newYear == currentYear && pickerMonthIndex > currentMonthIndex {
+                    pickerMonthIndex = currentMonthIndex
+                }
+            }
             .navigationTitle("Select Month")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -501,13 +581,18 @@ struct MonthPickerSheet: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
-                        selectedMonth = tempMonth
+                        if let date = Calendar.current.date(
+                            from: DateComponents(year: pickerYear, month: pickerMonthIndex, day: 1)
+                        ) {
+                            selectedMonth = date
+                        }
                         isPresented = false
                     }
                     .fontWeight(.semibold)
                 }
             }
         }
+        .presentationDetents([.height(300)])
     }
 }
 

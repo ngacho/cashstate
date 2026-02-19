@@ -90,7 +90,7 @@ struct BudgetView: View {
                     VStack(spacing: 0) {
                         Picker("", selection: $budgetTab) {
                             Text("Budget").tag(0)
-                            Text("Compare").tag(1)
+                            Text("Spending").tag(1)
                         }
                         .pickerStyle(.segmented)
                         .padding(.horizontal, Theme.Spacing.md)
@@ -190,9 +190,11 @@ struct BudgetView: View {
                             Text(currentMonthYear)
                                 .font(.headline)
                                 .foregroundColor(Theme.Colors.textPrimary)
-                            Text("\(daysRemainingText)")
-                                .font(.caption)
-                                .foregroundColor(Theme.Colors.textSecondary)
+                            if let days = daysRemainingText {
+                                Text(days)
+                                    .font(.caption)
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                            }
 
                             // Show indicator when at earliest available month
                             if !isPreviousMonthAvailable {
@@ -289,7 +291,7 @@ struct BudgetView: View {
                                 .foregroundColor(Theme.Colors.textSecondary)
                         }
 
-                        Text("-$\(String(format: "%.2f", totalSpent)) spent this month")
+                        Text("-$\(String(format: "%.2f", totalSpent)) \(spentMonthLabel)")
                             .font(.subheadline)
                             .foregroundColor(Theme.Colors.textSecondary)
 
@@ -359,9 +361,9 @@ struct BudgetView: View {
                             .cornerRadius(Theme.CornerRadius.sm)
                         }
 
-                        // Donut Chart
+                        // Donut Chart — show all categories with spending, not just budgeted ones
                         InteractiveBudgetDonutView(
-                            categories: categories.filter { $0.budgetAmount != nil },
+                            categories: categories.filter { $0.spentAmount > 0 },
                             totalSpent: totalSpent,
                             totalBudget: totalBudget
                         )
@@ -518,6 +520,21 @@ struct BudgetView: View {
                 ))
             }
 
+            // Add uncategorized row if there's spending without a category
+            if let uncategorized = budgetSummary.uncategorizedSpending, uncategorized > 0 {
+                result.append(BudgetCategory(
+                    id: "uncategorized",
+                    name: "Uncategorized",
+                    icon: "❔",
+                    colorHex: "#9CA3AF",
+                    type: .expense,
+                    subcategories: [],
+                    budgetAmount: nil,
+                    spentAmount: uncategorized,
+                    budgetId: nil
+                ))
+            }
+
             self.categories = result
 
             // Load transactions for uncategorized list and month navigation flags
@@ -567,18 +584,22 @@ struct BudgetView: View {
         return formatter.string(from: selectedMonth)
     }
 
-    private var daysRemainingText: String {
+    private var daysRemainingText: String? {
+        guard isCurrentMonth else { return nil }
         let calendar = Calendar.current
+        let now = Date()
+        let endOfMonth = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: calendar.date(from: calendar.dateComponents([.year, .month], from: now))!)!
+        let remaining = calendar.dateComponents([.day], from: now, to: endOfMonth).day ?? 0
+        return remaining > 0 ? "\(remaining) days left" : "Last day"
+    }
 
-        // If viewing current month, show days remaining
+    private var spentMonthLabel: String {
         if isCurrentMonth {
-            let now = Date()
-            let endOfMonth = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: calendar.date(from: calendar.dateComponents([.year, .month], from: now))!)!
-            let remaining = calendar.dateComponents([.day], from: now, to: endOfMonth).day ?? 0
-            return remaining > 0 ? "\(remaining) days left" : "Period ended"
+            return "spent this month"
         } else {
-            // For historical months, show "Past period" or similar
-            return "Past period"
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMMM"
+            return "spent in \(formatter.string(from: selectedMonth))"
         }
     }
 
@@ -1592,21 +1613,23 @@ struct ExpandableCategoryCard: View {
                                         .foregroundColor(Theme.Colors.expense)
                                 }
                             }
-                        } else {
+                        } else if category.id != "uncategorized" {
                             Text("Set Budget")
                                 .font(.caption)
                                 .foregroundColor(category.color)
                         }
 
-                        // Edit budget button
-                        Button {
-                            showEditCategoryBudget = true
-                        } label: {
-                            Image(systemName: "pencil.circle.fill")
-                                .font(.title3)
-                                .foregroundColor(category.color.opacity(0.7))
+                        // Edit budget button (not shown for uncategorized)
+                        if category.id != "uncategorized" {
+                            Button {
+                                showEditCategoryBudget = true
+                            } label: {
+                                Image(systemName: "pencil.circle.fill")
+                                    .font(.title3)
+                                    .foregroundColor(category.color.opacity(0.7))
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
 
                     // Expand indicator

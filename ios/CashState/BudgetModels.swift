@@ -88,6 +88,7 @@ struct BudgetSummary: Codable {
     let lineItems: [BudgetSummaryLineItem]
     let unbudgetedCategories: [UnbudgetedCategory]
     let subcategorySpending: [String: Double]?  // subcategory_id → amount spent
+    let uncategorizedSpending: Double?           // spending with no category assigned
 
     enum CodingKeys: String, CodingKey {
         case budgetId = "budget_id"
@@ -98,6 +99,7 @@ struct BudgetSummary: Codable {
         case lineItems = "line_items"
         case unbudgetedCategories = "unbudgeted_categories"
         case subcategorySpending = "subcategory_spending"
+        case uncategorizedSpending = "uncategorized_spending"
     }
 }
 
