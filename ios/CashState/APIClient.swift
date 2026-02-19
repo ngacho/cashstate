@@ -840,37 +840,81 @@ actor APIClient {
         )
     }
 
-    func createBudget(name: String, isDefault: Bool) async throws -> BudgetAPI {
+    func fetchBudgetLineItems(budgetId: String) async throws -> [BudgetLineItem] {
+        let response: BudgetLineItemListResponse = try await request(
+            endpoint: "/budgets/\(budgetId)/line-items"
+        )
+        return response.items
+    }
+
+    func createBudget(name: String, isDefault: Bool, emoji: String? = "💰", color: String? = "#00A699") async throws -> BudgetAPI {
         struct CreateBody: Encodable {
             let name: String
             let isDefault: Bool
             let accountIds: [String]
+            let emoji: String?
+            let color: String?
             enum CodingKeys: String, CodingKey {
                 case name
                 case isDefault = "is_default"
                 case accountIds = "account_ids"
+                case emoji
+                case color
             }
         }
         return try await request(
             endpoint: "/budgets",
             method: "POST",
-            body: CreateBody(name: name, isDefault: isDefault, accountIds: [])
+            body: CreateBody(name: name, isDefault: isDefault, accountIds: [], emoji: emoji, color: color)
         )
     }
 
-    func updateBudget(budgetId: String, name: String? = nil, isDefault: Bool? = nil) async throws -> BudgetAPI {
+    func updateBudget(budgetId: String, name: String? = nil, isDefault: Bool? = nil, emoji: String? = nil, color: String? = nil) async throws -> BudgetAPI {
         struct UpdateBody: Encodable {
             let name: String?
             let isDefault: Bool?
+            let emoji: String?
+            let color: String?
             enum CodingKeys: String, CodingKey {
                 case name
                 case isDefault = "is_default"
+                case emoji
+                case color
             }
         }
         return try await request(
             endpoint: "/budgets/\(budgetId)",
             method: "PATCH",
-            body: UpdateBody(name: name, isDefault: isDefault)
+            body: UpdateBody(name: name, isDefault: isDefault, emoji: emoji, color: color)
+        )
+    }
+
+    func fetchBudgetMonths() async throws -> [BudgetMonth] {
+        let response: BudgetMonthAPIListResponse = try await request(endpoint: "/budgets/months")
+        return response.items
+    }
+
+    func assignBudgetMonth(budgetId: String, month: String) async throws -> BudgetMonth {
+        struct CreateBody: Encodable {
+            let budgetId: String
+            let month: String
+            enum CodingKeys: String, CodingKey {
+                case budgetId = "budget_id"
+                case month
+            }
+        }
+        return try await request(
+            endpoint: "/budgets/months",
+            method: "POST",
+            body: CreateBody(budgetId: budgetId, month: month)
+        )
+    }
+
+    func deleteBudgetMonth(monthId: String) async throws {
+        struct SuccessResponse: Codable { let success: Bool; let message: String }
+        let _: SuccessResponse = try await request(
+            endpoint: "/budgets/months/\(monthId)",
+            method: "DELETE"
         )
     }
 

@@ -3,7 +3,6 @@ import SwiftUI
 struct BudgetView: View {
     let apiClient: APIClient
     @State private var categories: [BudgetCategory] = []
-    @State private var showAllBudgets = false
     @State private var showEditBudget = false
     @State private var selectedCategory: BudgetCategory?
     @State private var navigationPath = NavigationPath()
@@ -114,6 +113,9 @@ struct BudgetView: View {
                     selectedMonth: selectedMonth
                 )
             }
+            .navigationDestination(for: AllBudgetsNavValue.self) { _ in
+                AllBudgetsView(apiClient: apiClient)
+            }
             .toolbar {
                 if !categories.isEmpty {
                     ToolbarItem(placement: .navigationBarTrailing) {
@@ -125,9 +127,6 @@ struct BudgetView: View {
                         }
                     }
                 }
-            }
-            .sheet(isPresented: $showAllBudgets) {
-                AllBudgetsView(isPresented: $showAllBudgets, apiClient: apiClient)
             }
             .sheet(item: $selectedCategory) { category in
                 CategoryDetailView(category: category, isPresented: .init(
@@ -272,13 +271,12 @@ struct BudgetView: View {
                                 .font(.headline)
                                 .foregroundColor(Theme.Colors.textPrimary)
                             Spacer()
-                            Button {
-                                showAllBudgets = true
-                            } label: {
+                            NavigationLink(value: AllBudgetsNavValue()) {
                                 Text("All Budgets")
                                     .font(.subheadline)
                                     .foregroundColor(Theme.Colors.primary)
                             }
+                            .buttonStyle(.plain)
                         }
 
                         // Amount and status
@@ -1065,134 +1063,232 @@ struct BudgetDonutSlice: View {
     }
 }
 
+// MARK: - Navigation value for All Budgets
+
+private struct AllBudgetsNavValue: Hashable {}
+
+// MARK: - Budget List Card (used in AllBudgetsView)
+
+private struct BudgetListCard: View {
+    let budget: BudgetAPI
+    let lineItems: [BudgetLineItem]
+    let allCategories: [CategoryWithSubcategories]
+
+    private let fallbackColors = [
+        "#5b8def", "#e8845c", "#d4d46a", "#c17ad4", "#7dd8a0",
+        "#6bcbd4", "#ef8f5b", "#a0a0ef", "#efcf5b"
+    ]
+
+    var totalBudget: Double {
+        lineItems.reduce(0) { $0 + $1.amount }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Budget name + badges
+            HStack(spacing: 10) {
+                Text(budget.emoji ?? "💰")
+                    .font(.system(size: 26))
+                    .frame(width: 44, height: 44)
+                    .background(Color(hex: budget.color ?? "#00A699").opacity(0.15))
+                    .cornerRadius(12)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(budget.name)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(Theme.Colors.textPrimary)
+                        .lineLimit(1)
+                    if budget.isDefault {
+                        Text("DEFAULT")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(Theme.Colors.primary)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(Theme.Colors.primary.opacity(0.1))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(Theme.Colors.primary.opacity(0.25), lineWidth: 1)
+                            )
+                            .cornerRadius(4)
+                    }
+                }
+
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13))
+                    .foregroundColor(Theme.Colors.textSecondary)
+            }
+            .padding(.bottom, 14)
+
+            // Total + categories count
+            HStack(alignment: .lastTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("TOTAL BUDGET")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .kerning(0.5)
+                    Text(formatAmount(totalBudget))
+                        .font(.system(size: 30, weight: .bold, design: .monospaced))
+                        .foregroundColor(Theme.Colors.textPrimary)
+                        .kerning(-1)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("CATEGORIES")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .kerning(0.5)
+                    Text("\(lineItems.count)")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Theme.Colors.textSecondary)
+                }
+            }
+
+            if totalBudget > 0 && !lineItems.isEmpty {
+                // Colored breakdown bar
+                GeometryReader { geometry in
+                    HStack(spacing: 3) {
+                        ForEach(Array(lineItems.enumerated()), id: \.element.id) { idx, item in
+                            let pct = CGFloat(item.amount / totalBudget)
+                            let w = max(4, (geometry.size.width - CGFloat(lineItems.count - 1) * 3) * pct)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color(hex: categoryColor(for: item.categoryId, index: idx)))
+                                .frame(width: w)
+                        }
+                    }
+                }
+                .frame(height: 6)
+                .cornerRadius(3)
+                .padding(.top, 16)
+
+                // Legend
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(Array(lineItems.enumerated()), id: \.element.id) { idx, item in
+                            HStack(spacing: 5) {
+                                Circle()
+                                    .fill(Color(hex: categoryColor(for: item.categoryId, index: idx)))
+                                    .frame(width: 7, height: 7)
+                                Text(categoryName(for: item.categoryId))
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 10)
+            } else if lineItems.isEmpty {
+                Text("No categories set")
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.Colors.textSecondary)
+                    .padding(.top, 10)
+            }
+        }
+        .padding(20)
+        .background(Color.white)
+        .cornerRadius(18)
+        .shadow(color: Color.black.opacity(0.07), radius: 8, x: 0, y: 2)
+    }
+
+    private func categoryColor(for categoryId: String, index: Int) -> String {
+        allCategories.first(where: { $0.id == categoryId })?.color
+            ?? fallbackColors[index % fallbackColors.count]
+    }
+
+    private func categoryName(for categoryId: String) -> String {
+        allCategories.first(where: { $0.id == categoryId })?.name ?? "Category"
+    }
+
+    private func formatAmount(_ amount: Double) -> String {
+        let fmt = NumberFormatter()
+        fmt.numberStyle = .currency
+        fmt.currencyCode = "USD"
+        fmt.maximumFractionDigits = 0
+        fmt.minimumFractionDigits = 0
+        return fmt.string(from: NSNumber(value: amount)) ?? "$\(Int(amount))"
+    }
+}
+
 // MARK: - All Budgets View
 
 struct AllBudgetsView: View {
-    @Binding var isPresented: Bool
     let apiClient: APIClient
 
     @State private var budgets: [BudgetAPI] = []
     @State private var isLoading = true
     @State private var loadError: String?
-    @State private var editingBudget: BudgetAPI?
     @State private var showCreateBudget = false
+    @State private var allCategories: [CategoryWithSubcategories] = []
+    @State private var budgetLineItems: [String: [BudgetLineItem]] = [:]
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if isLoading {
-                    ProgressView("Loading...")
-                } else if let error = loadError {
-                    VStack(spacing: Theme.Spacing.md) {
-                        Text("Error loading budgets")
-                            .font(.headline)
-                        Text(error)
-                            .font(.caption)
-                            .foregroundColor(Theme.Colors.textSecondary)
-                        Button("Retry") { Task { await loadData() } }
-                            .foregroundColor(Theme.Colors.primary)
-                    }
-                } else if budgets.isEmpty {
-                    VStack(spacing: Theme.Spacing.md) {
-                        Image(systemName: "list.bullet.rectangle")
-                            .font(.largeTitle)
-                            .foregroundColor(Theme.Colors.textSecondary.opacity(0.5))
-                        Text("No budgets yet")
-                            .font(.headline)
-                            .foregroundColor(Theme.Colors.textSecondary)
-                        Button("Create Budget") { showCreateBudget = true }
-                            .foregroundColor(Theme.Colors.primary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    List {
-                        Section {
-                            ForEach(budgets) { budget in
-                                Button {
-                                    editingBudget = budget
-                                } label: {
-                                    HStack(spacing: Theme.Spacing.sm) {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            HStack(spacing: 6) {
-                                                Text(budget.name)
-                                                    .font(.body)
-                                                    .foregroundColor(Theme.Colors.textPrimary)
-                                                if budget.isDefault {
-                                                    Text("DEFAULT")
-                                                        .font(.caption2).fontWeight(.bold)
-                                                        .foregroundColor(.white)
-                                                        .padding(.horizontal, 6).padding(.vertical, 2)
-                                                        .background(Theme.Colors.primary)
-                                                        .cornerRadius(4)
-                                                }
-                                            }
-                                        }
-                                        Spacer()
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption)
-                                            .foregroundColor(Theme.Colors.textSecondary)
-                                    }
-                                }
+        Group {
+            if isLoading {
+                ProgressView("Loading...")
+            } else if let error = loadError {
+                VStack(spacing: Theme.Spacing.md) {
+                    Text("Error loading budgets")
+                        .font(.headline)
+                        .foregroundColor(Theme.Colors.textPrimary)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                    Button("Retry") { Task { await loadData() } }
+                        .foregroundColor(Theme.Colors.primary)
+                }
+            } else if budgets.isEmpty {
+                VStack(spacing: Theme.Spacing.md) {
+                    Image(systemName: "list.bullet.rectangle")
+                        .font(.largeTitle)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                    Text("No budgets yet")
+                        .font(.headline)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                    Button("Create Budget") { showCreateBudget = true }
+                        .foregroundColor(Theme.Colors.primary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    VStack(spacing: 14) {
+                        ForEach(budgets) { budget in
+                            NavigationLink(value: budget) {
+                                BudgetListCard(
+                                    budget: budget,
+                                    lineItems: budgetLineItems[budget.id] ?? [],
+                                    allCategories: allCategories
+                                )
                             }
-                        } header: {
-                            Text("Budgets")
-                        } footer: {
-                            Text("Tap a budget to rename, set as default, or delete it.")
-                                .font(.caption)
+                            .buttonStyle(.plain)
                         }
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 16)
                 }
             }
-            .navigationTitle("All Budgets")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Done") { isPresented = false }
+        }
+        .background(Theme.Colors.background.ignoresSafeArea())
+        .navigationTitle("All Budgets")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    showCreateBudget = true
+                } label: {
+                    Image(systemName: "plus")
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showCreateBudget = true
-                    } label: {
-                        Image(systemName: "plus")
+            }
+        }
+        .navigationDestination(for: BudgetAPI.self) { budget in
+            BudgetEditView(
+                budget: budget,
+                apiClient: apiClient,
+                onSave: { updated in
+                    if let idx = budgets.firstIndex(where: { $0.id == updated.id }) {
+                        budgets[idx] = updated
                     }
-                }
-            }
-            .sheet(item: $editingBudget) { budget in
-                BudgetEditSheet(
-                    budget: budget,
-                    apiClient: apiClient,
-                    onSave: { updated in
-                        if let idx = budgets.firstIndex(where: { $0.id == updated.id }) {
-                            budgets[idx] = updated
-                        }
-                        // If this is now default, clear default from others
-                        if updated.isDefault {
-                            for idx in budgets.indices where budgets[idx].id != updated.id {
-                                if budgets[idx].isDefault {
-                                    budgets[idx] = BudgetAPI(
-                                        id: budgets[idx].id,
-                                        userId: budgets[idx].userId,
-                                        name: budgets[idx].name,
-                                        isDefault: false,
-                                        createdAt: budgets[idx].createdAt,
-                                        updatedAt: budgets[idx].updatedAt
-                                    )
-                                }
-                            }
-                        }
-                        editingBudget = nil
-                    },
-                    onDelete: { deletedId in
-                        budgets.removeAll { $0.id == deletedId }
-                        editingBudget = nil
-                    }
-                )
-            }
-            .sheet(isPresented: $showCreateBudget) {
-                CreateBudgetSheet(apiClient: apiClient) { newBudget in
-                    // If new budget is default, clear others
-                    if newBudget.isDefault {
-                        for idx in budgets.indices {
+                    if updated.isDefault {
+                        for idx in budgets.indices where budgets[idx].id != updated.id {
                             if budgets[idx].isDefault {
                                 budgets[idx] = BudgetAPI(
                                     id: budgets[idx].id,
@@ -1205,9 +1301,34 @@ struct AllBudgetsView: View {
                             }
                         }
                     }
-                    budgets.append(newBudget)
-                    showCreateBudget = false
+                    // Refresh line items for updated budget
+                    Task {
+                        let items = (try? await apiClient.fetchBudgetLineItems(budgetId: updated.id)) ?? []
+                        budgetLineItems[updated.id] = items.filter { $0.subcategoryId == nil }
+                    }
+                },
+                onDelete: { deletedId in
+                    budgets.removeAll { $0.id == deletedId }
+                    budgetLineItems.removeValue(forKey: deletedId)
                 }
+            )
+        }
+        .sheet(isPresented: $showCreateBudget) {
+            CreateBudgetSheet(apiClient: apiClient) { newBudget in
+                if newBudget.isDefault {
+                    for idx in budgets.indices where budgets[idx].isDefault {
+                        budgets[idx] = BudgetAPI(
+                            id: budgets[idx].id,
+                            userId: budgets[idx].userId,
+                            name: budgets[idx].name,
+                            isDefault: false,
+                            createdAt: budgets[idx].createdAt,
+                            updatedAt: budgets[idx].updatedAt
+                        )
+                    }
+                }
+                budgets.append(newBudget)
+                showCreateBudget = false
             }
         }
         .task { await loadData() }
@@ -1217,7 +1338,23 @@ struct AllBudgetsView: View {
         isLoading = true
         loadError = nil
         do {
-            budgets = try await apiClient.fetchBudgets()
+            async let budgetsFetch = apiClient.fetchBudgets()
+            async let categoriesFetch = apiClient.fetchCategoriesTree()
+            let (fetchedBudgets, cats) = try await (budgetsFetch, categoriesFetch)
+            budgets = fetchedBudgets
+            allCategories = cats
+            // Load line items for each budget in parallel
+            await withTaskGroup(of: (String, [BudgetLineItem]).self) { group in
+                for b in fetchedBudgets {
+                    group.addTask {
+                        let items = (try? await apiClient.fetchBudgetLineItems(budgetId: b.id)) ?? []
+                        return (b.id, items.filter { $0.subcategoryId == nil })
+                    }
+                }
+                for await (budgetId, items) in group {
+                    budgetLineItems[budgetId] = items
+                }
+            }
         } catch {
             loadError = error.localizedDescription
         }
@@ -1225,9 +1362,310 @@ struct AllBudgetsView: View {
     }
 }
 
-// MARK: - Budget Edit Sheet
+// MARK: - Subcategory Edit Row (for CategoryEditRow expanded section)
 
-private struct BudgetEditSheet: View {
+private struct SubcategoryEditRow: View {
+    let lineItem: BudgetLineItem
+    let subcategory: Subcategory?
+    @Binding var amountText: String
+    let onAmountCommit: (Double) -> Void
+
+    @FocusState private var isEditing: Bool
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text(subcategory?.icon ?? "•")
+                .font(.system(size: 16))
+                .frame(width: 28, alignment: .center)
+                .padding(.leading, 54)
+
+            Text(subcategory?.name ?? "Subcategory")
+                .font(.system(size: 13))
+                .foregroundColor(Theme.Colors.textSecondary)
+                .lineLimit(1)
+
+            Spacer()
+
+            if isEditing {
+                HStack(spacing: 2) {
+                    Text("$")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Theme.Colors.primary)
+                    TextField("0", text: $amountText)
+                        .keyboardType(.numberPad)
+                        .focused($isEditing)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(Theme.Colors.textPrimary)
+                        .frame(width: 60)
+                        .multilineTextAlignment(.trailing)
+                        .onSubmit { commitEdit() }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Theme.Colors.primaryLight.opacity(0.15))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Theme.Colors.primary.opacity(0.4), lineWidth: 1)
+                )
+                .cornerRadius(8)
+                .padding(.trailing, 16)
+            } else {
+                Button {
+                    amountText = String(format: "%.0f", lineItem.amount)
+                    isEditing = true
+                } label: {
+                    Text("$\(String(format: "%.0f", Double(amountText) ?? lineItem.amount))")
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(lineItem.amount == 0 ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Theme.Colors.background)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.gray.opacity(0.15), lineWidth: 1)
+                        )
+                        .cornerRadius(8)
+                }
+                .padding(.trailing, 16)
+            }
+        }
+        .frame(minHeight: 40)
+        .background(Color(red: 0.95, green: 0.96, blue: 0.96))
+        .onChange(of: isEditing) { _, editing in
+            if !editing { commitEdit() }
+        }
+    }
+
+    private func commitEdit() {
+        let cleaned = amountText.filter { $0.isNumber }
+        if let value = Double(cleaned), value >= 0 {
+            onAmountCommit(value)
+        }
+    }
+}
+
+// MARK: - Category Edit Row (for BudgetEditView)
+
+private struct CategoryEditRow: View {
+    let lineItem: BudgetLineItem
+    let category: CategoryWithSubcategories?
+    let subcategoryLineItems: [BudgetLineItem]
+    let isExpanded: Bool
+    @Binding var amountText: String
+    @Binding var editingAmounts: [String: String]
+    let onToggleExpand: () -> Void
+    let onAmountCommit: (Double) -> Void
+    let onSubcategoryAmountCommit: (BudgetLineItem, Double) -> Void
+    let onRemove: () -> Void
+
+    @FocusState private var isEditing: Bool
+
+    private func formattedAmount(_ text: String, fallback: Double) -> String {
+        let val = Double(text) ?? fallback
+        let fmt = NumberFormatter()
+        fmt.numberStyle = .currency
+        fmt.currencyCode = "USD"
+        fmt.maximumFractionDigits = 0
+        fmt.minimumFractionDigits = 0
+        return fmt.string(from: NSNumber(value: val)) ?? "$\(Int(val))"
+    }
+
+    // If subcategories exist, total = sum of subcategory amounts; else category amount
+    private var headerDisplayAmount: Double {
+        if !subcategoryLineItems.isEmpty {
+            return subcategoryLineItems.reduce(0) { sum, item in
+                let text = editingAmounts[item.id] ?? String(format: "%.0f", item.amount)
+                return sum + (Double(text) ?? item.amount)
+            }
+        }
+        return Double(amountText) ?? lineItem.amount
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Category header row — tap to expand/collapse
+            Button(action: onToggleExpand) {
+                HStack(spacing: 0) {
+                    Text(category?.icon ?? "❓")
+                        .font(.system(size: 22))
+                        .frame(width: 38, alignment: .leading)
+                        .padding(.leading, 16)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(category?.name ?? "Unknown")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(Theme.Colors.textPrimary)
+                            .lineLimit(1)
+                        if !subcategoryLineItems.isEmpty {
+                            Text("\(subcategoryLineItems.count) subcategories")
+                                .font(.system(size: 11))
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                    }
+
+                    Spacer()
+
+                    Text(formattedAmount(String(headerDisplayAmount), fallback: lineItem.amount))
+                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .padding(.trailing, 8)
+
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11))
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        .animation(.easeInOut(duration: 0.2), value: isExpanded)
+                        .padding(.trailing, 16)
+                }
+                .frame(minHeight: 52)
+                .background(isExpanded ? Color(red: 0.95, green: 0.96, blue: 0.96) : Color.clear)
+            }
+            .buttonStyle(.plain)
+
+            // Expanded content
+            if isExpanded {
+                VStack(spacing: 0) {
+                    Divider()
+                        .background(Color.gray.opacity(0.15))
+
+                    // Category-level amount row (shown when no subcategories, or as "category total")
+                    HStack {
+                        Text(subcategoryLineItems.isEmpty ? "Category Budget" : "Category Total")
+                            .font(.system(size: 14))
+                            .foregroundColor(Theme.Colors.textSecondary)
+                            .padding(.leading, 54)
+
+                        Spacer()
+
+                        if subcategoryLineItems.isEmpty {
+                            // Editable when no subcategories
+                            if isEditing {
+                                HStack(spacing: 2) {
+                                    Text("$")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(Theme.Colors.primary)
+                                    TextField("0", text: $amountText)
+                                        .keyboardType(.numberPad)
+                                        .focused($isEditing)
+                                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                                        .foregroundColor(Theme.Colors.textPrimary)
+                                        .frame(width: 72)
+                                        .multilineTextAlignment(.trailing)
+                                        .onSubmit { commitEdit() }
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(Theme.Colors.primaryLight.opacity(0.15))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .stroke(Theme.Colors.primary.opacity(0.5), lineWidth: 1)
+                                )
+                                .cornerRadius(10)
+                                .padding(.trailing, 16)
+                            } else {
+                                Button {
+                                    amountText = String(format: "%.0f", lineItem.amount)
+                                    isEditing = true
+                                } label: {
+                                    Text(formattedAmount(amountText, fallback: lineItem.amount))
+                                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                                        .foregroundColor(lineItem.amount == 0 ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                        .background(Theme.Colors.background)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                        )
+                                        .cornerRadius(10)
+                                }
+                                .padding(.trailing, 16)
+                            }
+                        } else {
+                            // Display-only total when subcategories exist
+                            Text(formattedAmount(String(headerDisplayAmount), fallback: lineItem.amount))
+                                .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                                .foregroundColor(Theme.Colors.textPrimary)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(Color.gray.opacity(0.06))
+                                .cornerRadius(10)
+                                .padding(.trailing, 16)
+                        }
+                    }
+                    .padding(.vertical, 10)
+                    .background(Color(red: 0.95, green: 0.96, blue: 0.96))
+
+                    // Subcategory rows
+                    if !subcategoryLineItems.isEmpty {
+                        Divider()
+                            .padding(.leading, 54)
+                            .background(Color.gray.opacity(0.1))
+
+                        ForEach(subcategoryLineItems) { subItem in
+                            let subcat = category?.subcategories.first { $0.id == subItem.subcategoryId }
+                            SubcategoryEditRow(
+                                lineItem: subItem,
+                                subcategory: subcat,
+                                amountText: Binding(
+                                    get: { editingAmounts[subItem.id] ?? String(format: "%.0f", subItem.amount) },
+                                    set: { editingAmounts[subItem.id] = $0 }
+                                ),
+                                onAmountCommit: { amount in
+                                    onSubcategoryAmountCommit(subItem, amount)
+                                }
+                            )
+
+                            if subItem.id != subcategoryLineItems.last?.id {
+                                Divider()
+                                    .padding(.leading, 82)
+                                    .background(Color.gray.opacity(0.08))
+                            }
+                        }
+                    }
+
+                    // Actions row
+                    HStack(spacing: 8) {
+                        Button(action: onRemove) {
+                            Text("Remove Category")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(Theme.Colors.expense)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Theme.Colors.expense.opacity(0.3), lineWidth: 1)
+                                )
+                                .cornerRadius(8)
+                        }
+                        Spacer()
+                    }
+                    .padding(.leading, 54)
+                    .padding(.vertical, 10)
+                    .padding(.bottom, 6)
+                    .background(Color(red: 0.95, green: 0.96, blue: 0.96))
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .background(Color(red: 0.95, green: 0.96, blue: 0.96).opacity(isExpanded ? 1 : 0))
+        .cornerRadius(14)
+        .onChange(of: isEditing) { _, editing in
+            if !editing { commitEdit() }
+        }
+    }
+
+    private func commitEdit() {
+        let cleaned = amountText.filter { $0.isNumber }
+        if let value = Double(cleaned), value >= 0 {
+            onAmountCommit(value)
+        }
+    }
+}
+
+// MARK: - Budget Edit View
+
+private struct BudgetEditView: View {
     let budget: BudgetAPI
     let apiClient: APIClient
     let onSave: (BudgetAPI) -> Void
@@ -1235,11 +1673,34 @@ private struct BudgetEditSheet: View {
 
     @State private var name: String
     @State private var isDefault: Bool
+    @State private var emoji: String
+    @State private var selectedColor: String
     @State private var isSaving = false
     @State private var isDeleting = false
     @State private var showDeleteConfirmation = false
     @State private var errorMessage: String?
     @Environment(\.dismiss) private var dismiss
+
+    @State private var lineItems: [BudgetLineItem] = []
+    @State private var allCategories: [CategoryWithSubcategories] = []
+    @State private var isLoadingLineItems = true
+    @State private var showAddLineItem = false
+    @State private var expandedCategories: Set<String> = []
+    @State private var editingAmounts: [String: String] = [:]
+
+    // Month overrides
+    @State private var budgetMonths: [BudgetMonth] = []
+    @State private var showMonthPicker = false
+    @State private var monthPickerDate = Date()
+
+    // Emoji editor
+    @State private var showEmojiEditor = false
+    @State private var emojiInput: String = ""
+
+    private let fallbackColors = [
+        "#5b8def", "#e8845c", "#d4d46a", "#c17ad4", "#7dd8a0",
+        "#6bcbd4", "#ef8f5b", "#a0a0ef", "#efcf5b"
+    ]
 
     init(budget: BudgetAPI, apiClient: APIClient, onSave: @escaping (BudgetAPI) -> Void, onDelete: @escaping (String) -> Void) {
         self.budget = budget
@@ -1248,87 +1709,548 @@ private struct BudgetEditSheet: View {
         self.onDelete = onDelete
         _name = State(initialValue: budget.name)
         _isDefault = State(initialValue: budget.isDefault)
+        _emoji = State(initialValue: budget.emoji ?? "💰")
+        _selectedColor = State(initialValue: budget.color ?? "#00A699")
+    }
+
+    var categoryLineItems: [BudgetLineItem] {
+        lineItems.filter { $0.subcategoryId == nil }
+    }
+
+    var totalBudget: Double {
+        categoryLineItems.reduce(0) { $0 + $1.amount }
+    }
+
+    private func subcategoryLineItemsFor(categoryId: String) -> [BudgetLineItem] {
+        lineItems.filter { $0.categoryId == categoryId && $0.subcategoryId != nil }
     }
 
     var body: some View {
-        NavigationView {
-            Form {
-                Section("Budget Details") {
-                    HStack {
-                        Text("Name")
-                        Spacer()
-                        TextField("Budget name", text: $name)
-                            .multilineTextAlignment(.trailing)
-                            .foregroundColor(Theme.Colors.textSecondary)
-                    }
-                    Toggle("Set as Default", isOn: $isDefault)
-                        .tint(Theme.Colors.primary)
-                }
+        ZStack(alignment: .bottom) {
+            Theme.Colors.background.ignoresSafeArea()
 
-                if isDefault && budget.isDefault {
-                    Section {
-                        HStack(spacing: Theme.Spacing.sm) {
-                            Image(systemName: "info.circle.fill")
-                                .foregroundColor(.blue)
-                            Text("This is your default budget, applied to months without a specific override.")
-                                .font(.caption)
-                                .foregroundColor(Theme.Colors.textSecondary)
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Name field
+                    TextField("Budget Name", text: $name)
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundColor(Theme.Colors.textPrimary)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 8)
+                        .padding(.bottom, 6)
+
+                    // Badge row
+                    HStack(spacing: 8) {
+                        if isDefault {
+                            Text("DEFAULT")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Theme.Colors.primary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(Theme.Colors.primary.opacity(0.1))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Theme.Colors.primary.opacity(0.25), lineWidth: 1)
+                                )
+                                .cornerRadius(6)
+                        }
+                        Toggle("", isOn: $isDefault)
+                            .labelsHidden()
+                            .tint(Theme.Colors.primary)
+                            .scaleEffect(0.85)
+                        Text(isDefault ? "Default budget" : "Not default")
+                            .font(.system(size: 12))
+                            .foregroundColor(Theme.Colors.textSecondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 12)
+
+                    // Emoji + Color picker row
+                    HStack(spacing: 14) {
+                        Button {
+                            emojiInput = emoji
+                            showEmojiEditor = true
+                        } label: {
+                            Text(emoji)
+                                .font(.system(size: 26))
+                                .frame(width: 52, height: 52)
+                                .background(Color(hex: selectedColor).opacity(0.15))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .stroke(Color(hex: selectedColor).opacity(0.4), lineWidth: 1.5)
+                                )
+                                .cornerRadius(14)
+                        }
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(ColorPalette.allCases) { palette in
+                                    Circle()
+                                        .fill(palette.color)
+                                        .frame(width: 30, height: 30)
+                                        .overlay(
+                                            selectedColor == palette.rawValue ?
+                                            Circle()
+                                                .stroke(Color.white, lineWidth: 2.5)
+                                                .padding(3) : nil
+                                        )
+                                        .overlay(
+                                            selectedColor == palette.rawValue ?
+                                            Circle()
+                                                .stroke(palette.color.opacity(0.6), lineWidth: 2) : nil
+                                        )
+                                        .onTapGesture { selectedColor = palette.rawValue }
+                                }
+                            }
+                            .padding(.vertical, 4)
                         }
                     }
-                }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 20)
 
-                if let error = errorMessage {
-                    Section {
+                    // Budget Total Card
+                    budgetTotalCard
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 24)
+
+                    // Categories section header
+                    HStack {
+                        Text("CATEGORIES & AMOUNTS")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(Theme.Colors.textSecondary)
+                            .kerning(1.0)
+                        Spacer()
+                        Button {
+                            showAddLineItem = true
+                        } label: {
+                            Text("+ Add / Remove")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(Theme.Colors.primary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Theme.Colors.background)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                )
+                                .cornerRadius(8)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
+
+                    // Category rows
+                    if isLoadingLineItems {
+                        ProgressView()
+                            .padding(.top, 40)
+                    } else if categoryLineItems.isEmpty {
+                        VStack(spacing: 12) {
+                            Text("No categories yet")
+                                .foregroundColor(Theme.Colors.textSecondary)
+                                .font(.system(size: 14))
+                            Button {
+                                showAddLineItem = true
+                            } label: {
+                                Text("Add Categories")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(Theme.Colors.primary)
+                                    .padding(.horizontal, 24)
+                                    .padding(.vertical, 12)
+                                    .background(Color(red: 0.96, green: 0.97, blue: 0.97))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(Color.gray.opacity(0.25), lineWidth: 1)
+                                    )
+                                    .cornerRadius(12)
+                            }
+                        }
+                        .padding(.top, 40)
+                    } else {
+                        VStack(spacing: 4) {
+                            ForEach(Array(categoryLineItems.enumerated()), id: \.element.id) { idx, item in
+                                CategoryEditRow(
+                                    lineItem: item,
+                                    category: allCategories.first { $0.id == item.categoryId },
+                                    subcategoryLineItems: subcategoryLineItemsFor(categoryId: item.categoryId),
+                                    isExpanded: expandedCategories.contains(item.id),
+                                    amountText: Binding(
+                                        get: { editingAmounts[item.id] ?? String(format: "%.0f", item.amount) },
+                                        set: { editingAmounts[item.id] = $0 }
+                                    ),
+                                    editingAmounts: $editingAmounts,
+                                    onToggleExpand: {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            if expandedCategories.contains(item.id) {
+                                                expandedCategories.remove(item.id)
+                                            } else {
+                                                expandedCategories.insert(item.id)
+                                            }
+                                        }
+                                    },
+                                    onAmountCommit: { newAmount in
+                                        Task { await updateAmount(lineItem: item, newAmount: newAmount) }
+                                    },
+                                    onSubcategoryAmountCommit: { subItem, amount in
+                                        Task { await updateAmount(lineItem: subItem, newAmount: amount) }
+                                    },
+                                    onRemove: {
+                                        Task { await removeLineItem(item) }
+                                    }
+                                )
+                            }
+                        }
+                        .padding(.horizontal, 6)
+                    }
+
+                    if let error = errorMessage {
                         Text(error)
                             .font(.caption)
                             .foregroundColor(.red)
+                            .padding(.horizontal, 20)
+                            .padding(.top, 12)
                     }
-                }
 
-                Section {
+                    // Month Overrides Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("MONTH OVERRIDES")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(Theme.Colors.textSecondary)
+                                .kerning(1.0)
+                            Spacer()
+                            Button {
+                                monthPickerDate = Date()
+                                showMonthPicker = true
+                            } label: {
+                                Text("+ Add Month")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(Theme.Colors.primary)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Theme.Colors.background)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                    )
+                                    .cornerRadius(8)
+                            }
+                        }
+
+                        // Info notification
+                        if isDefault {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: "info.circle.fill")
+                                    .foregroundColor(Theme.Colors.primary)
+                                    .font(.system(size: 13))
+                                    .padding(.top, 1)
+                                Text("This is your default budget and applies to all months automatically. Set a month override on another budget to use it for a specific month instead.")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(12)
+                            .background(Theme.Colors.primary.opacity(0.05))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Theme.Colors.primary.opacity(0.15), lineWidth: 1)
+                            )
+                            .cornerRadius(10)
+                        } else if budgetMonths.isEmpty {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: "calendar.badge.exclamationmark")
+                                    .foregroundColor(.orange)
+                                    .font(.system(size: 13))
+                                    .padding(.top, 1)
+                                Text("No month overrides set. The default budget applies to all months unless you add an override here.")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(12)
+                            .background(Color.orange.opacity(0.05))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.orange.opacity(0.15), lineWidth: 1)
+                            )
+                            .cornerRadius(10)
+                        }
+
+                        // Month pills
+                        if !budgetMonths.isEmpty {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110))], spacing: 8) {
+                                ForEach(budgetMonths) { month in
+                                    HStack(spacing: 6) {
+                                        Text(formatMonthString(month.month))
+                                            .font(.system(size: 13, weight: .medium))
+                                            .foregroundColor(Theme.Colors.textPrimary)
+                                        Spacer()
+                                        Button {
+                                            Task { await removeMonth(month) }
+                                        } label: {
+                                            Image(systemName: "xmark")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundColor(Theme.Colors.expense)
+                                        }
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(Color.white)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                    )
+                                    .cornerRadius(8)
+                                    .shadow(color: .black.opacity(0.04), radius: 2)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 28)
+
+                    // Delete button
                     Button(role: .destructive) {
                         showDeleteConfirmation = true
                     } label: {
-                        HStack {
-                            Spacer()
+                        HStack(spacing: 8) {
                             if isDeleting {
-                                ProgressView()
+                                ProgressView().tint(Theme.Colors.expense)
                             } else {
-                                Label("Delete Budget", systemImage: "trash")
+                                Image(systemName: "trash")
+                                Text("Delete Budget")
                             }
-                            Spacer()
                         }
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Theme.Colors.expense)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Theme.Colors.expense.opacity(0.08))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Theme.Colors.expense.opacity(0.3), lineWidth: 1)
+                        )
+                        .cornerRadius(12)
                     }
                     .disabled(isDeleting || isSaving)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 24)
+                    .padding(.bottom, 100)
+                }
+                .padding(.top, 8)
+            }
+
+            // Floating tip gradient
+            VStack(spacing: 0) {
+                LinearGradient(
+                    gradient: Gradient(colors: [.clear, Theme.Colors.background]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 36)
+                Text("Tap amounts to edit  ·  Expand categories for details")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(Theme.Colors.textSecondary)
+                    .padding(.vertical, 16)
+                    .frame(maxWidth: .infinity)
+                    .background(Theme.Colors.background)
+            }
+        }
+        .navigationTitle(name.isEmpty ? "Edit Budget" : name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                if isSaving {
+                    ProgressView()
+                } else {
+                    Button("Save") { Task { await save() } }
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.primary)
+                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
                 }
             }
-            .navigationTitle("Edit Budget")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }
+        }
+        .confirmationDialog(
+            "Delete \"\(budget.name)\"?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Budget", role: .destructive) { Task { await delete() } }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This will delete the budget and all its line items. Transactions are not affected.")
+        }
+        .task { await loadLineItemsAndCategories() }
+        .sheet(isPresented: $showAddLineItem, onDismiss: {
+            Task { await loadLineItemsAndCategories() }
+        }) {
+            AddBudgetLineItemView(
+                budgetId: budget.id,
+                apiClient: apiClient,
+                existingLineItems: lineItems,
+                allCategories: allCategories
+            ) { newItem in
+                lineItems.append(newItem)
+            }
+        }
+        .sheet(isPresented: $showMonthPicker) {
+            NavigationStack {
+                VStack(spacing: 0) {
+                    DatePicker(
+                        "Select Month",
+                        selection: $monthPickerDate,
+                        in: ...Date(),
+                        displayedComponents: [.date]
+                    )
+                    .datePickerStyle(.graphical)
+                    .padding()
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if isSaving {
-                        ProgressView()
-                    } else {
-                        Button("Save") { Task { await save() } }
-                            .fontWeight(.semibold)
-                            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
+                .navigationTitle("Choose Month Override")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("Cancel") { showMonthPicker = false }
+                    }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Add Override") {
+                            showMonthPicker = false
+                            Task { await addMonth(monthPickerDate) }
+                        }
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.primary)
                     }
                 }
             }
-            .confirmationDialog(
-                "Delete \"\(budget.name)\"?",
-                isPresented: $showDeleteConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Delete Budget", role: .destructive) { Task { await delete() } }
-                Button("Cancel", role: .cancel) { }
-            } message: {
-                Text("This will delete the budget and all its line items. Transactions are not affected.")
+            .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showEmojiEditor) {
+            NavigationStack {
+                VStack(spacing: 24) {
+                    Text(emojiInput.isEmpty ? emoji : emojiInput)
+                        .font(.system(size: 72))
+                        .padding(.top, 32)
+
+                    TextField("Type or paste an emoji", text: $emojiInput)
+                        .font(.system(size: 28))
+                        .multilineTextAlignment(.center)
+                        .padding()
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(12)
+                        .padding(.horizontal, 40)
+
+                    Text("Tap the text field and use the emoji keyboard (🌐) to pick one")
+                        .font(.caption)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+
+                    Spacer()
+                }
+                .navigationTitle("Choose Emoji")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("Cancel") { showEmojiEditor = false }
+                    }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") {
+                            let first = emojiInput.unicodeScalars.first
+                            if let scalar = first, scalar.properties.isEmoji {
+                                emoji = String(emojiInput.prefix(2))
+                            } else if !emojiInput.isEmpty {
+                                emoji = String(emojiInput.prefix(2))
+                            }
+                            showEmojiEditor = false
+                        }
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.primary)
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
+    }
+
+    // MARK: - Budget Total Card
+
+    @ViewBuilder
+    private var budgetTotalCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .lastTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("TOTAL BUDGET")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .kerning(0.5)
+                    Text(formatAmount(totalBudget))
+                        .font(.system(size: 32, weight: .bold, design: .monospaced))
+                        .foregroundColor(Theme.Colors.textPrimary)
+                        .kerning(-1)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("CATEGORIES")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .kerning(0.5)
+                    Text("\(categoryLineItems.count)")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Theme.Colors.textSecondary)
+                }
+            }
+
+            if totalBudget > 0 && !categoryLineItems.isEmpty {
+                GeometryReader { geometry in
+                    HStack(spacing: 3) {
+                        ForEach(Array(categoryLineItems.enumerated()), id: \.element.id) { idx, item in
+                            let pct = CGFloat(item.amount / totalBudget)
+                            let w = max(4, (geometry.size.width - CGFloat(categoryLineItems.count - 1) * 3) * pct)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color(hex: categoryColorFor(id: item.categoryId, index: idx)))
+                                .frame(width: w)
+                        }
+                    }
+                }
+                .frame(height: 6)
+                .cornerRadius(3)
+                .padding(.top, 18)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(Array(categoryLineItems.enumerated()), id: \.element.id) { idx, item in
+                            HStack(spacing: 5) {
+                                Circle()
+                                    .fill(Color(hex: categoryColorFor(id: item.categoryId, index: idx)))
+                                    .frame(width: 7, height: 7)
+                                Text(allCategories.first { $0.id == item.categoryId }?.name ?? "Category")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 12)
             }
         }
+        .padding(22)
+        .background(Color.white)
+        .cornerRadius(18)
+        .shadow(color: Color.black.opacity(0.07), radius: 8, x: 0, y: 2)
+        .animation(.easeInOut(duration: 0.3), value: totalBudget)
+    }
+
+    private func categoryColorFor(id: String, index: Int) -> String {
+        allCategories.first(where: { $0.id == id })?.color
+            ?? fallbackColors[index % fallbackColors.count]
+    }
+
+    private func formatAmount(_ amount: Double) -> String {
+        let fmt = NumberFormatter()
+        fmt.numberStyle = .currency
+        fmt.currencyCode = "USD"
+        fmt.maximumFractionDigits = 0
+        fmt.minimumFractionDigits = 0
+        return fmt.string(from: NSNumber(value: amount)) ?? "$\(Int(amount))"
     }
 
     private func save() async {
@@ -1341,9 +2263,12 @@ private struct BudgetEditSheet: View {
             let updated = try await apiClient.updateBudget(
                 budgetId: budget.id,
                 name: trimmed != budget.name ? trimmed : nil,
-                isDefault: isDefault != budget.isDefault ? isDefault : nil
+                isDefault: isDefault != budget.isDefault ? isDefault : nil,
+                emoji: emoji != (budget.emoji ?? "💰") ? emoji : nil,
+                color: selectedColor != (budget.color ?? "#00A699") ? selectedColor : nil
             )
             onSave(updated)
+            dismiss()
         } catch {
             errorMessage = "Failed to save: \(error.localizedDescription)"
         }
@@ -1356,9 +2281,233 @@ private struct BudgetEditSheet: View {
         do {
             try await apiClient.deleteBudget(budgetId: budget.id)
             onDelete(budget.id)
+            dismiss()
         } catch {
             errorMessage = "Failed to delete: \(error.localizedDescription)"
             isDeleting = false
+        }
+    }
+
+    private func loadLineItemsAndCategories() async {
+        isLoadingLineItems = true
+        do {
+            async let lineItemsFetch = apiClient.fetchBudgetLineItems(budgetId: budget.id)
+            async let categoriesFetch = apiClient.fetchCategoriesTree()
+            async let monthsFetch = apiClient.fetchBudgetMonths()
+            let (items, cats, months) = try await (lineItemsFetch, categoriesFetch, monthsFetch)
+            lineItems = items  // ALL items including subcategory-level
+            allCategories = cats
+            budgetMonths = months.filter { $0.budgetId == budget.id }
+        } catch {
+            // silently fail — categories section stays empty
+        }
+        isLoadingLineItems = false
+    }
+
+    private func formatMonthString(_ monthStr: String) -> String {
+        let parts = monthStr.split(separator: "-")
+        guard parts.count == 2,
+              let year = Int(parts[0]),
+              let month = Int(parts[1]) else { return monthStr }
+        let dateComponents = DateComponents(year: year, month: month)
+        guard let date = Calendar.current.date(from: dateComponents) else { return monthStr }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM yyyy"
+        return formatter.string(from: date)
+    }
+
+    private func addMonth(_ date: Date) async {
+        let calendar = Calendar.current
+        let year = calendar.component(.year, from: date)
+        let month = calendar.component(.month, from: date)
+        let monthStr = String(format: "%04d-%02d", year, month)
+        do {
+            let newMonth = try await apiClient.assignBudgetMonth(budgetId: budget.id, month: monthStr)
+            budgetMonths.append(newMonth)
+        } catch {
+            errorMessage = "Failed to add month override: \(error.localizedDescription)"
+        }
+    }
+
+    private func removeMonth(_ month: BudgetMonth) async {
+        do {
+            try await apiClient.deleteBudgetMonth(monthId: month.id)
+            budgetMonths.removeAll { $0.id == month.id }
+        } catch {
+            errorMessage = "Failed to remove month override"
+        }
+    }
+
+    private func updateAmount(lineItem: BudgetLineItem, newAmount: Double) async {
+        guard newAmount >= 0, newAmount != lineItem.amount else {
+            editingAmounts.removeValue(forKey: lineItem.id)
+            return
+        }
+        do {
+            let updated = try await apiClient.updateBudgetLineItem(
+                budgetId: budget.id,
+                lineItemId: lineItem.id,
+                amount: newAmount
+            )
+            if let idx = lineItems.firstIndex(where: { $0.id == lineItem.id }) {
+                lineItems[idx] = updated
+            }
+            editingAmounts.removeValue(forKey: lineItem.id)
+        } catch {
+            errorMessage = "Failed to update amount"
+        }
+    }
+
+    private func removeLineItem(_ item: BudgetLineItem) async {
+        do {
+            try await apiClient.deleteBudgetLineItem(budgetId: budget.id, lineItemId: item.id)
+            lineItems.removeAll { $0.id == item.id }
+            expandedCategories.remove(item.id)
+            editingAmounts.removeValue(forKey: item.id)
+        } catch {
+            // silently fail — user can try again
+        }
+    }
+}
+
+// MARK: - Add Budget Line Item View
+
+private struct AddBudgetLineItemView: View {
+    let budgetId: String
+    let apiClient: APIClient
+    let existingLineItems: [BudgetLineItem]
+    let allCategories: [CategoryWithSubcategories]
+    let onAdd: (BudgetLineItem) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedCategory: CategoryWithSubcategories?
+    @State private var amountText = ""
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    var availableCategories: [CategoryWithSubcategories] {
+        // Only exclude categories that already have a category-level line item
+        let budgetedIds = Set(existingLineItems.filter { $0.subcategoryId == nil }.map { $0.categoryId })
+        return allCategories.filter { !budgetedIds.contains($0.id) }
+    }
+
+    var body: some View {
+        NavigationView {
+            if selectedCategory == nil {
+                // Step 1: pick a category
+                List {
+                    if availableCategories.isEmpty {
+                        Text("All categories are already in this budget.")
+                            .foregroundColor(Theme.Colors.textSecondary)
+                            .padding(.vertical, Theme.Spacing.sm)
+                    } else {
+                        Section("Select a Category") {
+                            ForEach(availableCategories) { cat in
+                                Button {
+                                    selectedCategory = cat
+                                } label: {
+                                    HStack(spacing: Theme.Spacing.md) {
+                                        Text(cat.icon)
+                                            .font(.title2)
+                                            .frame(width: 36, height: 36)
+                                        Text(cat.name)
+                                            .foregroundColor(Theme.Colors.textPrimary)
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption)
+                                            .foregroundColor(Theme.Colors.textSecondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                .navigationTitle("Add Category")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("Cancel") { dismiss() }
+                    }
+                }
+            } else {
+                // Step 2: enter amount
+                let cat = selectedCategory!
+                Form {
+                    Section {
+                        VStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                            Text(cat.icon)
+                                .font(.system(size: 50))
+                                .frame(width: 80, height: 80)
+                                .background(Color(hex: cat.color).opacity(0.15))
+                                .clipShape(Circle())
+                            Text(cat.name)
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(Theme.Colors.textPrimary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, Theme.Spacing.sm)
+                    }
+
+                    Section("Monthly Budget Amount") {
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text("$")
+                                .font(.title)
+                                .foregroundColor(Theme.Colors.textPrimary)
+                            TextField("0", text: $amountText)
+                                .font(.system(size: 36, weight: .bold))
+                                .keyboardType(.decimalPad)
+                                .foregroundColor(Theme.Colors.textPrimary)
+                        }
+                    }
+
+                    if let error = errorMessage {
+                        Section {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
+                    }
+                }
+                .navigationTitle("Set Budget")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("Back") { selectedCategory = nil }
+                    }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        if isSaving {
+                            ProgressView()
+                        } else {
+                            Button("Add") { Task { await addLineItem(cat: cat) } }
+                                .fontWeight(.semibold)
+                                .disabled(Double(amountText) == nil || amountText.isEmpty || isSaving)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func addLineItem(cat: CategoryWithSubcategories) async {
+        guard let amount = Double(amountText), amount > 0 else {
+            errorMessage = "Please enter a valid amount"
+            return
+        }
+        isSaving = true
+        errorMessage = nil
+        do {
+            let newItem = try await apiClient.createBudgetLineItem(
+                budgetId: budgetId,
+                categoryId: cat.id,
+                subcategoryId: nil,
+                amount: amount
+            )
+            onAdd(newItem)
+            dismiss()
+        } catch {
+            errorMessage = "Failed to add: \(error.localizedDescription)"
+            isSaving = false
         }
     }
 }

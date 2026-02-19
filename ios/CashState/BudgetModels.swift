@@ -8,6 +8,8 @@ struct BudgetAPI: Identifiable, Codable {
     let userId: String
     let name: String
     let isDefault: Bool
+    let emoji: String?
+    let color: String?
     let createdAt: String
     let updatedAt: String
 
@@ -16,14 +18,42 @@ struct BudgetAPI: Identifiable, Codable {
         case userId = "user_id"
         case name
         case isDefault = "is_default"
+        case emoji
+        case color
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
 }
 
+struct BudgetMonth: Identifiable, Codable {
+    let id: String
+    let budgetId: String
+    let userId: String
+    let month: String  // "YYYY-MM"
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case budgetId = "budget_id"
+        case userId = "user_id"
+        case month
+        case createdAt = "created_at"
+    }
+}
+
+struct BudgetMonthAPIListResponse: Codable {
+    let items: [BudgetMonth]
+    let total: Int
+}
+
 struct BudgetAPIListResponse: Codable {
     let items: [BudgetAPI]
     let total: Int
+}
+
+extension BudgetAPI: Hashable {
+    static func == (lhs: BudgetAPI, rhs: BudgetAPI) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
 struct BudgetLineItem: Identifiable, Codable {
