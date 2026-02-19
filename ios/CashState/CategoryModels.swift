@@ -8,7 +8,7 @@ struct Category: Identifiable, Codable, Hashable {
     let name: String
     let icon: String
     let color: String
-    let isSystem: Bool
+    let isDefault: Bool
     let displayOrder: Int
     let createdAt: String
     let updatedAt: String
@@ -16,7 +16,7 @@ struct Category: Identifiable, Codable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, name, icon, color
         case userId = "user_id"
-        case isSystem = "is_system"
+        case isDefault = "is_default"
         case displayOrder = "display_order"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -29,16 +29,43 @@ struct Subcategory: Identifiable, Codable, Hashable {
     let userId: String?
     let name: String
     let icon: String
-    let isSystem: Bool
+    let isDefault: Bool
     let displayOrder: Int
 
     enum CodingKeys: String, CodingKey {
         case id, name, icon
         case categoryId = "category_id"
         case userId = "user_id"
-        case isSystem = "is_system"
+        case isDefault = "is_default"
         case displayOrder = "display_order"
     }
+}
+
+// MARK: - Categorization Rule
+
+struct CategorizationRule: Identifiable, Codable {
+    let id: String
+    let userId: String
+    let matchField: String
+    let matchValue: String
+    let categoryId: String
+    let subcategoryId: String?
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case matchField = "match_field"
+        case matchValue = "match_value"
+        case categoryId = "category_id"
+        case subcategoryId = "subcategory_id"
+        case createdAt = "created_at"
+    }
+}
+
+struct CategorizationRuleListResponse: Codable {
+    let items: [CategorizationRule]
+    let total: Int
 }
 
 struct CategoryWithSubcategories: Identifiable, Codable {
@@ -80,28 +107,3 @@ struct SeedDefaultsResponse: Codable {
     }
 }
 
-// MARK: - Budget Models (Backend API)
-
-struct BudgetItem: Codable, Identifiable {
-    let id: String
-    let userId: String
-    let categoryId: String
-    let amount: Double
-    let period: String
-    let createdAt: String
-    let updatedAt: String
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case userId = "user_id"
-        case categoryId = "category_id"
-        case amount, period
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
-    }
-}
-
-struct BudgetListResponse: Codable {
-    let items: [BudgetItem]
-    let total: Int
-}

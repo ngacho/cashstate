@@ -246,15 +246,15 @@ struct CategoryBudgetView: View {
 
         // Budget cleared — delete existing allocation if one exists
         if budgetAmount.trimmingCharacters(in: .whitespaces).isEmpty {
-            if let budgetId = category.budgetId, let templateId = category.templateId {
+            if let lineItemId = category.lineItemId, let budgetId = category.budgetId {
                 do {
-                    try await apiClient.deleteCategoryBudget(
-                        templateId: templateId,
-                        categoryBudgetId: budgetId
+                    try await apiClient.deleteBudgetLineItem(
+                        budgetId: budgetId,
+                        lineItemId: lineItemId
                     )
-                    category.budgetId = nil
+                    category.lineItemId = nil
                     category.budgetAmount = nil
-                    category.templateId = nil
+                    // Keep budgetId so user can re-add a budget later
                 } catch {
                     errorMessage = "Failed to remove budget: \(error.localizedDescription)"
                     isSaving = false
@@ -266,8 +266,8 @@ struct CategoryBudgetView: View {
             return
         }
 
-        guard let templateId = category.templateId else {
-            errorMessage = "Missing template ID. Please try again."
+        guard let budgetId = category.budgetId else {
+            errorMessage = "Missing budget ID. Please try again."
             isSaving = false
             return
         }
@@ -279,23 +279,24 @@ struct CategoryBudgetView: View {
         }
 
         do {
-            if let budgetId = category.budgetId {
-                let updated = try await apiClient.updateCategoryBudget(
-                    templateId: templateId,
-                    categoryBudgetId: budgetId,
+            if let lineItemId = category.lineItemId {
+                let updated = try await apiClient.updateBudgetLineItem(
+                    budgetId: budgetId,
+                    lineItemId: lineItemId,
                     amount: amount
                 )
                 category.budgetAmount = updated.amount
-                category.budgetId = updated.id
+                category.lineItemId = updated.id
             } else {
-                let created = try await apiClient.addCategoryBudget(
-                    templateId: templateId,
+                let created = try await apiClient.createBudgetLineItem(
+                    budgetId: budgetId,
                     categoryId: category.id,
+                    subcategoryId: nil,
                     amount: amount
                 )
                 category.budgetAmount = created.amount
-                category.budgetId = created.id
-                category.templateId = created.templateId
+                category.lineItemId = created.id
+                category.budgetId = created.budgetId
             }
 
             isSaving = false

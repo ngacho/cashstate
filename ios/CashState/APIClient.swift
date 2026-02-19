@@ -683,6 +683,63 @@ actor APIClient {
         )
     }
 
+    func categorizeTransaction(
+        transactionId: String,
+        categoryId: String?,
+        subcategoryId: String?,
+        createRule: Bool = false
+    ) async throws {
+        struct ManualCategorizationBody: Encodable {
+            let categoryId: String?
+            let subcategoryId: String?
+            let createRule: Bool
+            enum CodingKeys: String, CodingKey {
+                case categoryId = "category_id"
+                case subcategoryId = "subcategory_id"
+                case createRule = "create_rule"
+            }
+        }
+        struct SuccessResponse: Codable { let success: Bool; let message: String }
+        let _: SuccessResponse = try await request(
+            endpoint: "/categories/transactions/\(transactionId)/categorize",
+            method: "PATCH",
+            body: ManualCategorizationBody(categoryId: categoryId, subcategoryId: subcategoryId, createRule: createRule)
+        )
+    }
+
+    func listCategorizationRules() async throws -> [CategorizationRule] {
+        let response: CategorizationRuleListResponse = try await request(endpoint: "/categories/rules")
+        return response.items
+    }
+
+    func createCategorizationRule(matchField: String, matchValue: String, categoryId: String, subcategoryId: String?) async throws -> CategorizationRule {
+        struct CreateBody: Encodable {
+            let matchField: String
+            let matchValue: String
+            let categoryId: String
+            let subcategoryId: String?
+            enum CodingKeys: String, CodingKey {
+                case matchField = "match_field"
+                case matchValue = "match_value"
+                case categoryId = "category_id"
+                case subcategoryId = "subcategory_id"
+            }
+        }
+        return try await request(
+            endpoint: "/categories/rules",
+            method: "POST",
+            body: CreateBody(matchField: matchField, matchValue: matchValue, categoryId: categoryId, subcategoryId: subcategoryId)
+        )
+    }
+
+    func deleteCategorizationRule(ruleId: String) async throws {
+        struct SuccessResponse: Codable { let success: Bool; let message: String }
+        let _: SuccessResponse = try await request(
+            endpoint: "/categories/rules/\(ruleId)",
+            method: "DELETE"
+        )
+    }
+
     func createCategory(name: String, icon: String, color: String) async throws -> Category {
         guard let url = URL(string: Config.apiBaseURL + "/categories") else {
             throw APIError.invalidURL
@@ -737,470 +794,50 @@ actor APIClient {
         return try decoder.decode(Category.self, from: data)
     }
 
-    // MARK: - Budget Templates
+    // MARK: - Budgets
 
-    func fetchBudgetTemplates() async throws -> [BudgetTemplate] {
-        guard let url = URL(string: Config.apiBaseURL + "/budget-templates") else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        if Config.debugMode {
-            print("→ GET /budget-templates")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if Config.debugMode {
-            print("← \(httpResponse.statusCode) /budget-templates")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
-            }
-
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
-            }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
-        }
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom(Self.customDateDecoder)
-        let listResponse = try decoder.decode(BudgetTemplateListResponse.self, from: data)
-        return listResponse.items
+    func getBudgetSummary(month: String) async throws -> BudgetSummary {
+        return try await request(endpoint: "/budgets/summary?month=\(month)")
     }
 
-    func getBudgetForMonth(year: Int, month: Int) async throws -> MonthlyBudget {
-        let urlString = Config.apiBaseURL + "/budget-templates/for-month?year=\(year)&month=\(month)"
-        guard let url = URL(string: urlString) else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        if Config.debugMode {
-            print("→ GET /budget-templates/for-month?year=\(year)&month=\(month)")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if Config.debugMode {
-            print("← \(httpResponse.statusCode) /budget-templates/for-month")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
-            }
-
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
-            }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
-        }
-
-        // DEBUG: Print raw JSON response
-        if let jsonString = String(data: data, encoding: .utf8) {
-            print("=== RAW JSON RESPONSE (getBudgetForMonth) ===")
-            print(jsonString)
-            print("=============================================")
-        }
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom(Self.customDateDecoder)
-
-        do {
-            return try decoder.decode(MonthlyBudget.self, from: data)
-        } catch {
-            print("=== DECODING ERROR (getBudgetForMonth) ===")
-            print("Error: \(error)")
-            if let decodingError = error as? DecodingError {
-                switch decodingError {
-                case .keyNotFound(let key, let context):
-                    print("Key '\(key.stringValue)' not found:", context.debugDescription)
-                    print("Context path:", context.codingPath.map { $0.stringValue }.joined(separator: " -> "))
-                case .typeMismatch(let type, let context):
-                    print("Type '\(type)' mismatch:", context.debugDescription)
-                    print("Context path:", context.codingPath.map { $0.stringValue }.joined(separator: " -> "))
-                case .valueNotFound(let type, let context):
-                    print("Value '\(type)' not found:", context.debugDescription)
-                    print("Context path:", context.codingPath.map { $0.stringValue }.joined(separator: " -> "))
-                case .dataCorrupted(let context):
-                    print("Data corrupted:", context.debugDescription)
-                    print("Context path:", context.codingPath.map { $0.stringValue }.joined(separator: " -> "))
-                @unknown default:
-                    print("Unknown decoding error:", error)
-                }
-            }
-            print("==========================================")
-            throw error
-        }
-    }
-
-    func fetchTemplate(templateId: String) async throws -> BudgetTemplateWithAllocations {
-        return try await request(endpoint: "/budget-templates/\(templateId)", method: "GET")
-    }
-
-    func createBudgetTemplate(name: String, isDefault: Bool, accountIds: [String] = []) async throws -> BudgetTemplate {
-        guard let url = URL(string: Config.apiBaseURL + "/budget-templates") else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        let body = [
-            "name": name,
-            "is_default": isDefault,
-            "account_ids": accountIds
-        ] as [String : Any]
-
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        if Config.debugMode {
-            print("→ POST /budget-templates")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if Config.debugMode {
-            print("← \(httpResponse.statusCode) /budget-templates")
-        }
-
-        guard httpResponse.statusCode == 201 else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
-            }
-
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
-            }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
-        }
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom(Self.customDateDecoder)
-        return try decoder.decode(BudgetTemplate.self, from: data)
-    }
-
-    func deleteCategoryBudget(templateId: String, categoryBudgetId: String) async throws {
-        struct SuccessResponse: Codable { let success: Bool; let message: String }
-        let _: SuccessResponse = try await request(
-            endpoint: "/budget-templates/\(templateId)/categories/\(categoryBudgetId)",
-            method: "DELETE"
-        )
-    }
-
-    func deleteSubcategoryBudget(templateId: String, subcategoryBudgetId: String) async throws {
-        struct SuccessResponse: Codable { let success: Bool; let message: String }
-        let _: SuccessResponse = try await request(
-            endpoint: "/budget-templates/\(templateId)/subcategories/\(subcategoryBudgetId)",
-            method: "DELETE"
-        )
-    }
-
-    func deleteTemplate(templateId: String) async throws {
-        struct SuccessResponse: Codable { let success: Bool; let message: String }
-        let _: SuccessResponse = try await request(
-            endpoint: "/budget-templates/\(templateId)",
-            method: "DELETE"
-        )
-    }
-
-    func setDefaultTemplate(templateId: String) async throws -> BudgetTemplate {
-        return try await request(
-            endpoint: "/budget-templates/\(templateId)/set-default",
-            method: "POST"
-        )
-    }
-
-    func updateTemplate(templateId: String, name: String) async throws -> BudgetTemplate {
-        struct UpdateBody: Encodable { let name: String }
-        return try await request(
-            endpoint: "/budget-templates/\(templateId)",
-            method: "PATCH",
-            body: UpdateBody(name: name)
-        )
-    }
-
-    func listBudgetPeriods() async throws -> [BudgetPeriodModel] {
-        let response: BudgetPeriodListResponse = try await request(
-            endpoint: "/budget-templates/periods"
-        )
+    func fetchBudgets() async throws -> [BudgetAPI] {
+        let response: BudgetAPIListResponse = try await request(endpoint: "/budgets")
         return response.items
     }
 
-    func createBudgetPeriod(templateId: String, periodMonth: String) async throws -> BudgetPeriodModel {
+    func createBudgetLineItem(budgetId: String, categoryId: String, subcategoryId: String?, amount: Double) async throws -> BudgetLineItem {
         struct CreateBody: Encodable {
-            let templateId: String
-            let periodMonth: String
+            let categoryId: String
+            let subcategoryId: String?
+            let amount: Double
             enum CodingKeys: String, CodingKey {
-                case templateId = "template_id"
-                case periodMonth = "period_month"
+                case categoryId = "category_id"
+                case subcategoryId = "subcategory_id"
+                case amount
             }
         }
         return try await request(
-            endpoint: "/budget-templates/periods",
+            endpoint: "/budgets/\(budgetId)/line-items",
             method: "POST",
-            body: CreateBody(templateId: templateId, periodMonth: periodMonth)
+            body: CreateBody(categoryId: categoryId, subcategoryId: subcategoryId, amount: amount)
         )
     }
 
-    func deleteBudgetPeriod(periodId: String) async throws {
+    func updateBudgetLineItem(budgetId: String, lineItemId: String, amount: Double) async throws -> BudgetLineItem {
+        struct UpdateBody: Encodable { let amount: Double }
+        return try await request(
+            endpoint: "/budgets/\(budgetId)/line-items/\(lineItemId)",
+            method: "PATCH",
+            body: UpdateBody(amount: amount)
+        )
+    }
+
+    func deleteBudgetLineItem(budgetId: String, lineItemId: String) async throws {
         struct SuccessResponse: Codable { let success: Bool; let message: String }
         let _: SuccessResponse = try await request(
-            endpoint: "/budget-templates/periods/\(periodId)",
+            endpoint: "/budgets/\(budgetId)/line-items/\(lineItemId)",
             method: "DELETE"
         )
-    }
-
-    func addCategoryBudget(templateId: String, categoryId: String, amount: Double) async throws -> CategoryBudget {
-        let urlString = Config.apiBaseURL + "/budget-templates/\(templateId)/categories"
-        guard let url = URL(string: urlString) else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        let body = [
-            "category_id": categoryId,
-            "amount": amount
-        ] as [String : Any]
-
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        if Config.debugMode {
-            print("→ POST /budget-templates/\(templateId)/categories")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if Config.debugMode {
-            print("← \(httpResponse.statusCode) /budget-templates/categories")
-        }
-
-        guard httpResponse.statusCode == 201 else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
-            }
-
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
-            }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
-        }
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom(Self.customDateDecoder)
-        return try decoder.decode(CategoryBudget.self, from: data)
-    }
-
-    func updateCategoryBudget(templateId: String, categoryBudgetId: String, amount: Double) async throws -> CategoryBudget {
-        let urlString = Config.apiBaseURL + "/budget-templates/\(templateId)/categories/\(categoryBudgetId)"
-        guard let url = URL(string: urlString) else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "PATCH"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        let body = ["amount": amount]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        if Config.debugMode {
-            print("→ PATCH /budget-templates/\(templateId)/categories/\(categoryBudgetId)")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if Config.debugMode {
-            print("← \(httpResponse.statusCode) /budget-templates/categories")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
-            }
-
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
-            }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
-        }
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom(Self.customDateDecoder)
-        return try decoder.decode(CategoryBudget.self, from: data)
-    }
-
-    func addSubcategoryBudget(templateId: String, subcategoryId: String, amount: Double) async throws -> SubcategoryBudget {
-        let urlString = Config.apiBaseURL + "/budget-templates/\(templateId)/subcategories"
-        guard let url = URL(string: urlString) else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        let body = [
-            "subcategory_id": subcategoryId,
-            "amount": amount
-        ] as [String : Any]
-
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        if Config.debugMode {
-            print("→ POST /budget-templates/\(templateId)/subcategories")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if Config.debugMode {
-            print("← \(httpResponse.statusCode) /budget-templates/subcategories")
-        }
-
-        guard httpResponse.statusCode == 201 else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
-            }
-
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
-            }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
-        }
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom(Self.customDateDecoder)
-        return try decoder.decode(SubcategoryBudget.self, from: data)
-    }
-
-    func updateSubcategoryBudget(templateId: String, subcategoryBudgetId: String, amount: Double) async throws -> SubcategoryBudget {
-        let urlString = Config.apiBaseURL + "/budget-templates/\(templateId)/subcategories/\(subcategoryBudgetId)"
-        guard let url = URL(string: urlString) else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "PATCH"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        let body = ["amount": amount]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        if Config.debugMode {
-            print("→ PATCH /budget-templates/\(templateId)/subcategories/\(subcategoryBudgetId)")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if Config.debugMode {
-            print("← \(httpResponse.statusCode) /budget-templates/subcategories")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
-            }
-
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
-            }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
-        }
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom(Self.customDateDecoder)
-        return try decoder.decode(SubcategoryBudget.self, from: data)
     }
 
     // MARK: - Transaction Categorization

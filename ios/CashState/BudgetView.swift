@@ -25,6 +25,9 @@ struct BudgetView: View {
     @State private var loadError: String?
     @State private var loadTask: Task<Void, Never>?
 
+    // Tab selection (Budget vs Compare)
+    @State private var budgetTab = 0
+
     // Filter toggle
     @State private var showIncomeInBudget = false
 
@@ -83,8 +86,22 @@ struct BudgetView: View {
                         reloadData()
                     }
                 } else {
-                    // Show main budget UI
-                    budgetContentView
+                    // Show main budget UI with Budget/Compare segmented control
+                    VStack(spacing: 0) {
+                        Picker("", selection: $budgetTab) {
+                            Text("Budget").tag(0)
+                            Text("Compare").tag(1)
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.sm)
+
+                        if budgetTab == 0 {
+                            budgetContentView
+                        } else {
+                            SpendingCompareView(apiClient: apiClient, initialMonth: selectedMonth)
+                        }
+                    }
                 }
             }
             .navigationTitle("Budget")
@@ -356,7 +373,7 @@ struct BudgetView: View {
                                 ExpandableCategoryCard(
                                     category: $category,
                                     apiClient: apiClient,
-                                    onDeleteCategoryBudget: category.budgetId != nil ? {
+                                    onDeleteCategoryBudget: category.lineItemId != nil ? {
                                         let c = category
                                         await deleteCategoryBudget(category: c)
                                     } : nil,
@@ -420,18 +437,18 @@ struct BudgetView: View {
         uncategorizedTransactions = []
 
         do {
-            // Get year and month from selectedMonth
             let calendar = Calendar.current
             let components = calendar.dateComponents([.year, .month], from: selectedMonth)
             guard let year = components.year, let month = components.month else {
                 throw NSError(domain: "BudgetView", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid date"])
             }
+            let monthString = "\(year)-\(String(format: "%02d", month))"
 
-            // Fetch budget for month with spending calculated by backend
-            let monthlyBudget = try await apiClient.getBudgetForMonth(year: year, month: month)
+            // Fetch budget summary and categories tree in parallel
+            async let summaryFetch = apiClient.getBudgetSummary(month: monthString)
+            async let categoriesTreeFetch = apiClient.fetchCategoriesTree()
 
-            // Fetch categories tree for full category info (names, icons, colors)
-            let categoriesTree = try await apiClient.fetchCategoriesTree()
+            let (budgetSummary, categoriesTree) = try await (summaryFetch, categoriesTreeFetch)
 
             // Build category lookup
             var categoryLookup: [String: CategoryWithSubcategories] = [:]
@@ -439,79 +456,85 @@ struct BudgetView: View {
                 categoryLookup[cat.id] = cat
             }
 
-            // Build subcategory lookup and count
-            var subcategoryLookup: [String: Subcategory] = [:]
-            var subcategoryTransactionCount: [String: Int] = [:]
-            for cat in categoriesTree {
-                for sub in cat.subcategories {
-                    subcategoryLookup[sub.id] = sub
-                    // TODO: Get transaction counts from API
-                    subcategoryTransactionCount[sub.id] = 0
-                }
+            // Build subcategory-level line item lookup (by subcategory ID)
+            var subcategoryLineItemMap: [String: BudgetSummaryLineItem] = [:]
+            for lineItem in budgetSummary.lineItems where lineItem.subcategoryId != nil {
+                subcategoryLineItemMap[lineItem.subcategoryId!] = lineItem
             }
 
-            // Build a lookup for subcategory budget entries (by subcategory ID)
-            var subcategoryBudgetMap: [String: SubcategoryBudget] = [:]
-            for subBudget in monthlyBudget.subcategories {
-                subcategoryBudgetMap[subBudget.subcategoryId] = subBudget
-            }
-
-            // Convert API response to BudgetCategory format
-            self.categories = monthlyBudget.categories.compactMap { categoryBudget in
-                guard let cat = categoryLookup[categoryBudget.categoryId] else {
-                    return nil
-                }
-
-                // Build subcategories from the categories tree (all of them),
-                // merging in budget/spending data where it exists
-                let subcategories: [BudgetSubcategory] = cat.subcategories.map { sub in
-                    let subBudget = subcategoryBudgetMap[sub.id]
-                    let spent = monthlyBudget.subcategorySpending[sub.id] ?? 0
+            // Helper to build subcategories for a category
+            func buildSubcategories(for cat: CategoryWithSubcategories) -> [BudgetSubcategory] {
+                cat.subcategories.map { sub in
+                    let subLineItem = subcategoryLineItemMap[sub.id]
                     return BudgetSubcategory(
                         id: sub.id,
                         name: sub.name,
                         icon: sub.icon,
-                        budgetAmount: subBudget?.amount,
-                        spentAmount: spent,
-                        transactionCount: subcategoryTransactionCount[sub.id] ?? 0,
-                        budgetId: subBudget?.id,
-                        templateId: subBudget?.templateId
+                        budgetAmount: subLineItem?.amount,
+                        spentAmount: subLineItem?.spent ?? 0,
+                        transactionCount: 0,
+                        lineItemId: subLineItem?.id,
+                        budgetId: subLineItem != nil ? budgetSummary.budgetId : nil
+                    )
+                }
+            }
+
+            // Build BudgetCategory list from budgeted line items (category-level)
+            var result: [BudgetCategory] = budgetSummary.lineItems
+                .filter { $0.subcategoryId == nil }
+                .compactMap { lineItem in
+                    guard let cat = categoryLookup[lineItem.categoryId] else { return nil }
+                    return BudgetCategory(
+                        id: cat.id,
+                        name: cat.name,
+                        icon: cat.icon,
+                        colorHex: cat.color,
+                        type: .expense,
+                        subcategories: buildSubcategories(for: cat),
+                        budgetAmount: lineItem.amount,
+                        spentAmount: lineItem.spent,
+                        lineItemId: lineItem.id,
+                        budgetId: budgetSummary.budgetId
                     )
                 }
 
-                return BudgetCategory(
+            // Add unbudgeted categories that have spending
+            let budgetedCategoryIds = Set(result.map { $0.id })
+            for unbudgeted in budgetSummary.unbudgetedCategories where unbudgeted.spent > 0 {
+                guard !budgetedCategoryIds.contains(unbudgeted.categoryId),
+                      let cat = categoryLookup[unbudgeted.categoryId] else { continue }
+                result.append(BudgetCategory(
                     id: cat.id,
                     name: cat.name,
                     icon: cat.icon,
                     colorHex: cat.color,
                     type: .expense,
-                    subcategories: subcategories,
-                    budgetAmount: categoryBudget.amount,
-                    spentAmount: categoryBudget.spent ?? 0,
-                    budgetId: categoryBudget.id,  // Store budget ID for updates
-                    templateId: categoryBudget.templateId  // Store template ID for updates
-                )
+                    subcategories: buildSubcategories(for: cat),
+                    budgetAmount: nil,
+                    spentAmount: unbudgeted.spent,
+                    budgetId: budgetSummary.budgetId
+                ))
             }
 
-            // Load uncategorized transactions for this month
+            self.categories = result
+
+            // Load transactions for uncategorized list and month navigation flags
             let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: selectedMonth))!
             let startTimestamp = Int(startOfMonth.timeIntervalSince1970)
             let startOfNextMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth)!
             let endTimestamp = Int(startOfNextMonth.timeIntervalSince1970)
 
-            let response = try await apiClient.listSimplefinTransactions(
+            let txResponse = try await apiClient.listSimplefinTransactions(
                 dateFrom: startTimestamp,
                 dateTo: endTimestamp,
                 limit: 1000,
                 offset: 0
             )
 
-            hasPreviousData = response.hasPreviousMonth
-            hasNextData = response.hasNextMonth
+            hasPreviousData = txResponse.hasPreviousMonth
+            hasNextData = txResponse.hasNextMonth
 
-            // Load uncategorized transactions (transactions without category_id)
-            // Only show uncategorized EXPENSES by default (income/credits excluded unless toggle is on)
-            self.uncategorizedTransactions = response.items
+            self.uncategorizedTransactions = txResponse.items
                 .filter { tx in
                     let hasNoCategory = tx.categoryId == nil
                     let isExpense = tx.amount < 0
@@ -613,14 +636,14 @@ struct BudgetView: View {
     }
 
     func deleteCategoryBudget(category: BudgetCategory) async {
-        guard let budgetId = category.budgetId,
-              let templateId = category.templateId else { return }
+        guard let lineItemId = category.lineItemId,
+              let budgetId = category.budgetId else { return }
         do {
-            try await apiClient.deleteCategoryBudget(templateId: templateId, categoryBudgetId: budgetId)
+            try await apiClient.deleteBudgetLineItem(budgetId: budgetId, lineItemId: lineItemId)
             if let idx = categories.firstIndex(where: { $0.id == category.id }) {
-                categories[idx].budgetId = nil
+                categories[idx].lineItemId = nil
                 categories[idx].budgetAmount = nil
-                categories[idx].templateId = nil
+                categories[idx].budgetId = nil
             }
         } catch {
             // Budget delete failed silently — user can retry via context menu
@@ -628,8 +651,7 @@ struct BudgetView: View {
     }
 
     func deleteCategory(category: BudgetCategory) async {
-        // Remove budget allocation first so server recalculates template total
-        if category.budgetId != nil {
+        if category.lineItemId != nil {
             await deleteCategoryBudget(category: category)
         }
         do {
@@ -1026,15 +1048,9 @@ struct AllBudgetsView: View {
     @Binding var isPresented: Bool
     let apiClient: APIClient
 
-    @State private var templates: [BudgetTemplate] = []
-    @State private var periods: [BudgetPeriodModel] = []
+    @State private var budgets: [BudgetAPI] = []
     @State private var isLoading = true
     @State private var loadError: String?
-    @State private var showCreateTemplate = false
-    @State private var showCreatePeriod = false
-    @State private var templateToRename: BudgetTemplate?
-    @State private var renameText = ""
-    @State private var showRenameAlert = false
 
     var body: some View {
         NavigationStack {
@@ -1053,68 +1069,26 @@ struct AllBudgetsView: View {
                     }
                 } else {
                     List {
-                        Section("Templates") {
-                            ForEach(templates) { template in
-                                NavigationLink(value: template) {
-                                    TemplateListRowContent(template: template)
-                                }
-                                .swipeActions(edge: .trailing) {
-                                    if !template.isDefault {
-                                        Button(role: .destructive) {
-                                            Task { await deleteTemplate(template) }
-                                        } label: {
-                                            Label("Delete", systemImage: "trash")
+                        Section("Budgets") {
+                            ForEach(budgets) { budget in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        HStack(spacing: 6) {
+                                            Text(budget.name).font(.body)
+                                            if budget.isDefault {
+                                                Text("DEFAULT")
+                                                    .font(.caption2).fontWeight(.bold)
+                                                    .foregroundColor(.white)
+                                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                                    .background(Theme.Colors.primary)
+                                                    .cornerRadius(4)
+                                            }
                                         }
                                     }
-                                    Button {
-                                        templateToRename = template
-                                        renameText = template.name
-                                        showRenameAlert = true
-                                    } label: {
-                                        Label("Rename", systemImage: "pencil")
-                                    }
-                                    .tint(.orange)
-                                }
-                                .swipeActions(edge: .leading) {
-                                    if !template.isDefault {
-                                        Button {
-                                            Task { await setDefaultTemplate(template) }
-                                        } label: {
-                                            Label("Set Default", systemImage: "star.fill")
-                                        }
-                                        .tint(Theme.Colors.primary)
-                                    }
+                                    Spacer()
                                 }
                             }
-                            Button {
-                                showCreateTemplate = true
-                            } label: {
-                                Label("New Budget Template", systemImage: "plus")
-                            }
                         }
-
-                        Section("Monthly Overrides") {
-                            ForEach(periods) { period in
-                                PeriodListRow(
-                                    period: period,
-                                    templates: templates,
-                                    onDelete: { await deletePeriod(period) }
-                                )
-                            }
-                            Button {
-                                showCreatePeriod = true
-                            } label: {
-                                Label("Override a Month", systemImage: "calendar.badge.plus")
-                            }
-                            .disabled(templates.count < 2)
-                        }
-                    }
-                    .navigationDestination(for: BudgetTemplate.self) { template in
-                        TemplateBudgetDetailView(
-                            template: template,
-                            apiClient: apiClient,
-                            onSave: { await loadData() }
-                        )
                     }
                 }
             }
@@ -1125,26 +1099,6 @@ struct AllBudgetsView: View {
                     Button("Done") { isPresented = false }
                 }
             }
-            .sheet(isPresented: $showCreateTemplate) {
-                CreateTemplateSheet(apiClient: apiClient) { newTemplate in
-                    templates.append(newTemplate)
-                }
-            }
-            .sheet(isPresented: $showCreatePeriod) {
-                CreatePeriodSheet(templates: templates, apiClient: apiClient) { newPeriod in
-                    periods.append(newPeriod)
-                }
-            }
-            .alert("Rename Template", isPresented: $showRenameAlert) {
-                TextField("Template name", text: $renameText)
-                Button("Cancel", role: .cancel) { }
-                Button("Save") {
-                    if let t = templateToRename {
-                        let name = renameText
-                        Task { await renameTemplate(t, name: name) }
-                    }
-                }
-            }
         }
         .task { await loadData() }
     }
@@ -1153,534 +1107,11 @@ struct AllBudgetsView: View {
         isLoading = true
         loadError = nil
         do {
-            async let templatesResult = apiClient.fetchBudgetTemplates()
-            async let periodsResult = apiClient.listBudgetPeriods()
-            let (t, p) = try await (templatesResult, periodsResult)
-            templates = t
-            periods = p
+            budgets = try await apiClient.fetchBudgets()
         } catch {
             loadError = error.localizedDescription
         }
         isLoading = false
-    }
-
-    private func deleteTemplate(_ template: BudgetTemplate) async {
-        do {
-            try await apiClient.deleteTemplate(templateId: template.id)
-            templates.removeAll { $0.id == template.id }
-        } catch { }
-    }
-
-    private func setDefaultTemplate(_ template: BudgetTemplate) async {
-        do {
-            _ = try await apiClient.setDefaultTemplate(templateId: template.id)
-            await loadData()
-        } catch { }
-    }
-
-    private func renameTemplate(_ template: BudgetTemplate, name: String) async {
-        do {
-            let updated = try await apiClient.updateTemplate(templateId: template.id, name: name)
-            if let idx = templates.firstIndex(where: { $0.id == template.id }) {
-                templates[idx] = updated
-            }
-        } catch { }
-    }
-
-    private func deletePeriod(_ period: BudgetPeriodModel) async {
-        do {
-            try await apiClient.deleteBudgetPeriod(periodId: period.id)
-            periods.removeAll { $0.id == period.id }
-        } catch { }
-    }
-}
-
-// MARK: - Template List Row Content
-
-struct TemplateListRowContent: View {
-    let template: BudgetTemplate
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(template.name)
-                        .font(.body)
-                    if template.isDefault {
-                        Text("DEFAULT")
-                            .font(.caption2)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Theme.Colors.primary)
-                            .cornerRadius(4)
-                    }
-                }
-                Text("$\(String(format: "%.2f", template.totalAmount)) total")
-                    .font(.caption)
-                    .foregroundColor(Theme.Colors.textSecondary)
-            }
-            Spacer()
-        }
-    }
-}
-
-// MARK: - Period List Row
-
-struct PeriodListRow: View {
-    let period: BudgetPeriodModel
-    let templates: [BudgetTemplate]
-    let onDelete: () async -> Void
-
-    var templateName: String {
-        templates.first { $0.id == period.templateId }?.name ?? "Unknown Template"
-    }
-
-    var formattedMonth: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        if let date = formatter.date(from: period.periodMonth) {
-            let displayFormatter = DateFormatter()
-            displayFormatter.dateFormat = "MMMM yyyy"
-            return displayFormatter.string(from: date)
-        }
-        return period.apiMonth
-    }
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(formattedMonth)
-                    .font(.body)
-                Text(templateName)
-                    .font(.caption)
-                    .foregroundColor(Theme.Colors.textSecondary)
-            }
-            Spacer()
-        }
-        .swipeActions(edge: .trailing) {
-            Button(role: .destructive) {
-                Task { await onDelete() }
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-        }
-    }
-}
-
-// MARK: - Create Template Sheet
-
-struct CreateTemplateSheet: View {
-    let apiClient: APIClient
-    let onCreate: (BudgetTemplate) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var name = ""
-    @State private var isDefault = false
-    @State private var isSaving = false
-    @State private var error: String?
-
-    var body: some View {
-        NavigationView {
-            Form {
-                Section {
-                    TextField("Template Name", text: $name)
-                    Toggle("Set as default", isOn: $isDefault)
-                }
-                Section {
-                    HStack(spacing: 6) {
-                        Image(systemName: "info.circle.fill")
-                            .foregroundColor(.blue)
-                            .font(.caption)
-                        Text("Total budget is auto-calculated from category budgets.")
-                            .font(.caption)
-                            .foregroundColor(Theme.Colors.textSecondary)
-                    }
-                }
-                if let error = error {
-                    Text(error)
-                        .foregroundColor(.red)
-                        .font(.caption)
-                }
-            }
-            .navigationTitle("New Template")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        Task { await createTemplate() }
-                    }
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
-                }
-            }
-        }
-    }
-
-    private func createTemplate() async {
-        isSaving = true
-        do {
-            let template = try await apiClient.createBudgetTemplate(name: name, isDefault: isDefault)
-            onCreate(template)
-            dismiss()
-        } catch {
-            self.error = error.localizedDescription
-        }
-        isSaving = false
-    }
-}
-
-// MARK: - Create Period Sheet
-
-struct CreatePeriodSheet: View {
-    let templates: [BudgetTemplate]
-    let apiClient: APIClient
-    let onCreate: (BudgetPeriodModel) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var selectedDate = Date()
-    @State private var selectedTemplateId = ""
-    @State private var isSaving = false
-    @State private var error: String?
-
-    var body: some View {
-        NavigationView {
-            Form {
-                Section("Month") {
-                    DatePicker(
-                        "Select Month",
-                        selection: $selectedDate,
-                        in: ...Date(),
-                        displayedComponents: [.date]
-                    )
-                    .datePickerStyle(.compact)
-                }
-                Section("Template") {
-                    Picker("Template", selection: $selectedTemplateId) {
-                        ForEach(templates) { template in
-                            Text(template.name).tag(template.id)
-                        }
-                    }
-                }
-                if let error = error {
-                    Text(error)
-                        .foregroundColor(.red)
-                        .font(.caption)
-                }
-            }
-            .navigationTitle("Override a Month")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Apply") {
-                        Task { await createPeriod() }
-                    }
-                    .disabled(selectedTemplateId.isEmpty || isSaving)
-                }
-            }
-            .onAppear {
-                if let first = templates.first {
-                    selectedTemplateId = first.id
-                }
-            }
-        }
-    }
-
-    private func createPeriod() async {
-        isSaving = true
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM"
-        let periodMonth = formatter.string(from: selectedDate)
-        do {
-            let period = try await apiClient.createBudgetPeriod(templateId: selectedTemplateId, periodMonth: periodMonth)
-            onCreate(period)
-            dismiss()
-        } catch {
-            self.error = error.localizedDescription
-        }
-        isSaving = false
-    }
-}
-
-// MARK: - Template Budget Detail View
-
-private struct TemplateEditSubrow: Identifiable {
-    var id: String        // subcategory id
-    var budgetId: String?
-    var name: String
-    var icon: String
-    var amount: String    // text field value
-}
-
-private struct TemplateEditRow: Identifiable {
-    var id: String        // category id
-    var budgetId: String?
-    var name: String
-    var icon: String
-    var color: Color
-    var amount: String    // text field value
-    var subcategories: [TemplateEditSubrow]
-}
-
-struct TemplateBudgetDetailView: View {
-    let template: BudgetTemplate
-    let apiClient: APIClient
-    let onSave: () async -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var rows: [TemplateEditRow] = []
-    @State private var isLoading = true
-    @State private var isSaving = false
-    @State private var errorMessage: String?
-
-    var liveTotal: Double {
-        rows.compactMap { Double($0.amount) }.reduce(0, +)
-    }
-
-    var body: some View {
-        Group {
-            if isLoading {
-                ProgressView("Loading...")
-            } else {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        // Live total header
-                        VStack(spacing: 4) {
-                            Text("$\(String(format: "%.0f", liveTotal))")
-                                .font(.system(size: 44, weight: .bold))
-                                .foregroundColor(Theme.Colors.textPrimary)
-                            Text("Monthly Budget")
-                                .font(.subheadline)
-                                .foregroundColor(Theme.Colors.textSecondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, Theme.Spacing.lg)
-                        .background(Theme.Colors.cardBackground)
-
-                        Divider()
-
-                        // Category rows
-                        ForEach($rows) { $row in
-                            TemplateCategoryEditRow(row: $row) {
-                                Task { await deleteCategory(row: row) }
-                            }
-                        }
-
-                        if rows.isEmpty {
-                            Text("No categories yet. Add some from the Budget tab.")
-                                .font(.subheadline)
-                                .foregroundColor(Theme.Colors.textSecondary)
-                                .multilineTextAlignment(.center)
-                                .padding(Theme.Spacing.xl)
-                        }
-
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.caption)
-                                .foregroundColor(.red)
-                                .padding()
-                        }
-
-                        Spacer(minLength: Theme.Spacing.xl)
-                    }
-                }
-                .background(Theme.Colors.background)
-            }
-        }
-        .navigationTitle(template.name)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if isSaving {
-                    ProgressView()
-                } else {
-                    Button("Save") {
-                        Task { await saveAll() }
-                    }
-                    .fontWeight(.semibold)
-                    .foregroundColor(Theme.Colors.primary)
-                }
-            }
-        }
-        .task { await loadData() }
-    }
-
-    private func loadData() async {
-        isLoading = true
-        do {
-            async let catsResult = apiClient.fetchCategoriesTree()
-            async let tmplResult = apiClient.fetchTemplate(templateId: template.id)
-            let (cats, tmpl) = try await (catsResult, tmplResult)
-
-            let catBudgetMap = Dictionary(uniqueKeysWithValues: tmpl.categories.map { ($0.categoryId, $0) })
-            let subBudgetMap = Dictionary(uniqueKeysWithValues: tmpl.subcategories.map { ($0.subcategoryId, $0) })
-
-            rows = cats.map { cat in
-                let catBudget = catBudgetMap[cat.id]
-                let subrows = cat.subcategories.map { sub -> TemplateEditSubrow in
-                    let subBudget = subBudgetMap[sub.id]
-                    return TemplateEditSubrow(
-                        id: sub.id,
-                        budgetId: subBudget?.id,
-                        name: sub.name,
-                        icon: sub.icon,
-                        amount: subBudget.map { String(format: "%.0f", $0.amount) } ?? ""
-                    )
-                }
-                return TemplateEditRow(
-                    id: cat.id,
-                    budgetId: catBudget?.id,
-                    name: cat.name,
-                    icon: cat.icon,
-                    color: ColorPalette(rawValue: cat.color)?.color ?? .blue,
-                    amount: catBudget.map { String(format: "%.0f", $0.amount) } ?? "",
-                    subcategories: subrows
-                )
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-        isLoading = false
-    }
-
-    private func saveAll() async {
-        isSaving = true
-        errorMessage = nil
-        do {
-            for row in rows {
-                let catAmt = Double(row.amount) ?? 0
-                if catAmt > 0 {
-                    if let bid = row.budgetId {
-                        _ = try await apiClient.updateCategoryBudget(templateId: template.id, categoryBudgetId: bid, amount: catAmt)
-                    } else {
-                        _ = try await apiClient.addCategoryBudget(templateId: template.id, categoryId: row.id, amount: catAmt)
-                    }
-                } else if let bid = row.budgetId {
-                    try await apiClient.deleteCategoryBudget(templateId: template.id, categoryBudgetId: bid)
-                }
-                for sub in row.subcategories {
-                    let subAmt = Double(sub.amount) ?? 0
-                    if subAmt > 0 {
-                        if let bid = sub.budgetId {
-                            _ = try await apiClient.updateSubcategoryBudget(templateId: template.id, subcategoryBudgetId: bid, amount: subAmt)
-                        } else {
-                            _ = try await apiClient.addSubcategoryBudget(templateId: template.id, subcategoryId: sub.id, amount: subAmt)
-                        }
-                    } else if let bid = sub.budgetId {
-                        try await apiClient.deleteSubcategoryBudget(templateId: template.id, subcategoryBudgetId: bid)
-                    }
-                }
-            }
-            await onSave()
-            dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-        isSaving = false
-    }
-
-    private func deleteCategory(row: TemplateEditRow) async {
-        do {
-            if let bid = row.budgetId {
-                try await apiClient.deleteCategoryBudget(templateId: template.id, categoryBudgetId: bid)
-            }
-            try await apiClient.deleteCategory(categoryId: row.id)
-            rows.removeAll { $0.id == row.id }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-}
-
-private struct TemplateCategoryEditRow: View {
-    @Binding var row: TemplateEditRow
-    let onDelete: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // Category row
-            HStack(spacing: Theme.Spacing.sm) {
-                Text(row.icon)
-                    .font(.title3)
-                    .frame(width: 36, height: 36)
-                    .overlay(Circle().strokeBorder(row.color, lineWidth: 2))
-
-                Text(row.name)
-                    .font(.body)
-                    .fontWeight(.medium)
-                    .foregroundColor(Theme.Colors.textPrimary)
-
-                Spacer()
-
-                HStack(spacing: 2) {
-                    Text("$")
-                        .font(.body)
-                        .foregroundColor(Theme.Colors.textSecondary)
-                    TextField("0", text: $row.amount)
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 80)
-                        .font(.body)
-                        .fontWeight(.medium)
-                        .foregroundColor(Theme.Colors.textPrimary)
-                }
-
-                Button(action: onDelete) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(Theme.Colors.textSecondary.opacity(0.6))
-                        .font(.title3)
-                }
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
-            .background(Theme.Colors.cardBackground)
-
-            // Subcategory rows
-            ForEach($row.subcategories) { $sub in
-                HStack(spacing: Theme.Spacing.sm) {
-                    // Indent line
-                    Rectangle()
-                        .fill(row.color.opacity(0.4))
-                        .frame(width: 2, height: 28)
-                        .padding(.leading, Theme.Spacing.lg)
-
-                    Text(sub.icon)
-                        .font(.subheadline)
-                        .frame(width: 28, height: 28)
-                        .overlay(Circle().strokeBorder(row.color.opacity(0.5), lineWidth: 1.5))
-
-                    Text(sub.name)
-                        .font(.subheadline)
-                        .foregroundColor(Theme.Colors.textPrimary)
-
-                    Spacer()
-
-                    HStack(spacing: 2) {
-                        Text("$")
-                            .font(.subheadline)
-                            .foregroundColor(Theme.Colors.textSecondary)
-                        TextField("0", text: $sub.amount)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                            .frame(width: 70)
-                            .font(.subheadline)
-                            .foregroundColor(Theme.Colors.textPrimary)
-                    }
-                    // Spacer to align with X button above
-                    .padding(.trailing, 28 + Theme.Spacing.sm)
-                }
-                .padding(.vertical, 6)
-                .background(Theme.Colors.cardBackground.opacity(0.6))
-            }
-
-            Divider()
-        }
     }
 }
 
@@ -1955,7 +1386,7 @@ struct ExpandableCategoryCard: View {
                             subcategory: $subcategory,
                             categoryColor: category.color,
                             apiClient: apiClient,
-                            onDeleteSubcategoryBudget: subcategory.budgetId != nil ? {
+                            onDeleteSubcategoryBudget: subcategory.lineItemId != nil ? {
                                 let sub = subcategory
                                 await deleteSubcategoryBudget(subcategory: sub)
                             } : nil
@@ -2021,7 +1452,7 @@ struct ExpandableCategoryCard: View {
             isPresented: $showDeleteCategoryConfirmation,
             titleVisibility: .visible
         ) {
-            if category.budgetId != nil {
+            if category.lineItemId != nil {
                 Button("Remove Budget & Delete Category", role: .destructive) {
                     Task { await onDeleteCategory?() }
                 }
@@ -2032,7 +1463,7 @@ struct ExpandableCategoryCard: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            if category.budgetId != nil {
+            if category.lineItemId != nil {
                 Text("This will remove the $\(String(format: "%.0f", category.budgetAmount ?? 0)) budget allocation and delete the category. Transactions will become uncategorized.")
             } else {
                 Text("This category will be deleted. Transactions will become uncategorized.")
@@ -2041,15 +1472,14 @@ struct ExpandableCategoryCard: View {
     }
 
     private func deleteSubcategoryBudget(subcategory: BudgetSubcategory) async {
-        guard let budgetId = subcategory.budgetId,
-              let templateId = subcategory.templateId else { return }
+        guard let lineItemId = subcategory.lineItemId,
+              let budgetId = subcategory.budgetId else { return }
         do {
-            try await apiClient.deleteSubcategoryBudget(templateId: templateId, subcategoryBudgetId: budgetId)
-            // Clear budget fields — subcategory still exists, just without a budget allocation
+            try await apiClient.deleteBudgetLineItem(budgetId: budgetId, lineItemId: lineItemId)
             if let idx = category.subcategories.firstIndex(where: { $0.id == subcategory.id }) {
-                category.subcategories[idx].budgetId = nil
+                category.subcategories[idx].lineItemId = nil
                 category.subcategories[idx].budgetAmount = nil
-                category.subcategories[idx].templateId = nil
+                category.subcategories[idx].budgetId = nil
             }
         } catch {
             // Delete failed silently — user can retry via context menu
@@ -2191,6 +1621,7 @@ struct SubcategoryRow: View {
         .sheet(isPresented: $showEditBudget) {
             SubcategoryBudgetView(
                 subcategory: $subcategory,
+                categoryId: category.id,
                 categoryColor: categoryColor,
                 isPresented: $showEditBudget,
                 apiClient: apiClient

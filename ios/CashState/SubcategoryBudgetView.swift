@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SubcategoryBudgetView: View {
     @Binding var subcategory: BudgetSubcategory
+    let categoryId: String
     let categoryColor: Color
     @Binding var isPresented: Bool
     let apiClient: APIClient
@@ -10,8 +11,9 @@ struct SubcategoryBudgetView: View {
     @State private var isSaving: Bool = false
     @State private var errorMessage: String?
 
-    init(subcategory: Binding<BudgetSubcategory>, categoryColor: Color, isPresented: Binding<Bool>, apiClient: APIClient) {
+    init(subcategory: Binding<BudgetSubcategory>, categoryId: String, categoryColor: Color, isPresented: Binding<Bool>, apiClient: APIClient) {
         self._subcategory = subcategory
+        self.categoryId = categoryId
         self.categoryColor = categoryColor
         self._isPresented = isPresented
         self.apiClient = apiClient
@@ -210,15 +212,15 @@ struct SubcategoryBudgetView: View {
 
         // Budget cleared — delete existing allocation if one exists
         if budgetAmount.trimmingCharacters(in: .whitespaces).isEmpty {
-            if let budgetId = subcategory.budgetId, let templateId = subcategory.templateId {
+            if let lineItemId = subcategory.lineItemId, let budgetId = subcategory.budgetId {
                 do {
-                    try await apiClient.deleteSubcategoryBudget(
-                        templateId: templateId,
-                        subcategoryBudgetId: budgetId
+                    try await apiClient.deleteBudgetLineItem(
+                        budgetId: budgetId,
+                        lineItemId: lineItemId
                     )
-                    subcategory.budgetId = nil
+                    subcategory.lineItemId = nil
                     subcategory.budgetAmount = nil
-                    subcategory.templateId = nil
+                    // Keep budgetId so user can re-add a budget later
                 } catch {
                     errorMessage = "Failed to remove budget: \(error.localizedDescription)"
                     isSaving = false
@@ -230,8 +232,8 @@ struct SubcategoryBudgetView: View {
             return
         }
 
-        guard let templateId = subcategory.templateId else {
-            errorMessage = "Missing template ID. Please try again."
+        guard let budgetId = subcategory.budgetId else {
+            errorMessage = "Missing budget ID. Please try again."
             isSaving = false
             return
         }
@@ -243,23 +245,24 @@ struct SubcategoryBudgetView: View {
         }
 
         do {
-            if let budgetId = subcategory.budgetId {
-                let updated = try await apiClient.updateSubcategoryBudget(
-                    templateId: templateId,
-                    subcategoryBudgetId: budgetId,
+            if let lineItemId = subcategory.lineItemId {
+                let updated = try await apiClient.updateBudgetLineItem(
+                    budgetId: budgetId,
+                    lineItemId: lineItemId,
                     amount: amount
                 )
                 subcategory.budgetAmount = updated.amount
-                subcategory.budgetId = updated.id
+                subcategory.lineItemId = updated.id
             } else {
-                let created = try await apiClient.addSubcategoryBudget(
-                    templateId: templateId,
+                let created = try await apiClient.createBudgetLineItem(
+                    budgetId: budgetId,
+                    categoryId: categoryId,
                     subcategoryId: subcategory.id,
                     amount: amount
                 )
                 subcategory.budgetAmount = created.amount
-                subcategory.budgetId = created.id
-                subcategory.templateId = created.templateId
+                subcategory.lineItemId = created.id
+                subcategory.budgetId = created.budgetId
             }
 
             isSaving = false
@@ -290,6 +293,7 @@ extension Array where Element: Hashable {
             spentAmount: 45.00,
             transactionCount: 3
         )),
+        categoryId: "cat-1",
         categoryColor: .blue,
         isPresented: .constant(true),
         apiClient: APIClient()
