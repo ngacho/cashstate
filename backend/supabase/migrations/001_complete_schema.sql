@@ -426,11 +426,12 @@ BEGIN
             unnest(transaction_ids) AS id,
             unnest(category_ids) AS category_id,
             unnest(subcategory_ids) AS subcategory_id,
-            CASE
-                WHEN categorization_sources IS NOT NULL
-                THEN unnest(categorization_sources)
-                ELSE 'ai'
-            END AS categorization_source
+            unnest(
+                COALESCE(
+                    categorization_sources,
+                    array_fill('ai'::TEXT, ARRAY[array_length(transaction_ids, 1)])
+                )
+            ) AS categorization_source
     )
     UPDATE public.simplefin_transactions t
     SET
