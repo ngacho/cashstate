@@ -1721,6 +1721,21 @@ private struct BudgetEditView: View {
     @State private var showMonthPicker = false
     @State private var monthPickerDate = Date()
 
+    // Linked accounts
+    @State private var allAccounts: [SimplefinAccount] = []
+    @State private var linkedAccountIds: Set<String> = []
+    @State private var accountErrorMessage: String?
+    @State private var showAddAccount = false
+    @State private var isLoadingAccounts = true
+
+    var linkedAccounts: [SimplefinAccount] {
+        allAccounts.filter { linkedAccountIds.contains($0.id) }
+    }
+
+    var unlinkedAccounts: [SimplefinAccount] {
+        allAccounts.filter { !linkedAccountIds.contains($0.id) }
+    }
+
     // Emoji editor
     @State private var showEmojiEditor = false
     @State private var emojiInput: String = ""
@@ -1794,44 +1809,103 @@ private struct BudgetEditView: View {
                     .padding(.horizontal, 20)
                     .padding(.bottom, 12)
 
-                    // Emoji + Color picker row
-                    HStack(spacing: 14) {
-                        Button {
-                            emojiInput = emoji
-                            showEmojiEditor = true
-                        } label: {
-                            Text(emoji)
-                                .font(.system(size: 26))
-                                .frame(width: 52, height: 52)
-                                .background(Color(hex: selectedColor).opacity(0.15))
+                    // Linked Accounts Section
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("LINKED ACCOUNTS")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(Theme.Colors.textSecondary)
+                                .kerning(1.0)
+                            Spacer()
+                            Button {
+                                showAddAccount = true
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 11, weight: .semibold))
+                                    Text("Add Account")
+                                        .font(.system(size: 12, weight: .semibold))
+                                }
+                                .foregroundColor(unlinkedAccounts.isEmpty ? Theme.Colors.textSecondary : Theme.Colors.primary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Theme.Colors.background)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 14)
-                                        .stroke(Color(hex: selectedColor).opacity(0.4), lineWidth: 1.5)
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
                                 )
-                                .cornerRadius(14)
+                                .cornerRadius(8)
+                            }
+                            .disabled(unlinkedAccounts.isEmpty)
                         }
 
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
-                                ForEach(ColorPalette.allCases) { palette in
-                                    Circle()
-                                        .fill(palette.color)
-                                        .frame(width: 30, height: 30)
-                                        .overlay(
-                                            selectedColor == palette.rawValue ?
-                                            Circle()
-                                                .stroke(Color.white, lineWidth: 2.5)
-                                                .padding(3) : nil
-                                        )
-                                        .overlay(
-                                            selectedColor == palette.rawValue ?
-                                            Circle()
-                                                .stroke(palette.color.opacity(0.6), lineWidth: 2) : nil
-                                        )
-                                        .onTapGesture { selectedColor = palette.rawValue }
+                        if isLoadingAccounts {
+                            HStack {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                Text("Loading accounts...")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.gray.opacity(0.06))
+                            .cornerRadius(10)
+                        } else if linkedAccounts.isEmpty {
+                            Text(allAccounts.isEmpty
+                                 ? "No bank accounts connected. Add one from the Overview tab."
+                                 : "No accounts linked. Tap \"Add Account\" to link accounts to this budget.")
+                                .font(.system(size: 12))
+                                .foregroundColor(Theme.Colors.textSecondary)
+                                .padding(12)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.gray.opacity(0.06))
+                                .cornerRadius(10)
+                        } else {
+                            VStack(spacing: 0) {
+                                ForEach(Array(linkedAccounts.enumerated()), id: \.element.id) { idx, account in
+                                    HStack(spacing: 12) {
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(account.name)
+                                                .font(.system(size: 14, weight: .medium))
+                                                .foregroundColor(Theme.Colors.textPrimary)
+                                            if let org = account.organizationName {
+                                                Text(org)
+                                                    .font(.system(size: 12))
+                                                    .foregroundColor(Theme.Colors.textSecondary)
+                                            }
+                                        }
+                                        Spacer()
+                                        if let balance = account.balance {
+                                            Text(String(format: "$%.2f", balance))
+                                                .font(.system(size: 13, weight: .semibold))
+                                                .foregroundColor(balance < 0 ? Theme.Colors.expense : Theme.Colors.textPrimary)
+                                        }
+                                        Button {
+                                            Task { await toggleAccount(account) }
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.system(size: 20))
+                                                .foregroundColor(Color.gray.opacity(0.4))
+                                        }
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+
+                                    if idx < linkedAccounts.count - 1 {
+                                        Divider().padding(.leading, 16)
+                                    }
                                 }
                             }
-                            .padding(.vertical, 4)
+                            .background(Color.white)
+                            .cornerRadius(12)
+                            .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                        }
+
+                        if let error = accountErrorMessage {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundColor(Theme.Colors.expense)
                         }
                     }
                     .padding(.horizontal, 20)
@@ -2123,6 +2197,67 @@ private struct BudgetEditView: View {
                 allCategories: allCategories
             )
         }
+        .sheet(isPresented: $showAddAccount) {
+            NavigationStack {
+                Group {
+                    if unlinkedAccounts.isEmpty {
+                        VStack(spacing: 16) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 48))
+                                .foregroundColor(Theme.Colors.primary)
+                            Text("All accounts are already linked to this budget")
+                                .font(.subheadline)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 32)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        List(unlinkedAccounts) { account in
+                            Button {
+                                Task {
+                                    await toggleAccount(account)
+                                    if unlinkedAccounts.isEmpty { showAddAccount = false }
+                                }
+                            } label: {
+                                HStack(spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(account.name)
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundColor(Theme.Colors.textPrimary)
+                                        if let org = account.organizationName {
+                                            Text(org)
+                                                .font(.system(size: 13))
+                                                .foregroundColor(Theme.Colors.textSecondary)
+                                        }
+                                    }
+                                    Spacer()
+                                    if let balance = account.balance {
+                                        Text(String(format: "$%.2f", balance))
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundColor(balance < 0 ? Theme.Colors.expense : Theme.Colors.textPrimary)
+                                    }
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(Theme.Colors.primary)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .listStyle(.insetGrouped)
+                    }
+                }
+                .navigationTitle("Add Account")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { showAddAccount = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
         .sheet(isPresented: $showMonthPicker) {
             NavigationStack {
                 VStack(spacing: 0) {
@@ -2324,14 +2459,34 @@ private struct BudgetEditView: View {
             async let lineItemsFetch = apiClient.fetchBudgetLineItems(budgetId: budget.id)
             async let categoriesFetch = apiClient.fetchCategoriesTree()
             async let monthsFetch = apiClient.fetchBudgetMonths()
-            let (items, cats, months) = try await (lineItemsFetch, categoriesFetch, monthsFetch)
-            lineItems = items  // ALL items including subcategory-level
+            async let linkedFetch = apiClient.listBudgetAccounts(budgetId: budget.id)
+            let (items, cats, months, linked) = try await (lineItemsFetch, categoriesFetch, monthsFetch, linkedFetch)
+            lineItems = items
             allCategories = cats
             budgetMonths = months.filter { $0.budgetId == budget.id }
+            linkedAccountIds = Set(linked.map { $0.accountId })
         } catch {
             // silently fail — categories section stays empty
         }
         isLoadingLineItems = false
+
+        // Load all available accounts separately (non-critical)
+        do {
+            allAccounts = try await loadAllAccounts()
+        } catch {
+            // silently fail if no accounts connected
+        }
+        isLoadingAccounts = false
+    }
+
+    private func loadAllAccounts() async throws -> [SimplefinAccount] {
+        let items = try await apiClient.listSimplefinItems()
+        var accounts: [SimplefinAccount] = []
+        for item in items {
+            let accs = try await apiClient.listSimplefinAccounts(itemId: item.id)
+            accounts.append(contentsOf: accs)
+        }
+        return accounts
     }
 
     private func formatMonthString(_ monthStr: String) -> String {
@@ -2365,6 +2520,30 @@ private struct BudgetEditView: View {
             budgetMonths.removeAll { $0.id == month.id }
         } catch {
             errorMessage = "Failed to remove month override"
+        }
+    }
+
+    private func toggleAccount(_ account: SimplefinAccount) async {
+        let isLinked = linkedAccountIds.contains(account.id)
+        accountErrorMessage = nil
+
+        if isLinked {
+            linkedAccountIds.remove(account.id)
+            do {
+                try await apiClient.removeBudgetAccount(budgetId: budget.id, accountId: account.id)
+            } catch {
+                linkedAccountIds.insert(account.id)
+                accountErrorMessage = "Failed to remove account"
+            }
+        } else {
+            linkedAccountIds.insert(account.id)
+            do {
+                _ = try await apiClient.addBudgetAccount(budgetId: budget.id, accountId: account.id)
+            } catch {
+                linkedAccountIds.remove(account.id)
+                let desc = error.localizedDescription
+                accountErrorMessage = desc.contains("already linked") ? "This account is already linked to another budget" : "Failed to add account"
+            }
         }
     }
 

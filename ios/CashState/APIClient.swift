@@ -926,6 +926,31 @@ actor APIClient {
         )
     }
 
+    func listBudgetAccounts(budgetId: String) async throws -> [BudgetAccountItem] {
+        let response: BudgetAccountListResponse = try await request(endpoint: "/budgets/\(budgetId)/accounts")
+        return response.items
+    }
+
+    func addBudgetAccount(budgetId: String, accountId: String) async throws -> BudgetAccountItem {
+        struct Body: Encodable {
+            let accountId: String
+            enum CodingKeys: String, CodingKey { case accountId = "account_id" }
+        }
+        return try await request(
+            endpoint: "/budgets/\(budgetId)/accounts",
+            method: "POST",
+            body: Body(accountId: accountId)
+        )
+    }
+
+    func removeBudgetAccount(budgetId: String, accountId: String) async throws {
+        struct SuccessResponse: Codable { let success: Bool; let message: String }
+        let _: SuccessResponse = try await request(
+            endpoint: "/budgets/\(budgetId)/accounts/\(accountId)",
+            method: "DELETE"
+        )
+    }
+
     // MARK: - Transaction Categorization
 
     func batchUpdateTransactions(_ updates: [(transactionId: String, categoryId: String?, subcategoryId: String?)]) async throws -> BatchUpdateResponse {

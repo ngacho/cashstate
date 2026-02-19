@@ -168,6 +168,29 @@ struct SimplefinAccount: Identifiable, Codable {
     }
 }
 
+struct BudgetAccountItem: Identifiable, Codable {
+    let budgetId: String
+    let accountId: String
+    let accountName: String
+    let balance: Double
+    let createdAt: String
+
+    var id: String { accountId }
+
+    enum CodingKeys: String, CodingKey {
+        case budgetId = "budget_id"
+        case accountId = "account_id"
+        case accountName = "account_name"
+        case balance
+        case createdAt = "created_at"
+    }
+}
+
+struct BudgetAccountListResponse: Codable {
+    let items: [BudgetAccountItem]
+    let total: Int
+}
+
 struct SimplefinSetupRequest: Codable {
     let setupToken: String
     let institutionName: String?
