@@ -75,7 +75,7 @@ class BudgetService:
         )
 
         category_spending = spending["categories"]
-        # subcategory_spending = spending["subcategories"]  # Available if needed
+        subcategory_spending = spending["subcategories"]
 
         # Build line items with actuals
         summary_line_items = []
@@ -83,9 +83,8 @@ class BudgetService:
 
         for item in line_items:
             if item.get("subcategory_id"):
-                # Subcategory-level line item - use category spending as approximation
-                # (ideally we'd track subcategory spending separately, but category is enough for now)
-                spent = category_spending.get(item["category_id"], 0.0)
+                # Subcategory-level line item — use subcategory spending directly
+                spent = subcategory_spending.get(item["subcategory_id"], 0.0)
             else:
                 spent = category_spending.get(item["category_id"], 0.0)
                 budgeted_category_ids.add(item["category_id"])
@@ -126,6 +125,9 @@ class BudgetService:
             "total_spent": round(total_spent, 2),
             "line_items": summary_line_items,
             "unbudgeted_categories": unbudgeted_categories,
+            "subcategory_spending": {
+                k: round(v, 2) for k, v in subcategory_spending.items()
+            },
         }
 
 

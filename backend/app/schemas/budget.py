@@ -174,3 +174,4 @@ class BudgetSummary(BaseModel):
     total_spent: float
     line_items: list[BudgetSummaryLineItem]
     unbudgeted_categories: list[UnbudgetedCategory]
+    subcategory_spending: dict[str, float]  # subcategory_id → amount spent
