@@ -7,7 +7,9 @@ class RegisterRequest(BaseModel):
     """User registration request."""
 
     email: EmailStr
-    password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
+    password: str = Field(
+        ..., min_length=8, description="Password must be at least 8 characters"
+    )
     display_name: str | None = Field(None, min_length=2, max_length=50)
 
 

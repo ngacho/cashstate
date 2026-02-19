@@ -264,22 +264,17 @@ class OnboardingService:
     ) -> dict:
         """Seed default categories and subcategories for a new user.
 
-        Args:
-            user_id: User ID to seed categories for
-            monthly_budget: Optional monthly budget to distribute across categories
-            account_ids: Optional list of account IDs to track. Empty = all accounts
-
-        Returns:
-            dict with counts of created categories, subcategories, and budgets
+        Creates all default categories with is_default=True, creates a default
+        budget, and distributes monthly_budget evenly across expense categories.
         """
         categories_created = 0
         subcategories_created = 0
         budgets_created = 0
 
         # Filter out non-expense categories for budget allocation
-        # (Income, Transfers, and Uncategorized don't get budgets)
         expense_categories = [
-            cat for cat in DEFAULT_CATEGORIES
+            cat
+            for cat in DEFAULT_CATEGORIES
             if cat["name"] not in ["Income", "Transfers", "Uncategorized"]
         ]
 
@@ -288,28 +283,29 @@ class OnboardingService:
         if monthly_budget and expense_categories:
             budget_per_category = monthly_budget / len(expense_categories)
 
-        created_categories = []  # Track created categories for budget allocation
+        created_categories = []
 
         for cat_data in DEFAULT_CATEGORIES:
-            # Create category (all defaults are expense categories)
             category = self.db.create_category(
                 {
                     "user_id": user_id,
                     "name": cat_data["name"],
                     "icon": cat_data["icon"],
                     "color": cat_data["color"],
-                    "is_system": False,  # User's own copy of defaults
+                    "is_default": True,  # Seeded from defaults
                     "display_order": cat_data["display_order"],
                 }
             )
             categories_created += 1
-            created_categories.append({
-                "category": category,
-                "is_expense": cat_data["name"] not in ["Income", "Transfers", "Uncategorized"],
-                "subcategory_count": len(cat_data.get("subcategories", []))
-            })
+            created_categories.append(
+                {
+                    "category": category,
+                    "is_expense": cat_data["name"]
+                    not in ["Income", "Transfers", "Uncategorized"],
+                    "subcategory_count": len(cat_data.get("subcategories", [])),
+                }
+            )
 
-            # Create subcategories
             for sub_data in cat_data.get("subcategories", []):
                 self.db.create_subcategory(
                     {
@@ -317,42 +313,52 @@ class OnboardingService:
                         "user_id": user_id,
                         "name": sub_data["name"],
                         "icon": sub_data["icon"],
-                        "is_system": False,  # User's own copy
+                        "is_default": True,  # Seeded from defaults
                         "display_order": sub_data["display_order"],
                     }
                 )
                 subcategories_created += 1
 
-        # Create budget template if monthly_budget was provided
+        # Create budget if monthly_budget was provided
         if monthly_budget and budget_per_category:
-            # Create default budget template
-            template = self.db.create_budget_template({
-                "user_id": user_id,
-                "name": "My Budget",
-                "total_amount": monthly_budget,
-                "is_default": True,
-                "account_ids": account_ids or [],  # Empty = all accounts
-            })
+            budget = self.db.create_budget(
+                {
+                    "user_id": user_id,
+                    "name": "My Budget",
+                    "is_default": True,
+                }
+            )
 
-            # Create category budgets within the template
+            # Associate accounts with budget
+            if account_ids:
+                for account_id in account_ids:
+                    try:
+                        self.db.add_budget_account(budget["id"], account_id)
+                    except Exception:
+                        pass  # Skip if account already linked to another budget
+
+            # Create line items for each expense category
             for cat_info in created_categories:
                 if cat_info["is_expense"]:
-                    self.db.create_budget_category({
-                        "template_id": template["id"],
-                        "category_id": cat_info["category"]["id"],
-                        "amount": round(budget_per_category, 2),
-                    })
+                    self.db.create_budget_line_item(
+                        {
+                            "budget_id": budget["id"],
+                            "category_id": cat_info["category"]["id"],
+                            "subcategory_id": None,
+                            "amount": round(budget_per_category, 2),
+                        }
+                    )
                     budgets_created += 1
 
-        result = {
+        return {
             "categories_created": categories_created,
             "subcategories_created": subcategories_created,
             "budgets_created": budgets_created,
             "monthly_budget": monthly_budget or 0.0,
-            "budget_per_category": round(budget_per_category, 2) if budget_per_category else 0.0,
+            "budget_per_category": round(budget_per_category, 2)
+            if budget_per_category
+            else 0.0,
         }
-
-        return result
 
 
 def get_onboarding_service(db: Database) -> OnboardingService:

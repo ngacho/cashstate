@@ -8,16 +8,20 @@ from pydantic import BaseModel, Field
 # Request Schemas
 # ============================================================================
 
+
 class SetupTokenRequest(BaseModel):
     """Request to exchange a SimpleFin setup token for an access URL."""
 
     setup_token: str = Field(..., description="Base64-encoded SimpleFin setup token")
-    institution_name: str | None = Field(None, description="User-provided name for this connection")
+    institution_name: str | None = Field(
+        None, description="User-provided name for this connection"
+    )
 
 
 # ============================================================================
 # SimpleFin Item Schemas
 # ============================================================================
+
 
 class SimplefinItemResponse(BaseModel):
     """SimpleFin connection/item details."""
@@ -40,6 +44,7 @@ class SetupTokenResponse(BaseModel):
 # ============================================================================
 # SimpleFin Account Schemas
 # ============================================================================
+
 
 class SimplefinAccountResponse(BaseModel):
     """SimpleFin account with balance and institution info."""
@@ -64,6 +69,7 @@ class SimplefinAccountResponse(BaseModel):
 # SimpleFin Transaction Schemas
 # ============================================================================
 
+
 class SimplefinTransactionResponse(BaseModel):
     """SimpleFin transaction with all available fields."""
 
@@ -74,12 +80,12 @@ class SimplefinTransactionResponse(BaseModel):
     amount: float
     currency: str
 
-    posted_date: int          # Unix timestamp
-    transaction_date: int     # Unix timestamp
+    posted_date: int  # Unix timestamp
+    transaction_date: int  # Unix timestamp
 
-    description: str          # Raw merchant description
-    payee: str | None        # Cleaned-up merchant name
-    memo: str | None         # Additional notes
+    description: str  # Raw merchant description
+    payee: str | None  # Cleaned-up merchant name
+    memo: str | None  # Additional notes
 
     pending: bool
 
@@ -103,6 +109,7 @@ class SimplefinTransactionListResponse(BaseModel):
 
 # SimpleFin Sync Schemas
 # ============================================================================
+
 
 class SyncResponse(BaseModel):
     """Response from a SimpleFin sync operation."""
@@ -132,6 +139,7 @@ class SimplefinSyncJobResponse(BaseModel):
 # ============================================================================
 # Raw SimpleFin API Response Schemas (for debugging/preview)
 # ============================================================================
+
 
 class SimplefinRawTransaction(BaseModel):
     """Raw transaction from SimpleFin API."""

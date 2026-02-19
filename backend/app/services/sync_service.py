@@ -28,13 +28,15 @@ def sync_item(db: Database, plaid_item_id: str) -> dict:
     now = datetime.now(timezone.utc).isoformat()
 
     # Create sync job
-    job = db.create_sync_job({
-        "plaid_item_id": plaid_item_id,
-        "status": "pending",
-        "transactions_added": 0,
-        "transactions_modified": 0,
-        "transactions_removed": 0,
-    })
+    job = db.create_sync_job(
+        {
+            "plaid_item_id": plaid_item_id,
+            "status": "pending",
+            "transactions_added": 0,
+            "transactions_modified": 0,
+            "transactions_removed": 0,
+        }
+    )
     job_id = job["id"]
 
     try:
@@ -49,10 +51,13 @@ def sync_item(db: Database, plaid_item_id: str) -> dict:
         cursor = item.get("cursor")
 
         # Mark job as in_progress
-        db.update_sync_job(job_id, {
-            "status": "in_progress",
-            "started_at": now,
-        })
+        db.update_sync_job(
+            job_id,
+            {
+                "status": "in_progress",
+                "started_at": now,
+            },
+        )
 
         total_added = 0
         total_modified = 0
@@ -66,8 +71,7 @@ def sync_item(db: Database, plaid_item_id: str) -> dict:
             # Upsert added transactions
             if result["added"]:
                 rows = [
-                    {**txn, "plaid_item_id": plaid_item_id}
-                    for txn in result["added"]
+                    {**txn, "plaid_item_id": plaid_item_id} for txn in result["added"]
                 ]
                 db.upsert_transactions(rows)
                 total_added += len(result["added"])
@@ -90,29 +94,38 @@ def sync_item(db: Database, plaid_item_id: str) -> dict:
             has_more = result["has_more"]
 
         # Update cursor on plaid item
-        db.update_plaid_item(plaid_item_id, {
-            "cursor": cursor,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        })
+        db.update_plaid_item(
+            plaid_item_id,
+            {
+                "cursor": cursor,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
         # Mark job as completed
-        completed_job = db.update_sync_job(job_id, {
-            "status": "completed",
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-            "transactions_added": total_added,
-            "transactions_modified": total_modified,
-            "transactions_removed": total_removed,
-        })
+        completed_job = db.update_sync_job(
+            job_id,
+            {
+                "status": "completed",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "transactions_added": total_added,
+                "transactions_modified": total_modified,
+                "transactions_removed": total_removed,
+            },
+        )
 
         return completed_job
 
     except Exception as e:
         # Mark job as failed
-        db.update_sync_job(job_id, {
-            "status": "failed",
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-            "error_message": str(e),
-        })
+        db.update_sync_job(
+            job_id,
+            {
+                "status": "failed",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "error_message": str(e),
+            },
+        )
         raise
 
 

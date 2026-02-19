@@ -13,7 +13,9 @@ class AuthService:
         self.client = client
         self.db = Database(client)
 
-    def register(self, email: str, password: str, display_name: str | None = None) -> dict:
+    def register(
+        self, email: str, password: str, display_name: str | None = None
+    ) -> dict:
         """
         Register a new user.
 
@@ -29,10 +31,12 @@ class AuthService:
             AuthApiError: If registration fails
         """
         # Create user in Supabase Auth
-        auth_response = self.client.auth.sign_up({
-            "email": email,
-            "password": password,
-        })
+        auth_response = self.client.auth.sign_up(
+            {
+                "email": email,
+                "password": password,
+            }
+        )
 
         if auth_response.user is None:
             raise AuthApiError("Registration failed", 400)
@@ -59,9 +63,15 @@ class AuthService:
         return {
             "user_id": user_id,
             "email": email,
-            "access_token": auth_response.session.access_token if auth_response.session else None,
-            "refresh_token": auth_response.session.refresh_token if auth_response.session else None,
-            "expires_in": auth_response.session.expires_in if auth_response.session else None,
+            "access_token": auth_response.session.access_token
+            if auth_response.session
+            else None,
+            "refresh_token": auth_response.session.refresh_token
+            if auth_response.session
+            else None,
+            "expires_in": auth_response.session.expires_in
+            if auth_response.session
+            else None,
         }
 
     def login(self, email: str, password: str) -> dict:
@@ -78,10 +88,12 @@ class AuthService:
         Raises:
             AuthApiError: If login fails
         """
-        auth_response = self.client.auth.sign_in_with_password({
-            "email": email,
-            "password": password,
-        })
+        auth_response = self.client.auth.sign_in_with_password(
+            {
+                "email": email,
+                "password": password,
+            }
+        )
 
         if auth_response.user is None or auth_response.session is None:
             raise AuthApiError("Login failed", 401)

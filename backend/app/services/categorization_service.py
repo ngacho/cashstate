@@ -1,4 +1,4 @@
-"""AI-powered transaction categorization."""
+"""AI-powered transaction categorization with rules-first pipeline."""
 
 import json
 from abc import ABC, abstractmethod
@@ -15,14 +15,7 @@ class BaseCategorizationService(ABC):
 
     @abstractmethod
     def _call_ai_model(self, prompt: str) -> str:
-        """Call the AI model with the given prompt and return response text.
-
-        Args:
-            prompt: The categorization prompt
-
-        Returns:
-            str: The raw response text from the AI model
-        """
+        """Call the AI model with the given prompt and return response text."""
         pass
 
     def _build_categories_context(self, user_id: str) -> str:
@@ -90,129 +83,191 @@ Example response format:
 
 Only respond with the JSON array, no other text."""
 
-    def categorize_transactions(
-        self, user_id: str, transaction_ids: list[str] | None = None, force: bool = False
-    ) -> dict:
-        """Categorize transactions using AI.
-
-        Args:
-            user_id: User ID to categorize transactions for
-            transaction_ids: Specific transaction IDs to categorize (None = all uncategorized)
-            force: If True, re-categorize even if already categorized
+    def _apply_rules(
+        self, transactions: list[dict], rules: list[dict]
+    ) -> tuple[list[dict], list[dict]]:
+        """Apply categorization rules to transactions.
 
         Returns:
-            dict with categorization results
+            (rule_matched, remaining): transactions matched by rules, and those not matched
         """
-        print(f"[AI Categorization] Starting categorization for user {user_id}")
-        print(f"[AI Categorization] Transaction IDs: {transaction_ids}")
-        print(f"[AI Categorization] Force: {force}")
+        rule_matched = []
+        remaining = []
+
+        for txn in transactions:
+            matched_rule = None
+            for rule in rules:
+                field_value = txn.get(rule["match_field"], "") or ""
+                if rule["match_value"].lower() in field_value.lower():
+                    matched_rule = rule
+                    break
+
+            if matched_rule:
+                rule_matched.append(
+                    {
+                        "transaction": txn,
+                        "rule": matched_rule,
+                    }
+                )
+            else:
+                remaining.append(txn)
+
+        return rule_matched, remaining
+
+    def categorize_transactions(
+        self,
+        user_id: str,
+        transaction_ids: list[str] | None = None,
+        force: bool = False,
+    ) -> dict:
+        """Categorize transactions using rules first, then AI.
+
+        Pipeline:
+        1. Fetch user's categorization rules
+        2. Apply rules to transactions (case-insensitive substring match)
+        3. Mark rule-matched as categorization_source='rule'
+        4. Send remaining to Claude AI
+        5. Mark AI-categorized as categorization_source='ai'
+        6. Remaining stay as categorization_source='uncategorized'
+        """
+        print(f"[Categorization] Starting for user {user_id}")
+        print(f"[Categorization] Transaction IDs: {transaction_ids}, Force: {force}")
 
         # Get transactions to categorize
         if transaction_ids:
-            # Get specific transactions
             transactions = []
             for txn_id in transaction_ids:
                 txn = self.db.get_simplefin_transaction_by_id(txn_id)
                 if txn and txn["user_id"] == user_id:
                     transactions.append(txn)
         else:
-            # Get all uncategorized transactions (or all if force=True)
             all_txns = self.db.get_user_simplefin_transactions(
-                user_id=user_id, limit=200  # Limit to avoid token overflow
+                user_id=user_id, limit=200
             )
             if force:
                 transactions = all_txns
             else:
-                transactions = [txn for txn in all_txns if txn.get("category_id") is None]
+                transactions = [
+                    txn for txn in all_txns if txn.get("category_id") is None
+                ]
 
-        print(f"[AI Categorization] Found {len(transactions)} transactions to categorize")
+        print(f"[Categorization] Found {len(transactions)} transactions to categorize")
 
         if not transactions:
-            print("[AI Categorization] No transactions to categorize")
-            return {
-                "categorized_count": 0,
-                "failed_count": 0,
-                "results": [],
-            }
+            return {"categorized_count": 0, "failed_count": 0, "results": []}
 
-        # Build context
-        categories_context = self._build_categories_context(user_id)
-        transactions_context = self._build_transactions_context(transactions)
-        prompt = self._build_prompt(categories_context, transactions_context)
+        # Step 1: Apply user rules
+        rules = self.db.get_categorization_rules(user_id)
+        print(f"[Categorization] Applying {len(rules)} user rules")
 
-        print(f"[AI Categorization] Prompt length: {len(prompt)} characters")
-        print(f"[AI Categorization] Categories context:\n{categories_context}")
-        print(f"[AI Categorization] Transactions context (first 500 chars):\n{transactions_context[:500]}...")
+        rule_matched, remaining = self._apply_rules(transactions, rules)
+        print(
+            f"[Categorization] Rules matched: {len(rule_matched)}, remaining for AI: {len(remaining)}"
+        )
 
-        # Call AI model
-        try:
-            print("[AI Categorization] Calling AI model...")
-            response_text = self._call_ai_model(prompt)
-            print(f"[AI Categorization] Model response length: {len(response_text)} characters")
-            print(f"[AI Categorization] Model response:\n{response_text}")
+        results = []
+        categorized_count = 0
+        failed_count = 0
 
-            categorizations = json.loads(response_text)
-            print(f"[AI Categorization] Parsed {len(categorizations)} categorizations from response")
-
-            # Apply categorizations
-            results = []
-            categorized_count = 0
-            failed_count = 0
-
-            for cat in categorizations:
-                try:
-                    txn_id = cat["transaction_id"]
-                    category_id = cat.get("category_id")
-                    subcategory_id = cat.get("subcategory_id")
-
-                    print(f"[AI Categorization] Processing transaction {txn_id}: category={category_id}, subcategory={subcategory_id}")
-
-                    # Update transaction
-                    updated = self.db.update_transaction_category(
-                        transaction_id=txn_id,
-                        category_id=category_id,
-                        subcategory_id=subcategory_id,
+        # Step 2: Apply rule-matched categorizations
+        for match in rule_matched:
+            txn = match["transaction"]
+            rule = match["rule"]
+            try:
+                updated = self.db.update_transaction_category(
+                    transaction_id=txn["id"],
+                    category_id=rule["category_id"],
+                    subcategory_id=rule.get("subcategory_id"),
+                    categorization_source="rule",
+                )
+                if updated:
+                    categorized_count += 1
+                    results.append(
+                        {
+                            "transaction_id": txn["id"],
+                            "category_id": rule["category_id"],
+                            "subcategory_id": rule.get("subcategory_id"),
+                            "confidence": 1.0,
+                            "reasoning": f"Matched rule: {rule['match_field']} contains '{rule['match_value']}'",
+                        }
                     )
-
-                    if updated:
-                        categorized_count += 1
-                        print(f"[AI Categorization] ✓ Successfully categorized {txn_id}")
-                        results.append({
-                            "transaction_id": txn_id,
-                            "category_id": category_id,
-                            "subcategory_id": subcategory_id,
-                            "confidence": cat.get("confidence", 0.0),
-                            "reasoning": cat.get("reasoning"),
-                        })
-                    else:
-                        failed_count += 1
-                        print(f"[AI Categorization] ✗ Failed to update {txn_id} in database")
-                except Exception as e:
+                else:
                     failed_count += 1
-                    print(f"[AI Categorization] ✗ Exception categorizing {cat.get('transaction_id')}: {e}")
+            except Exception as e:
+                failed_count += 1
+                print(f"[Categorization] Rule apply failed for {txn['id']}: {e}")
 
-            print(f"[AI Categorization] Complete: {categorized_count} succeeded, {failed_count} failed")
-            return {
-                "categorized_count": categorized_count,
-                "failed_count": failed_count,
-                "results": results,
-            }
+        # Step 3: AI categorize remaining transactions
+        if remaining:
+            categories_context = self._build_categories_context(user_id)
+            transactions_context = self._build_transactions_context(remaining)
+            prompt = self._build_prompt(categories_context, transactions_context)
 
-        except json.JSONDecodeError as e:
-            print(f"[AI Categorization] JSON parsing error: {e}")
-            print(f"[AI Categorization] Response text was: {response_text}")
-            raise Exception("AI categorization failed: Invalid JSON response from model")
-        except Exception as e:
-            print(f"[AI Categorization] Unexpected error: {e}")
-            import traceback
-            traceback.print_exc()
-            raise Exception(f"AI categorization failed: {str(e)}")
+            try:
+                print("[Categorization] Calling AI model...")
+                response_text = self._call_ai_model(prompt)
+                categorizations = json.loads(response_text)
+
+                for cat in categorizations:
+                    try:
+                        txn_id = cat["transaction_id"]
+                        category_id = cat.get("category_id")
+                        subcategory_id = cat.get("subcategory_id")
+
+                        updated = self.db.update_transaction_category(
+                            transaction_id=txn_id,
+                            category_id=category_id,
+                            subcategory_id=subcategory_id,
+                            categorization_source="ai",
+                        )
+
+                        if updated:
+                            categorized_count += 1
+                            results.append(
+                                {
+                                    "transaction_id": txn_id,
+                                    "category_id": category_id,
+                                    "subcategory_id": subcategory_id,
+                                    "confidence": cat.get("confidence", 0.0),
+                                    "reasoning": cat.get("reasoning"),
+                                }
+                            )
+                        else:
+                            failed_count += 1
+                    except Exception as e:
+                        failed_count += 1
+                        print(
+                            f"[Categorization] AI apply failed for {cat.get('transaction_id')}: {e}"
+                        )
+
+            except json.JSONDecodeError as e:
+                print(f"[Categorization] JSON parsing error: {e}")
+                raise Exception(
+                    "AI categorization failed: Invalid JSON response from model"
+                )
+            except Exception as e:
+                print(f"[Categorization] AI error: {e}")
+                import traceback
+
+                traceback.print_exc()
+                raise Exception(f"AI categorization failed: {str(e)}")
+
+        print(
+            f"[Categorization] Complete: {categorized_count} succeeded, {failed_count} failed"
+        )
+        return {
+            "categorized_count": categorized_count,
+            "failed_count": failed_count,
+            "results": results,
+        }
 
 
 class ClaudeCategorizationService(BaseCategorizationService):
     """Categorization service using Claude (Anthropic)."""
 
-    def __init__(self, db: Database, api_key: str, model: str = "claude-3-5-sonnet-20241022"):
+    def __init__(
+        self, db: Database, api_key: str, model: str = "claude-3-5-sonnet-20241022"
+    ):
         super().__init__(db)
         self.client = Anthropic(api_key=api_key)
         self.model = model
@@ -234,7 +289,10 @@ class OpenRouterCategorizationService(BaseCategorizationService):
     """Categorization service using OpenRouter."""
 
     def __init__(
-        self, db: Database, api_key: str, model: str = "meta-llama/llama-3.1-8b-instruct:free"
+        self,
+        db: Database,
+        api_key: str,
+        model: str = "meta-llama/llama-3.1-8b-instruct:free",
     ):
         super().__init__(db)
         try:
@@ -259,17 +317,9 @@ class OpenRouterCategorizationService(BaseCategorizationService):
 
 
 def get_categorization_service(db: Database) -> BaseCategorizationService:
-    """Get categorization service instance based on configuration.
-
-    Returns:
-        BaseCategorizationService: Either Claude or OpenRouter service based on config
-
-    Raises:
-        ValueError: If required API keys are missing or provider is invalid
-    """
+    """Get categorization service instance based on configuration."""
     settings = get_settings()
 
-    # Determine which provider to use
     provider = getattr(settings, "categorization_provider", "claude").lower()
 
     if provider == "claude":

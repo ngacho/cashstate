@@ -1,4 +1,5 @@
 """Router for financial snapshots (account balance history and net worth)."""
+
 from datetime import date
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -11,12 +12,14 @@ router = APIRouter(prefix="/snapshots", tags=["snapshots"])
 
 class SnapshotData(BaseModel):
     """Single snapshot data point."""
+
     date: str = Field(..., description="Date in YYYY-MM-DD format")
     balance: float = Field(..., description="Balance at end of day")
 
 
 class SnapshotsResponse(BaseModel):
     """Response containing snapshot data."""
+
     start_date: str
     end_date: str
     granularity: str
@@ -25,6 +28,7 @@ class SnapshotsResponse(BaseModel):
 
 class InsufficientDataResponse(BaseModel):
     """Response when insufficient data is available."""
+
     error: str = "INSUFFICIENT_DATA"
     message: str
     coverage_pct: float
@@ -35,10 +39,14 @@ class InsufficientDataResponse(BaseModel):
 @router.get("", response_model=SnapshotsResponse)
 async def get_snapshots(
     start_date: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="End date (YYYY-MM-DD, defaults to today)"),
-    granularity: str = Query("day", pattern="^(day|week|month|year)$", description="Aggregation level"),
+    end_date: Optional[date] = Query(
+        None, description="End date (YYYY-MM-DD, defaults to today)"
+    ),
+    granularity: str = Query(
+        "day", pattern="^(day|week|month|year)$", description="Aggregation level"
+    ),
     user_and_token=Depends(get_current_user_with_token),
-    db=Depends(get_database)
+    db=Depends(get_database),
 ):
     """
     Get net worth snapshots by summing all account balances.
@@ -73,18 +81,22 @@ async def get_snapshots(
             user_id=user["id"],
             start_date=start_date,
             end_date=end_date,
-            granularity=granularity
+            granularity=granularity,
         )
 
         # Determine actual date range from data
-        actual_start = start_date.isoformat() if start_date else (snapshots[0]["date"] if snapshots else date.today().isoformat())
+        actual_start = (
+            start_date.isoformat()
+            if start_date
+            else (snapshots[0]["date"] if snapshots else date.today().isoformat())
+        )
         actual_end = end_date.isoformat() if end_date else date.today().isoformat()
 
         return SnapshotsResponse(
             start_date=actual_start,
             end_date=actual_end,
             granularity=granularity,
-            data=[SnapshotData(**s) for s in snapshots]
+            data=[SnapshotData(**s) for s in snapshots],
         )
     except InsufficientDataError as e:
         raise HTTPException(
@@ -95,7 +107,7 @@ async def get_snapshots(
                 "coverage_pct": e.coverage_pct,
                 "min_date": e.min_date.isoformat() if e.min_date else None,
                 "max_date": e.max_date.isoformat() if e.max_date else None,
-            }
+            },
         )
 
 
@@ -103,10 +115,14 @@ async def get_snapshots(
 async def get_account_snapshots(
     account_id: str,
     start_date: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="End date (YYYY-MM-DD, defaults to today)"),
-    granularity: str = Query("day", pattern="^(day|week|month|year)$", description="Aggregation level"),
+    end_date: Optional[date] = Query(
+        None, description="End date (YYYY-MM-DD, defaults to today)"
+    ),
+    granularity: str = Query(
+        "day", pattern="^(day|week|month|year)$", description="Aggregation level"
+    ),
     user_and_token=Depends(get_current_user_with_token),
-    db=Depends(get_database)
+    db=Depends(get_database),
 ):
     """
     Get balance snapshots for a specific account.
@@ -133,18 +149,22 @@ async def get_account_snapshots(
             account_id=account_id,
             start_date=start_date,
             end_date=end_date,
-            granularity=granularity
+            granularity=granularity,
         )
 
         # Determine actual date range
-        actual_start = start_date.isoformat() if start_date else (snapshots[0]["date"] if snapshots else date.today().isoformat())
+        actual_start = (
+            start_date.isoformat()
+            if start_date
+            else (snapshots[0]["date"] if snapshots else date.today().isoformat())
+        )
         actual_end = end_date.isoformat() if end_date else date.today().isoformat()
 
         return SnapshotsResponse(
             start_date=actual_start,
             end_date=actual_end,
             granularity=granularity,
-            data=[SnapshotData(**s) for s in snapshots]
+            data=[SnapshotData(**s) for s in snapshots],
         )
     except InsufficientDataError as e:
         raise HTTPException(
@@ -155,15 +175,17 @@ async def get_account_snapshots(
                 "coverage_pct": e.coverage_pct,
                 "min_date": e.min_date.isoformat() if e.min_date else None,
                 "max_date": e.max_date.isoformat() if e.max_date else None,
-            }
+            },
         )
 
 
 @router.post("/store")
 async def store_daily_snapshots(
-    snapshot_date: Optional[date] = Query(None, description="Date to snapshot (defaults to today)"),
+    snapshot_date: Optional[date] = Query(
+        None, description="Date to snapshot (defaults to today)"
+    ),
     user_and_token=Depends(get_current_user_with_token),
-    db=Depends(get_database)
+    db=Depends(get_database),
 ):
     """
     Store daily account balance snapshots.
@@ -175,11 +197,10 @@ async def store_daily_snapshots(
     snapshot_service = SnapshotService(db)
 
     await snapshot_service.store_daily_account_balances(
-        user_id=user["id"],
-        snapshot_date=snapshot_date
+        user_id=user["id"], snapshot_date=snapshot_date
     )
 
     return {
         "success": True,
-        "message": f"Account balances snapshotted for {snapshot_date or date.today()}"
+        "message": f"Account balances snapshotted for {snapshot_date or date.today()}",
     }

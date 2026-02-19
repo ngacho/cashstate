@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 class LinkTokenRequest(BaseModel):
     """Request to create a Plaid Link token."""
+
     pass
 
 

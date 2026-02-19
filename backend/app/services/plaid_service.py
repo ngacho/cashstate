@@ -4,7 +4,9 @@ import plaid
 from plaid.api import plaid_api
 from plaid.model.link_token_create_request import LinkTokenCreateRequest
 from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
-from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
+from plaid.model.item_public_token_exchange_request import (
+    ItemPublicTokenExchangeRequest,
+)
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
 from plaid.model.country_code import CountryCode
 from plaid.model.products import Products
@@ -104,31 +106,35 @@ def sync_transactions(access_token: str, cursor: str | None = None) -> dict:
 
     added = []
     for txn in response.added:
-        added.append({
-            "plaid_transaction_id": txn.transaction_id,
-            "account_id": txn.account_id,
-            "amount": txn.amount,
-            "iso_currency_code": txn.iso_currency_code,
-            "date": str(txn.date),
-            "name": txn.name,
-            "merchant_name": txn.merchant_name,
-            "category": txn.category,
-            "pending": txn.pending,
-        })
+        added.append(
+            {
+                "plaid_transaction_id": txn.transaction_id,
+                "account_id": txn.account_id,
+                "amount": txn.amount,
+                "iso_currency_code": txn.iso_currency_code,
+                "date": str(txn.date),
+                "name": txn.name,
+                "merchant_name": txn.merchant_name,
+                "category": txn.category,
+                "pending": txn.pending,
+            }
+        )
 
     modified = []
     for txn in response.modified:
-        modified.append({
-            "plaid_transaction_id": txn.transaction_id,
-            "account_id": txn.account_id,
-            "amount": txn.amount,
-            "iso_currency_code": txn.iso_currency_code,
-            "date": str(txn.date),
-            "name": txn.name,
-            "merchant_name": txn.merchant_name,
-            "category": txn.category,
-            "pending": txn.pending,
-        })
+        modified.append(
+            {
+                "plaid_transaction_id": txn.transaction_id,
+                "account_id": txn.account_id,
+                "amount": txn.amount,
+                "iso_currency_code": txn.iso_currency_code,
+                "date": str(txn.date),
+                "name": txn.name,
+                "merchant_name": txn.merchant_name,
+                "category": txn.category,
+                "pending": txn.pending,
+            }
+        )
 
     removed = []
     for txn in response.removed:

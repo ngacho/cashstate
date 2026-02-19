@@ -69,12 +69,14 @@ async def exchange_setup_token(
         encrypted_url = encrypt_token(access_url)
 
         # Store SimpleFin item in DB
-        item = db.create_simplefin_item({
-            "user_id": user["id"],
-            "access_url": encrypted_url,
-            "institution_name": request.institution_name or "SimpleFin Bank",
-            "status": "active",
-        })
+        item = db.create_simplefin_item(
+            {
+                "user_id": user["id"],
+                "access_url": encrypted_url,
+                "institution_name": request.institution_name or "SimpleFin Bank",
+                "status": "active",
+            }
+        )
 
         return SetupTokenResponse(
             item_id=item["id"],
@@ -171,12 +173,20 @@ async def list_transactions(
     from datetime import datetime
 
     # Convert timestamps to human-readable dates for logging
-    date_from_str = datetime.fromtimestamp(date_from).strftime("%Y-%m-%d") if date_from else "None"
-    date_to_str = datetime.fromtimestamp(date_to).strftime("%Y-%m-%d") if date_to else "None"
+    date_from_str = (
+        datetime.fromtimestamp(date_from).strftime("%Y-%m-%d") if date_from else "None"
+    )
+    date_to_str = (
+        datetime.fromtimestamp(date_to).strftime("%Y-%m-%d") if date_to else "None"
+    )
 
     logger.info(f"[GET /simplefin/transactions] User: {user['id']}")
-    logger.info(f"[GET /simplefin/transactions] Date range: {date_from_str} to {date_to_str} (timestamps: {date_from} to {date_to})")
-    logger.info(f"[GET /simplefin/transactions] Pagination: limit={limit}, offset={offset}")
+    logger.info(
+        f"[GET /simplefin/transactions] Date range: {date_from_str} to {date_to_str} (timestamps: {date_from} to {date_to})"
+    )
+    logger.info(
+        f"[GET /simplefin/transactions] Pagination: limit={limit}, offset={offset}"
+    )
 
     transactions = db.get_user_simplefin_transactions(
         user_id=user["id"],
@@ -190,14 +200,22 @@ async def list_transactions(
     categorized_count = sum(1 for t in transactions if t.get("category_id") is not None)
     uncategorized_count = len(transactions) - categorized_count
 
-    logger.info(f"[GET /simplefin/transactions] Returning {len(transactions)} transactions:")
+    logger.info(
+        f"[GET /simplefin/transactions] Returning {len(transactions)} transactions:"
+    )
     logger.info(f"[GET /simplefin/transactions]   - {categorized_count} categorized")
-    logger.info(f"[GET /simplefin/transactions]   - {uncategorized_count} uncategorized")
+    logger.info(
+        f"[GET /simplefin/transactions]   - {uncategorized_count} uncategorized"
+    )
 
     if transactions:
         sample = transactions[0]
-        logger.debug(f"[GET /simplefin/transactions] Sample transaction: id={sample.get('id')}, category_id={sample.get('category_id')}, subcategory_id={sample.get('subcategory_id')}, amount={sample.get('amount')}")
-        logger.debug(f"[GET /simplefin/transactions] Fields in response: {list(sample.keys())}")
+        logger.debug(
+            f"[GET /simplefin/transactions] Sample transaction: id={sample.get('id')}, category_id={sample.get('category_id')}, subcategory_id={sample.get('subcategory_id')}, amount={sample.get('amount')}"
+        )
+        logger.debug(
+            f"[GET /simplefin/transactions] Fields in response: {list(sample.keys())}"
+        )
 
     # Calculate navigation metadata when we have a date range
     has_previous = False
@@ -229,7 +247,9 @@ async def list_transactions(
             )
             has_next = len(later_transactions) > 0
 
-    logger.info(f"[GET /simplefin/transactions] Navigation: has_previous={has_previous}, has_next={has_next}")
+    logger.info(
+        f"[GET /simplefin/transactions] Navigation: has_previous={has_previous}, has_next={has_next}"
+    )
 
     return SimplefinTransactionListResponse(
         items=transactions,
@@ -285,7 +305,7 @@ async def sync_item(
         last_synced = item["last_synced_at"]
         # Handle both string and datetime objects
         if isinstance(last_synced, str):
-            last_synced = datetime.fromisoformat(last_synced.replace('Z', '+00:00'))
+            last_synced = datetime.fromisoformat(last_synced.replace("Z", "+00:00"))
 
         now = datetime.now(timezone.utc)
         time_since_last_sync = now - last_synced
@@ -295,16 +315,18 @@ async def sync_item(
             raise HTTPException(
                 status_code=429,
                 detail=f"Rate limited. You can sync again in {hours_remaining:.1f} hours. "
-                       f"SimpleFin allows 24 syncs per day to prevent excessive API usage.",
+                f"SimpleFin allows 24 syncs per day to prevent excessive API usage.",
             )
 
     try:
         # Create SimpleFin sync job
-        sync_job = db.create_simplefin_sync_job({
-            "user_id": user["id"],
-            "simplefin_item_id": item_id,
-            "status": "running",
-        })
+        sync_job = db.create_simplefin_sync_job(
+            {
+                "user_id": user["id"],
+                "simplefin_item_id": item_id,
+                "status": "running",
+            }
+        )
 
         # Decrypt the access URL
         access_url = decrypt_token(item["access_url"])
@@ -327,8 +349,7 @@ async def sync_item(
 
         # Build mapping of SimpleFin account IDs to our UUIDs
         account_id_map = {
-            acc["simplefin_account_id"]: acc["id"]
-            for acc in upserted_accounts
+            acc["simplefin_account_id"]: acc["id"] for acc in upserted_accounts
         }
 
         # Parse and upsert transactions using the account ID map
@@ -341,18 +362,24 @@ async def sync_item(
             db.upsert_simplefin_transactions(transactions)
 
         # Update sync job
-        db.update_simplefin_sync_job(sync_job["id"], {
-            "status": "completed",
-            "completed_at": "now()",
-            "accounts_synced": len(accounts),
-            "transactions_added": len(transactions),
-            "transactions_updated": 0,
-        })
+        db.update_simplefin_sync_job(
+            sync_job["id"],
+            {
+                "status": "completed",
+                "completed_at": "now()",
+                "accounts_synced": len(accounts),
+                "transactions_added": len(transactions),
+                "transactions_updated": 0,
+            },
+        )
 
         # Update item's last_synced_at
-        db.update_simplefin_item(item_id, {
-            "last_synced_at": "now()",
-        })
+        db.update_simplefin_item(
+            item_id,
+            {
+                "last_synced_at": "now()",
+            },
+        )
 
         return {
             "success": True,
@@ -365,12 +392,15 @@ async def sync_item(
 
     except Exception as e:
         # Mark sync job as failed
-        if 'sync_job' in locals():
-            db.update_simplefin_sync_job(sync_job["id"], {
-                "status": "failed",
-                "completed_at": "now()",
-                "error_message": str(e),
-            })
+        if "sync_job" in locals():
+            db.update_simplefin_sync_job(
+                sync_job["id"],
+                {
+                    "status": "failed",
+                    "completed_at": "now()",
+                    "error_message": str(e),
+                },
+            )
         raise HTTPException(
             status_code=500,
             detail=f"Failed to sync SimpleFin data: {str(e)}",

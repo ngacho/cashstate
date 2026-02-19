@@ -13,7 +13,9 @@ class CategoryBase(BaseModel):
     """Base category fields."""
 
     name: str = Field(..., min_length=1, max_length=100)
-    icon: str | None = Field(None, description="Emoji character (e.g., '🍽️') - cross-platform")
+    icon: str | None = Field(
+        None, description="Emoji character (e.g., '🍽️') - cross-platform"
+    )
     color: str | None = Field(None, description="Hex color code (e.g., '#FF5733')")
     display_order: int = Field(default=0, description="Display order for sorting")
 
@@ -38,7 +40,7 @@ class CategoryResponse(CategoryBase):
 
     id: str
     user_id: str | None  # None for system categories
-    is_system: bool
+    is_default: bool
     created_at: datetime
     updated_at: datetime
 
@@ -86,7 +88,7 @@ class SubcategoryResponse(SubcategoryBase):
 
     id: str
     user_id: str | None  # None for system subcategories
-    is_system: bool
+    is_default: bool
     created_at: datetime
     updated_at: datetime
 
@@ -114,6 +116,66 @@ class CategoriesTreeResponse(BaseModel):
 
     items: list[CategoryWithSubcategories]
     total: int
+
+
+# ============================================================================
+# Categorization Rule Schemas
+# ============================================================================
+
+
+class CategorizationRuleCreate(BaseModel):
+    """Create a new categorization rule."""
+
+    match_field: str = Field(
+        ...,
+        description="Field to match against: 'payee', 'description', or 'memo'",
+    )
+    match_value: str = Field(
+        ..., min_length=1, description="Case-insensitive substring to match"
+    )
+    category_id: str = Field(..., description="Category to assign when rule matches")
+    subcategory_id: str | None = Field(
+        None, description="Optional subcategory to assign"
+    )
+
+
+class CategorizationRuleResponse(BaseModel):
+    """Categorization rule response."""
+
+    id: str
+    user_id: str
+    match_field: str
+    match_value: str
+    category_id: str
+    subcategory_id: str | None
+    created_at: datetime
+
+
+class CategorizationRuleListResponse(BaseModel):
+    """List of categorization rules."""
+
+    items: list[CategorizationRuleResponse]
+    total: int
+
+
+# ============================================================================
+# Manual Categorization
+# ============================================================================
+
+
+class ManualCategorizationRequest(BaseModel):
+    """Manually categorize a transaction."""
+
+    category_id: str | None = Field(
+        None, description="Category to assign (null to clear)"
+    )
+    subcategory_id: str | None = Field(
+        None, description="Subcategory to assign (null to clear)"
+    )
+    create_rule: bool = Field(
+        default=False,
+        description="Create a rule based on this transaction's payee for future auto-categorization",
+    )
 
 
 # ============================================================================

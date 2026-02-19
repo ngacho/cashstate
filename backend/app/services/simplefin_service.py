@@ -48,11 +48,7 @@ def claim_access_url(setup_token: str) -> str:
     # POST to the claim URL to get the access URL
     # SimpleFin requires Content-Length: 0 for empty POST
     with httpx.Client() as client:
-        response = client.post(
-            claim_url,
-            headers={"Content-Length": "0"},
-            timeout=30
-        )
+        response = client.post(claim_url, headers={"Content-Length": "0"}, timeout=30)
         response.raise_for_status()
 
     # The response body is the access URL
@@ -93,11 +89,7 @@ def fetch_accounts(
         params["end-date"] = end_date
 
     with httpx.Client() as client:
-        response = client.get(
-            f"{access_url}/accounts",
-            params=params,
-            timeout=30
-        )
+        response = client.get(f"{access_url}/accounts", params=params, timeout=30)
         response.raise_for_status()
 
     data = response.json()
@@ -185,7 +177,7 @@ def parse_simplefin_transactions(
                 "transaction_date": txn.get("transacted_at"),
                 "description": txn.get("description", ""),
                 "payee": txn.get("payee") or None,  # Convert empty string to None
-                "memo": txn.get("memo") or None,    # Convert empty string to None
+                "memo": txn.get("memo") or None,  # Convert empty string to None
                 "pending": False,  # SimpleFin only returns posted transactions
             }
             transactions.append(transaction)
@@ -206,11 +198,13 @@ def validate_access_url(access_url: str) -> bool:
     try:
         parsed = urlparse(access_url)
         # Must have scheme, netloc, username, and password
-        return all([
-            parsed.scheme in ("https", "http"),
-            parsed.netloc,
-            parsed.username,
-            parsed.password,
-        ])
+        return all(
+            [
+                parsed.scheme in ("https", "http"),
+                parsed.netloc,
+                parsed.username,
+                parsed.password,
+            ]
+        )
     except Exception:
         return False

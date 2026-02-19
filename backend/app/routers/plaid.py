@@ -46,14 +46,16 @@ async def exchange_token(
     encrypted_token = encrypt_token(result["access_token"])
 
     # Store plaid item in DB
-    item = db.create_plaid_item({
-        "user_id": user["id"],
-        "plaid_item_id": result["item_id"],
-        "access_token": encrypted_token,  # Store encrypted token
-        "institution_id": request.institution_id,
-        "institution_name": request.institution_name,
-        "status": "active",
-    })
+    item = db.create_plaid_item(
+        {
+            "user_id": user["id"],
+            "plaid_item_id": result["item_id"],
+            "access_token": encrypted_token,  # Store encrypted token
+            "institution_id": request.institution_id,
+            "institution_name": request.institution_name,
+            "status": "active",
+        }
+    )
 
     return ExchangeTokenResponse(
         item_id=item["id"],

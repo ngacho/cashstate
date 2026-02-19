@@ -39,7 +39,9 @@ class LocationInput(BaseModel):
 
     latitude: float = Field(..., ge=-90, le=90, description="Latitude coordinate")
     longitude: float = Field(..., ge=-180, le=180, description="Longitude coordinate")
-    accuracy: float | None = Field(None, ge=0, description="Location accuracy in meters")
+    accuracy: float | None = Field(
+        None, ge=0, description="Location accuracy in meters"
+    )
     timestamp: datetime | None = Field(None, description="When location was recorded")
 
 

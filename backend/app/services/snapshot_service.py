@@ -4,6 +4,7 @@ Handles account balance history and calculates net worth on-the-fly:
 - Stores daily balance for each account in account_balance_history
 - Calculates net worth by summing all account balances per date
 """
+
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional, Dict
 from decimal import Decimal
@@ -13,7 +14,13 @@ from app.database import Database
 class InsufficientDataError(Exception):
     """Raised when insufficient data is available for the requested date range."""
 
-    def __init__(self, message: str, coverage_pct: float, min_date: Optional[date], max_date: Optional[date]):
+    def __init__(
+        self,
+        message: str,
+        coverage_pct: float,
+        min_date: Optional[date],
+        max_date: Optional[date],
+    ):
         self.message = message
         self.coverage_pct = coverage_pct
         self.min_date = min_date
@@ -28,9 +35,7 @@ class SnapshotService:
         self.db = db
 
     async def store_daily_account_balances(
-        self,
-        user_id: str,
-        snapshot_date: Optional[date] = None
+        self, user_id: str, snapshot_date: Optional[date] = None
     ) -> None:
         """
         Store current account balances as daily snapshots.
@@ -46,10 +51,12 @@ class SnapshotService:
             snapshot_date = date.today()
 
         # Get all user's accounts with current balances
-        accounts = self.db.client.table("simplefin_accounts") \
-            .select("id, balance") \
-            .eq("user_id", user_id) \
+        accounts = (
+            self.db.client.table("simplefin_accounts")
+            .select("id, balance")
+            .eq("user_id", user_id)
             .execute()
+        )
 
         if not accounts.data:
             return
@@ -66,16 +73,16 @@ class SnapshotService:
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }
 
-            self.db.client.table("account_balance_history") \
-                .upsert(snapshot_data, on_conflict="user_id,simplefin_account_id,snapshot_date") \
-                .execute()
+            self.db.client.table("account_balance_history").upsert(
+                snapshot_data, on_conflict="user_id,simplefin_account_id,snapshot_date"
+            ).execute()
 
     async def get_snapshots(
         self,
         user_id: str,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
-        granularity: str = "day"
+        granularity: str = "day",
     ) -> List[dict]:
         """
         Get net worth snapshots by summing all account balances per date.
@@ -107,39 +114,51 @@ class SnapshotService:
                 start_date = end_date - timedelta(days=365)
             else:  # year
                 # Get first snapshot date
-                result = self.db.client.table("account_balance_history") \
-                    .select("snapshot_date") \
-                    .eq("user_id", user_id) \
-                    .order("snapshot_date", desc=False) \
-                    .limit(1) \
+                result = (
+                    self.db.client.table("account_balance_history")
+                    .select("snapshot_date")
+                    .eq("user_id", user_id)
+                    .order("snapshot_date", desc=False)
+                    .limit(1)
                     .execute()
+                )
                 if result.data:
-                    start_date = datetime.fromisoformat(result.data[0]["snapshot_date"]).date()
+                    start_date = datetime.fromisoformat(
+                        result.data[0]["snapshot_date"]
+                    ).date()
                 else:
                     start_date = end_date
 
         # Fetch all account balances in date range
-        result = self.db.client.table("account_balance_history") \
-            .select("snapshot_date, balance") \
-            .eq("user_id", user_id) \
-            .gte("snapshot_date", start_date.isoformat()) \
-            .lte("snapshot_date", end_date.isoformat()) \
-            .order("snapshot_date", desc=False) \
+        result = (
+            self.db.client.table("account_balance_history")
+            .select("snapshot_date, balance")
+            .eq("user_id", user_id)
+            .gte("snapshot_date", start_date.isoformat())
+            .lte("snapshot_date", end_date.isoformat())
+            .order("snapshot_date", desc=False)
             .execute()
+        )
 
         # Check data sufficiency
         expected_days = (end_date - start_date).days + 1
         unique_dates = set(row["snapshot_date"] for row in result.data)
-        coverage_pct = (len(unique_dates) / expected_days * 100) if expected_days > 0 else 0
+        coverage_pct = (
+            (len(unique_dates) / expected_days * 100) if expected_days > 0 else 0
+        )
 
         if coverage_pct < 50:
-            min_date = min((datetime.fromisoformat(d).date() for d in unique_dates), default=None)
-            max_date = max((datetime.fromisoformat(d).date() for d in unique_dates), default=None)
+            min_date = min(
+                (datetime.fromisoformat(d).date() for d in unique_dates), default=None
+            )
+            max_date = max(
+                (datetime.fromisoformat(d).date() for d in unique_dates), default=None
+            )
             raise InsufficientDataError(
                 f"Insufficient data: only {coverage_pct:.1f}% coverage",
                 coverage_pct=coverage_pct,
                 min_date=min_date,
-                max_date=max_date
+                max_date=max_date,
             )
 
         # Group by date and sum balances (net worth = sum of all accounts)
@@ -170,7 +189,9 @@ class SnapshotService:
             if granularity == "week":
                 # ISO week (Monday as first day)
                 key = snapshot_dt.isocalendar()[:2]  # (year, week)
-                key_date = datetime.strptime(f"{key[0]}-W{key[1]:02d}-1", "%G-W%V-%u").date()
+                key_date = datetime.strptime(
+                    f"{key[0]}-W{key[1]:02d}-1", "%G-W%V-%u"
+                ).date()
             elif granularity == "month":
                 key = (snapshot_dt.year, snapshot_dt.month)
                 key_date = date(key[0], key[1], 1)
@@ -181,7 +202,7 @@ class SnapshotService:
             # Use last balance in the period
             aggregated[key] = {
                 "date": key_date.isoformat(),
-                "balance": snapshot["balance"]
+                "balance": snapshot["balance"],
             }
 
         return sorted(aggregated.values(), key=lambda x: x["date"])
@@ -192,7 +213,7 @@ class SnapshotService:
         account_id: str,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
-        granularity: str = "day"
+        granularity: str = "day",
     ) -> List[dict]:
         """
         Get balance snapshots for a specific account.
@@ -223,49 +244,66 @@ class SnapshotService:
                 start_date = end_date - timedelta(days=365)
             else:  # year
                 # Get first snapshot date for this account
-                result = self.db.client.table("account_balance_history") \
-                    .select("snapshot_date") \
-                    .eq("user_id", user_id) \
-                    .eq("simplefin_account_id", account_id) \
-                    .order("snapshot_date", desc=False) \
-                    .limit(1) \
+                result = (
+                    self.db.client.table("account_balance_history")
+                    .select("snapshot_date")
+                    .eq("user_id", user_id)
+                    .eq("simplefin_account_id", account_id)
+                    .order("snapshot_date", desc=False)
+                    .limit(1)
                     .execute()
+                )
                 if result.data:
-                    start_date = datetime.fromisoformat(result.data[0]["snapshot_date"]).date()
+                    start_date = datetime.fromisoformat(
+                        result.data[0]["snapshot_date"]
+                    ).date()
                 else:
                     start_date = end_date
 
         # Fetch all daily snapshots for this account
-        result = self.db.client.table("account_balance_history") \
-            .select("snapshot_date, balance") \
-            .eq("user_id", user_id) \
-            .eq("simplefin_account_id", account_id) \
-            .gte("snapshot_date", start_date.isoformat()) \
-            .lte("snapshot_date", end_date.isoformat()) \
-            .order("snapshot_date", desc=False) \
+        result = (
+            self.db.client.table("account_balance_history")
+            .select("snapshot_date, balance")
+            .eq("user_id", user_id)
+            .eq("simplefin_account_id", account_id)
+            .gte("snapshot_date", start_date.isoformat())
+            .lte("snapshot_date", end_date.isoformat())
+            .order("snapshot_date", desc=False)
             .execute()
+        )
 
         # Check data sufficiency
         expected_days = (end_date - start_date).days + 1
-        coverage_pct = (len(result.data) / expected_days * 100) if expected_days > 0 else 0
+        coverage_pct = (
+            (len(result.data) / expected_days * 100) if expected_days > 0 else 0
+        )
 
         if coverage_pct < 50:
-            min_date = min((datetime.fromisoformat(row["snapshot_date"]).date() for row in result.data), default=None)
-            max_date = max((datetime.fromisoformat(row["snapshot_date"]).date() for row in result.data), default=None)
+            min_date = min(
+                (
+                    datetime.fromisoformat(row["snapshot_date"]).date()
+                    for row in result.data
+                ),
+                default=None,
+            )
+            max_date = max(
+                (
+                    datetime.fromisoformat(row["snapshot_date"]).date()
+                    for row in result.data
+                ),
+                default=None,
+            )
             raise InsufficientDataError(
                 f"Insufficient data: only {coverage_pct:.1f}% coverage",
                 coverage_pct=coverage_pct,
                 min_date=min_date,
-                max_date=max_date
+                max_date=max_date,
             )
 
         if granularity == "day":
             # Return daily snapshots as-is
             return [
-                {
-                    "date": row["snapshot_date"],
-                    "balance": float(row["balance"])
-                }
+                {"date": row["snapshot_date"], "balance": float(row["balance"])}
                 for row in result.data
             ]
 
@@ -277,7 +315,9 @@ class SnapshotService:
             # Determine the grouping key
             if granularity == "week":
                 key = snapshot_dt.isocalendar()[:2]
-                key_date = datetime.strptime(f"{key[0]}-W{key[1]:02d}-1", "%G-W%V-%u").date()
+                key_date = datetime.strptime(
+                    f"{key[0]}-W{key[1]:02d}-1", "%G-W%V-%u"
+                ).date()
             elif granularity == "month":
                 key = (snapshot_dt.year, snapshot_dt.month)
                 key_date = date(key[0], key[1], 1)
@@ -288,7 +328,7 @@ class SnapshotService:
             # Use last balance in the period
             aggregated[key] = {
                 "date": key_date.isoformat(),
-                "balance": float(row["balance"])
+                "balance": float(row["balance"]),
             }
 
         return sorted(aggregated.values(), key=lambda x: x["date"])
