@@ -184,6 +184,8 @@ async def create_budget(
         "user_id": user["id"],
         "name": budget.name,
         "is_default": budget.is_default,
+        "emoji": budget.emoji,
+        "color": budget.color,
     }
     created = db.create_budget(budget_data)
 

@@ -14,6 +14,8 @@ class BudgetCreate(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=100)
     is_default: bool = Field(default=False)
+    emoji: str | None = Field(default="💰", max_length=10)
+    color: str | None = Field(default="#00A699", max_length=20)
     account_ids: list[str] = Field(
         default_factory=list,
         description="Account IDs to link. Empty = no accounts linked.",
@@ -25,6 +27,8 @@ class BudgetUpdate(BaseModel):
 
     name: str | None = Field(None, min_length=1, max_length=100)
     is_default: bool | None = None
+    emoji: str | None = Field(None, max_length=10)
+    color: str | None = Field(None, max_length=20)
 
 
 class BudgetResponse(BaseModel):
@@ -34,6 +38,8 @@ class BudgetResponse(BaseModel):
     user_id: str
     name: str
     is_default: bool
+    emoji: str | None = None
+    color: str | None = None
     created_at: datetime
     updated_at: datetime
 
