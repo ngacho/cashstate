@@ -11,7 +11,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Housing",
         "icon": "🏠",
-        "color": "#8B5CF6",
+        "color": "#7C5CFC",  # violet
         "display_order": 10,
         "subcategories": [
             {"name": "Rent", "icon": "🏘️", "display_order": 1},
@@ -26,7 +26,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Transportation",
         "icon": "🚗",
-        "color": "#F59E0B",
+        "color": "#E8853A",  # burnt orange
         "display_order": 11,
         "subcategories": [
             {"name": "Gas & Fuel", "icon": "⛽", "display_order": 1},
@@ -41,7 +41,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Food & Dining",
         "icon": "🍽️",
-        "color": "#EF4444",
+        "color": "#E05252",  # warm red
         "display_order": 12,
         "subcategories": [
             {"name": "Groceries", "icon": "🛒", "display_order": 1},
@@ -54,7 +54,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Utilities",
         "icon": "⚡",
-        "color": "#3B82F6",
+        "color": "#3A8FE8",  # sky blue
         "display_order": 13,
         "subcategories": [
             {"name": "Electricity", "icon": "💡", "display_order": 1},
@@ -68,7 +68,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Healthcare",
         "icon": "🏥",
-        "color": "#EC4899",
+        "color": "#E54D8A",  # magenta pink
         "display_order": 14,
         "subcategories": [
             {"name": "Doctor Visits", "icon": "⚕️", "display_order": 1},
@@ -82,7 +82,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Insurance",
         "icon": "🛡️",
-        "color": "#6366F1",
+        "color": "#5A6DEA",  # indigo
         "display_order": 15,
         "subcategories": [
             {"name": "Health Insurance", "icon": "🏥", "display_order": 1},
@@ -94,7 +94,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Shopping",
         "icon": "🛍️",
-        "color": "#06B6D4",
+        "color": "#13B5C7",  # teal
         "display_order": 20,
         "subcategories": [
             {"name": "Clothing", "icon": "👕", "display_order": 1},
@@ -109,7 +109,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Entertainment",
         "icon": "🎮",
-        "color": "#A855F7",
+        "color": "#A855F7",  # purple
         "display_order": 21,
         "subcategories": [
             {"name": "Movies & Shows", "icon": "🎬", "display_order": 1},
@@ -123,7 +123,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Personal Care",
         "icon": "✨",
-        "color": "#F472B6",
+        "color": "#D46EB3",  # orchid
         "display_order": 22,
         "subcategories": [
             {"name": "Hair Care", "icon": "💇", "display_order": 1},
@@ -136,7 +136,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Education",
         "icon": "📚",
-        "color": "#14B8A6",
+        "color": "#0FA87E",  # emerald
         "display_order": 23,
         "subcategories": [
             {"name": "Tuition", "icon": "🎓", "display_order": 1},
@@ -148,7 +148,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Subscriptions",
         "icon": "🔁",
-        "color": "#8B5CF6",
+        "color": "#6C7BDB",  # periwinkle
         "display_order": 24,
         "subcategories": [
             {"name": "Streaming Services", "icon": "📺", "display_order": 1},
@@ -163,7 +163,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Savings & Investments",
         "icon": "📈",
-        "color": "#10B981",
+        "color": "#22AD6A",  # green
         "display_order": 30,
         "subcategories": [
             {"name": "Emergency Fund", "icon": "🆘", "display_order": 1},
@@ -175,7 +175,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Debt Payments",
         "icon": "💳",
-        "color": "#EF4444",
+        "color": "#CF3E3E",  # crimson
         "display_order": 31,
         "subcategories": [
             {"name": "Credit Card", "icon": "💳", "display_order": 1},
@@ -187,7 +187,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Taxes",
         "icon": "📄",
-        "color": "#6B7280",
+        "color": "#7C8694",  # slate
         "display_order": 32,
         "subcategories": [
             {"name": "Federal Tax", "icon": "🏛️", "display_order": 1},
@@ -198,7 +198,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Fees & Charges",
         "icon": "⚠️",
-        "color": "#F59E0B",
+        "color": "#D4A03A",  # goldenrod
         "display_order": 33,
         "subcategories": [
             {"name": "Bank Fees", "icon": "🏦", "display_order": 1},
@@ -211,7 +211,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Gifts & Donations",
         "icon": "🎁",
-        "color": "#EC4899",
+        "color": "#E0599E",  # rose
         "display_order": 40,
         "subcategories": [
             {"name": "Gifts", "icon": "🎁", "display_order": 1},
@@ -222,7 +222,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Travel",
         "icon": "✈️",
-        "color": "#06B6D4",
+        "color": "#3AAFCC",  # cerulean
         "display_order": 41,
         "subcategories": [
             {"name": "Flights", "icon": "✈️", "display_order": 1},
@@ -234,7 +234,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Business Expenses",
         "icon": "💼",
-        "color": "#3B82F6",
+        "color": "#4A80D9",  # cobalt
         "display_order": 42,
         "subcategories": [
             {"name": "Office Supplies", "icon": "📎", "display_order": 1},
@@ -246,7 +246,7 @@ DEFAULT_CATEGORIES = [
     {
         "name": "Uncategorized",
         "icon": "❓",
-        "color": "#9CA3AF",
+        "color": "#9CA3AF",  # gray
         "display_order": 99,
         "subcategories": [],
     },
