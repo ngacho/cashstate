@@ -18,63 +18,70 @@ DROP VIEW IF EXISTS public.transactions_view CASCADE;
 -- Drop Tables (in reverse dependency order)
 -- ============================================================================
 
--- Budget Template tables (Phase 2)
-DROP TABLE IF EXISTS public.budget_periods CASCADE;
-DROP TABLE IF EXISTS public.budget_subcategories CASCADE;
-DROP TABLE IF EXISTS public.budget_categories CASCADE;
-DROP TABLE IF EXISTS public.budget_template_accounts CASCADE;
-DROP TABLE IF EXISTS public.budget_templates CASCADE;
+-- Goals tables
+DROP TABLE IF EXISTS public.goal_accounts CASCADE;
+DROP TABLE IF EXISTS public.goals CASCADE;
 
--- Old Budget tables (deprecated)
+-- Budget tables (new schema)
+DROP TABLE IF EXISTS public.budget_months CASCADE;
+DROP TABLE IF EXISTS public.budget_line_items CASCADE;
 DROP TABLE IF EXISTS public.budget_accounts CASCADE;
 DROP TABLE IF EXISTS public.budgets CASCADE;
 
 -- Categorization tables
+DROP TABLE IF EXISTS public.categorization_rules CASCADE;
 DROP TABLE IF EXISTS public.categorization_feedback CASCADE;
 DROP TABLE IF EXISTS public.subcategories CASCADE;
 DROP TABLE IF EXISTS public.categories CASCADE;
 
 -- SimpleFin tables (most dependent first)
 DROP TABLE IF EXISTS public.simplefin_sync_jobs CASCADE;
-DROP TABLE IF EXISTS public.simplefin_transactions CASCADE;
 DROP TABLE IF EXISTS public.account_balance_history CASCADE;
+DROP TABLE IF EXISTS public.simplefin_transactions CASCADE;
 DROP TABLE IF EXISTS public.simplefin_accounts CASCADE;
 DROP TABLE IF EXISTS public.simplefin_items CASCADE;
+
+-- Old Budget Template tables (from previous schema - safe to drop if they exist)
+DROP TABLE IF EXISTS public.budget_periods CASCADE;
+DROP TABLE IF EXISTS public.budget_subcategories CASCADE;
+DROP TABLE IF EXISTS public.budget_categories CASCADE;
+DROP TABLE IF EXISTS public.budget_template_accounts CASCADE;
+DROP TABLE IF EXISTS public.budget_templates CASCADE;
 
 -- ============================================================================
 -- Drop Functions
 -- ============================================================================
 
 DROP FUNCTION IF EXISTS public.batch_update_transaction_categories(UUID[], UUID[], UUID[]) CASCADE;
+DROP FUNCTION IF EXISTS public.batch_update_transaction_categories(UUID[], UUID[], UUID[], TEXT[]) CASCADE;
 DROP FUNCTION IF EXISTS public.handle_updated_at() CASCADE;
 
 -- ============================================================================
 -- Verification
 -- ============================================================================
 
--- Check that all tables are dropped
+-- Check that all tables are dropped (should return 0 rows)
 SELECT
     tablename
 FROM pg_tables
 WHERE schemaname = 'public'
     AND tablename IN (
-        -- Budget Template tables (Phase 2)
-        'budget_periods',
-        'budget_subcategories',
-        'budget_categories',
-        'budget_template_accounts',
-        'budget_templates',
-        -- Old Budget tables
+        -- Goals tables
+        'goal_accounts',
+        'goals',
+        -- Budget tables (new schema)
+        'budget_months',
+        'budget_line_items',
         'budget_accounts',
         'budgets',
         -- Categorization tables
-        'categorization_feedback',
+        'categorization_rules',
         'subcategories',
         'categories',
         -- SimpleFin tables
         'simplefin_sync_jobs',
-        'simplefin_transactions',
         'account_balance_history',
+        'simplefin_transactions',
         'simplefin_accounts',
         'simplefin_items'
     );

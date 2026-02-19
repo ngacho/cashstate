@@ -90,16 +90,17 @@ CREATE TRIGGER simplefin_accounts_updated_at
     FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
 -- ============================================================================
+-- Categories Table
 -- ============================================================================
 -- Stores top-level categories (e.g., Food & Dining, Transportation, Shopping)
--- Supports both system-provided and user-custom categories
+-- Supports both default-seeded and user-custom categories
 CREATE TABLE IF NOT EXISTS public.categories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,  -- NULL for system categories
     name TEXT NOT NULL,
     icon TEXT,          -- Emoji character (e.g., "🍽️") - cross-platform
     color TEXT,         -- Hex color code (e.g., "#FF5733")
-    is_system BOOLEAN NOT NULL DEFAULT FALSE,
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,  -- seeded from defaults but user-editable/deletable
     display_order INT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -119,21 +120,21 @@ CREATE POLICY "Users can view system and own categories"
 -- Users can only insert their own categories (not system ones)
 CREATE POLICY "Users can insert own categories"
     ON public.categories FOR INSERT
-    WITH CHECK ((SELECT auth.uid()) = user_id AND is_system = FALSE);
+    WITH CHECK ((SELECT auth.uid()) = user_id);
 
--- Users can only update their own categories (not system ones)
+-- Users can only update their own categories
 CREATE POLICY "Users can update own categories"
     ON public.categories FOR UPDATE
-    USING ((SELECT auth.uid()) = user_id AND is_system = FALSE)
-    WITH CHECK ((SELECT auth.uid()) = user_id AND is_system = FALSE);
+    USING ((SELECT auth.uid()) = user_id)
+    WITH CHECK ((SELECT auth.uid()) = user_id);
 
--- Users can only delete their own categories (not system ones)
+-- Users can only delete their own categories
 CREATE POLICY "Users can delete own categories"
     ON public.categories FOR DELETE
-    USING ((SELECT auth.uid()) = user_id AND is_system = FALSE);
+    USING ((SELECT auth.uid()) = user_id);
 
 CREATE INDEX idx_categories_user_id ON public.categories(user_id);
-CREATE INDEX idx_categories_is_system ON public.categories(is_system);
+CREATE INDEX idx_categories_is_default ON public.categories(is_default);
 CREATE INDEX idx_categories_display_order ON public.categories(display_order);
 
 CREATE TRIGGER categories_updated_at
@@ -144,14 +145,14 @@ CREATE TRIGGER categories_updated_at
 -- Subcategories Table
 -- ============================================================================
 -- Stores subcategories under parent categories (e.g., Restaurants, Groceries under Food)
--- Supports both system-provided and user-custom subcategories
+-- Supports both default-seeded and user-custom subcategories
 CREATE TABLE IF NOT EXISTS public.subcategories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     category_id UUID NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,  -- NULL for system subcategories
     name TEXT NOT NULL,
     icon TEXT,          -- Emoji character (e.g., "🍽️") - cross-platform
-    is_system BOOLEAN NOT NULL DEFAULT FALSE,
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,  -- seeded from defaults but user-editable/deletable
     display_order INT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -171,22 +172,22 @@ CREATE POLICY "Users can view system and own subcategories"
 -- Users can only insert their own subcategories (not system ones)
 CREATE POLICY "Users can insert own subcategories"
     ON public.subcategories FOR INSERT
-    WITH CHECK ((SELECT auth.uid()) = user_id AND is_system = FALSE);
+    WITH CHECK ((SELECT auth.uid()) = user_id);
 
--- Users can only update their own subcategories (not system ones)
+-- Users can only update their own subcategories
 CREATE POLICY "Users can update own subcategories"
     ON public.subcategories FOR UPDATE
-    USING ((SELECT auth.uid()) = user_id AND is_system = FALSE)
-    WITH CHECK ((SELECT auth.uid()) = user_id AND is_system = FALSE);
+    USING ((SELECT auth.uid()) = user_id)
+    WITH CHECK ((SELECT auth.uid()) = user_id);
 
--- Users can only delete their own subcategories (not system ones)
+-- Users can only delete their own subcategories
 CREATE POLICY "Users can delete own subcategories"
     ON public.subcategories FOR DELETE
-    USING ((SELECT auth.uid()) = user_id AND is_system = FALSE);
+    USING ((SELECT auth.uid()) = user_id);
 
 CREATE INDEX idx_subcategories_category_id ON public.subcategories(category_id);
 CREATE INDEX idx_subcategories_user_id ON public.subcategories(user_id);
-CREATE INDEX idx_subcategories_is_system ON public.subcategories(is_system);
+CREATE INDEX idx_subcategories_is_default ON public.subcategories(is_default);
 CREATE INDEX idx_subcategories_display_order ON public.subcategories(category_id, display_order);
 
 CREATE TRIGGER subcategories_updated_at
@@ -194,170 +195,158 @@ CREATE TRIGGER subcategories_updated_at
     FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
 -- ============================================================================
--- Budget Templates Table
+-- Categorization Rules Table
 -- ============================================================================
--- Reusable budget structures (e.g., "Regular Budget", "Vacation Budget")
--- Can be applied to different months via budget_periods
-CREATE TABLE IF NOT EXISTS public.budget_templates (
+-- User-defined rules for auto-categorizing transactions (applied before AI)
+CREATE TABLE IF NOT EXISTS public.categorization_rules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    match_field TEXT NOT NULL CHECK (match_field IN ('payee', 'description', 'memo')),
+    match_value TEXT NOT NULL,              -- case-insensitive substring match
+    category_id UUID NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
+    subcategory_id UUID REFERENCES public.subcategories(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
-    -- Template metadata
+ALTER TABLE public.categorization_rules ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, DELETE ON public.categorization_rules TO authenticated;
+
+CREATE POLICY "Users can manage own categorization rules"
+    ON public.categorization_rules FOR ALL
+    USING ((SELECT auth.uid()) = user_id)
+    WITH CHECK ((SELECT auth.uid()) = user_id);
+
+CREATE INDEX idx_categorization_rules_user_id ON public.categorization_rules(user_id);
+CREATE INDEX idx_categorization_rules_user_category ON public.categorization_rules(user_id, category_id);
+
+-- ============================================================================
+-- Budgets Table
+-- ============================================================================
+-- Reusable budget structures; one can be default (applied to months without explicit override)
+CREATE TABLE IF NOT EXISTS public.budgets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (total_amount >= 0),
     is_default BOOLEAN NOT NULL DEFAULT FALSE,
-
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-ALTER TABLE public.budget_templates ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.budget_templates TO authenticated;
+ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.budgets TO authenticated;
 
-CREATE POLICY "Users can manage own budget templates"
-    ON public.budget_templates FOR ALL
+CREATE POLICY "Users can manage own budgets"
+    ON public.budgets FOR ALL
     USING ((SELECT auth.uid()) = user_id)
     WITH CHECK ((SELECT auth.uid()) = user_id);
 
-CREATE INDEX idx_budget_templates_user_id ON public.budget_templates(user_id);
-CREATE INDEX idx_budget_templates_is_default ON public.budget_templates(user_id, is_default);
+CREATE INDEX idx_budgets_user_id ON public.budgets(user_id);
+CREATE INDEX idx_budgets_is_default ON public.budgets(user_id, is_default);
 
--- One default template per user
-CREATE UNIQUE INDEX idx_budget_templates_default
-    ON public.budget_templates(user_id)
+-- One default budget per user
+CREATE UNIQUE INDEX idx_budgets_default
+    ON public.budgets(user_id)
     WHERE is_default = TRUE;
 
-CREATE TRIGGER budget_templates_updated_at
-    BEFORE UPDATE ON public.budget_templates
+CREATE TRIGGER budgets_updated_at
+    BEFORE UPDATE ON public.budgets
     FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
 -- ============================================================================
--- Budget Template Accounts Table
+-- Budget Accounts Table
 -- ============================================================================
--- Links budget templates to specific accounts for tracking
--- Empty = track all accounts
-CREATE TABLE IF NOT EXISTS public.budget_template_accounts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    template_id UUID NOT NULL REFERENCES public.budget_templates(id) ON DELETE CASCADE,
+-- Links budgets to specific accounts for tracking
+-- KEY constraint: one account can only belong to ONE budget
+CREATE TABLE IF NOT EXISTS public.budget_accounts (
+    budget_id UUID NOT NULL REFERENCES public.budgets(id) ON DELETE CASCADE,
     account_id UUID NOT NULL REFERENCES public.simplefin_accounts(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    UNIQUE(template_id, account_id)
+    PRIMARY KEY (budget_id, account_id),
+    UNIQUE(account_id)  -- KEY: one account → one budget globally
 );
 
-ALTER TABLE public.budget_template_accounts ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, DELETE ON public.budget_template_accounts TO authenticated;
+ALTER TABLE public.budget_accounts ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, DELETE ON public.budget_accounts TO authenticated;
 
-CREATE POLICY "Users can manage own budget template accounts"
-    ON public.budget_template_accounts FOR ALL
+CREATE POLICY "Users can manage own budget accounts"
+    ON public.budget_accounts FOR ALL
     USING (
-        template_id IN (
-            SELECT id FROM public.budget_templates WHERE user_id = (SELECT auth.uid())
+        budget_id IN (
+            SELECT id FROM public.budgets WHERE user_id = (SELECT auth.uid())
         )
     );
 
-CREATE INDEX idx_budget_template_accounts_template_id ON public.budget_template_accounts(template_id);
-CREATE INDEX idx_budget_template_accounts_account_id ON public.budget_template_accounts(account_id);
+CREATE INDEX idx_budget_accounts_budget_id ON public.budget_accounts(budget_id);
+CREATE INDEX idx_budget_accounts_account_id ON public.budget_accounts(account_id);
 
 -- ============================================================================
--- Budget Categories Table
+-- Budget Line Items Table
 -- ============================================================================
--- Category-level budgets within a template
-CREATE TABLE IF NOT EXISTS public.budget_categories (
+-- Category or subcategory-level budget amounts within a budget
+CREATE TABLE IF NOT EXISTS public.budget_line_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    template_id UUID NOT NULL REFERENCES public.budget_templates(id) ON DELETE CASCADE,
+    budget_id UUID NOT NULL REFERENCES public.budgets(id) ON DELETE CASCADE,
     category_id UUID NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
+    subcategory_id UUID REFERENCES public.subcategories(id) ON DELETE CASCADE,
     amount NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (amount >= 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    UNIQUE(template_id, category_id)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-ALTER TABLE public.budget_categories ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.budget_categories TO authenticated;
+ALTER TABLE public.budget_line_items ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.budget_line_items TO authenticated;
 
-CREATE POLICY "Users can manage own budget categories"
-    ON public.budget_categories FOR ALL
+CREATE POLICY "Users can manage own budget line items"
+    ON public.budget_line_items FOR ALL
     USING (
-        template_id IN (
-            SELECT id FROM public.budget_templates WHERE user_id = (SELECT auth.uid())
+        budget_id IN (
+            SELECT id FROM public.budgets WHERE user_id = (SELECT auth.uid())
         )
     );
 
-CREATE INDEX idx_budget_categories_template_id ON public.budget_categories(template_id);
-CREATE INDEX idx_budget_categories_category_id ON public.budget_categories(category_id);
+-- Unique: one line item per category per budget (where not subcategory-level)
+CREATE UNIQUE INDEX idx_budget_line_items_category
+    ON public.budget_line_items(budget_id, category_id)
+    WHERE subcategory_id IS NULL;
 
-CREATE TRIGGER budget_categories_updated_at
-    BEFORE UPDATE ON public.budget_categories
+-- Unique: one line item per subcategory per budget
+CREATE UNIQUE INDEX idx_budget_line_items_subcategory
+    ON public.budget_line_items(budget_id, subcategory_id)
+    WHERE subcategory_id IS NOT NULL;
+
+CREATE INDEX idx_budget_line_items_budget_id ON public.budget_line_items(budget_id);
+CREATE INDEX idx_budget_line_items_category_id ON public.budget_line_items(category_id);
+
+CREATE TRIGGER budget_line_items_updated_at
+    BEFORE UPDATE ON public.budget_line_items
     FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
 -- ============================================================================
--- Budget Subcategories Table
+-- Budget Months Table
 -- ============================================================================
--- Subcategory-level budgets within a template
-CREATE TABLE IF NOT EXISTS public.budget_subcategories (
+-- Assign a specific budget to a specific month (override default)
+CREATE TABLE IF NOT EXISTS public.budget_months (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    template_id UUID NOT NULL REFERENCES public.budget_templates(id) ON DELETE CASCADE,
-    subcategory_id UUID NOT NULL REFERENCES public.subcategories(id) ON DELETE CASCADE,
-    amount NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (amount >= 0),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    UNIQUE(template_id, subcategory_id)
-);
-
-ALTER TABLE public.budget_subcategories ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.budget_subcategories TO authenticated;
-
-CREATE POLICY "Users can manage own budget subcategories"
-    ON public.budget_subcategories FOR ALL
-    USING (
-        template_id IN (
-            SELECT id FROM public.budget_templates WHERE user_id = (SELECT auth.uid())
-        )
-    );
-
-CREATE INDEX idx_budget_subcategories_template_id ON public.budget_subcategories(template_id);
-CREATE INDEX idx_budget_subcategories_subcategory_id ON public.budget_subcategories(subcategory_id);
-
-CREATE TRIGGER budget_subcategories_updated_at
-    BEFORE UPDATE ON public.budget_subcategories
-    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
-
--- ============================================================================
--- Budget Periods Table
--- ============================================================================
--- Apply a template to a specific month (override default template)
-CREATE TABLE IF NOT EXISTS public.budget_periods (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    budget_id UUID NOT NULL REFERENCES public.budgets(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    template_id UUID NOT NULL REFERENCES public.budget_templates(id) ON DELETE CASCADE,
-
-    -- The month this budget applies to (YYYY-MM-01 format)
-    period_month DATE NOT NULL,
-
+    month DATE NOT NULL,   -- stored as YYYY-MM-01
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    -- One template per month per user
-    UNIQUE(user_id, period_month)
+    -- One budget per month per user
+    UNIQUE(user_id, month)
 );
 
-ALTER TABLE public.budget_periods ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.budget_periods TO authenticated;
+ALTER TABLE public.budget_months ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, DELETE ON public.budget_months TO authenticated;
 
-CREATE POLICY "Users can manage own budget periods"
-    ON public.budget_periods FOR ALL
+CREATE POLICY "Users can manage own budget months"
+    ON public.budget_months FOR ALL
     USING ((SELECT auth.uid()) = user_id)
     WITH CHECK ((SELECT auth.uid()) = user_id);
 
-CREATE INDEX idx_budget_periods_user_month ON public.budget_periods(user_id, period_month DESC);
-CREATE INDEX idx_budget_periods_template_id ON public.budget_periods(template_id);
-
-CREATE TRIGGER budget_periods_updated_at
-    BEFORE UPDATE ON public.budget_periods
-    FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+CREATE INDEX idx_budget_months_user_month ON public.budget_months(user_id, month DESC);
+CREATE INDEX idx_budget_months_budget_id ON public.budget_months(budget_id);
 
 -- SimpleFin Transactions Table
 -- ============================================================================
@@ -385,6 +374,8 @@ CREATE TABLE IF NOT EXISTS public.simplefin_transactions (
     -- Categorization
     category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
     subcategory_id UUID REFERENCES public.subcategories(id) ON DELETE SET NULL,
+    categorization_source TEXT NOT NULL DEFAULT 'uncategorized'
+        CHECK (categorization_source IN ('ai', 'rule', 'manual', 'uncategorized')),
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -416,11 +407,12 @@ CREATE TRIGGER simplefin_transactions_updated_at
 -- Batch Update Function (must be after simplefin_transactions table)
 -- ============================================================================
 -- Function for batch updating transaction categories
--- Updates category_id and subcategory_id for multiple transactions in ONE query
+-- Updates category_id, subcategory_id, and categorization_source for multiple transactions in ONE query
 CREATE OR REPLACE FUNCTION public.batch_update_transaction_categories(
     transaction_ids UUID[],
     category_ids UUID[],
-    subcategory_ids UUID[]
+    subcategory_ids UUID[],
+    categorization_sources TEXT[] DEFAULT NULL
 )
 RETURNS INTEGER AS $$
 DECLARE
@@ -431,12 +423,18 @@ BEGIN
         SELECT
             unnest(transaction_ids) AS id,
             unnest(category_ids) AS category_id,
-            unnest(subcategory_ids) AS subcategory_id
+            unnest(subcategory_ids) AS subcategory_id,
+            CASE
+                WHEN categorization_sources IS NOT NULL
+                THEN unnest(categorization_sources)
+                ELSE 'ai'
+            END AS categorization_source
     )
     UPDATE public.simplefin_transactions t
     SET
         category_id = u.category_id,
         subcategory_id = u.subcategory_id,
+        categorization_source = u.categorization_source,
         updated_at = NOW()
     FROM updates u
     WHERE t.id = u.id;
@@ -536,6 +534,7 @@ SELECT
     t.pending,
     t.category_id,
     t.subcategory_id,
+    t.categorization_source,
     t.created_at,
     t.updated_at
 FROM public.simplefin_transactions t
