@@ -840,6 +840,48 @@ actor APIClient {
         )
     }
 
+    func createBudget(name: String, isDefault: Bool) async throws -> BudgetAPI {
+        struct CreateBody: Encodable {
+            let name: String
+            let isDefault: Bool
+            let accountIds: [String]
+            enum CodingKeys: String, CodingKey {
+                case name
+                case isDefault = "is_default"
+                case accountIds = "account_ids"
+            }
+        }
+        return try await request(
+            endpoint: "/budgets",
+            method: "POST",
+            body: CreateBody(name: name, isDefault: isDefault, accountIds: [])
+        )
+    }
+
+    func updateBudget(budgetId: String, name: String? = nil, isDefault: Bool? = nil) async throws -> BudgetAPI {
+        struct UpdateBody: Encodable {
+            let name: String?
+            let isDefault: Bool?
+            enum CodingKeys: String, CodingKey {
+                case name
+                case isDefault = "is_default"
+            }
+        }
+        return try await request(
+            endpoint: "/budgets/\(budgetId)",
+            method: "PATCH",
+            body: UpdateBody(name: name, isDefault: isDefault)
+        )
+    }
+
+    func deleteBudget(budgetId: String) async throws {
+        struct SuccessResponse: Codable { let success: Bool; let message: String }
+        let _: SuccessResponse = try await request(
+            endpoint: "/budgets/\(budgetId)",
+            method: "DELETE"
+        )
+    }
+
     // MARK: - Transaction Categorization
 
     func batchUpdateTransactions(_ updates: [(transactionId: String, categoryId: String?, subcategoryId: String?)]) async throws -> BatchUpdateResponse {

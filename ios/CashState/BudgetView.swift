@@ -466,12 +466,14 @@ struct BudgetView: View {
             func buildSubcategories(for cat: CategoryWithSubcategories) -> [BudgetSubcategory] {
                 cat.subcategories.map { sub in
                     let subLineItem = subcategoryLineItemMap[sub.id]
+                    // Use line item spending if budgeted, else fall back to raw subcategory spending
+                    let spent = subLineItem?.spent ?? budgetSummary.subcategorySpending?[sub.id] ?? 0
                     return BudgetSubcategory(
                         id: sub.id,
                         name: sub.name,
                         icon: sub.icon,
                         budgetAmount: subLineItem?.amount,
-                        spentAmount: subLineItem?.spent ?? 0,
+                        spentAmount: spent,
                         transactionCount: 0,
                         lineItemId: subLineItem?.id,
                         budgetId: subLineItem != nil ? budgetSummary.budgetId : nil
@@ -1051,6 +1053,8 @@ struct AllBudgetsView: View {
     @State private var budgets: [BudgetAPI] = []
     @State private var isLoading = true
     @State private var loadError: String?
+    @State private var editingBudget: BudgetAPI?
+    @State private var showCreateBudget = false
 
     var body: some View {
         NavigationStack {
@@ -1067,27 +1071,53 @@ struct AllBudgetsView: View {
                         Button("Retry") { Task { await loadData() } }
                             .foregroundColor(Theme.Colors.primary)
                     }
+                } else if budgets.isEmpty {
+                    VStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "list.bullet.rectangle")
+                            .font(.largeTitle)
+                            .foregroundColor(Theme.Colors.textSecondary.opacity(0.5))
+                        Text("No budgets yet")
+                            .font(.headline)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                        Button("Create Budget") { showCreateBudget = true }
+                            .foregroundColor(Theme.Colors.primary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List {
-                        Section("Budgets") {
+                        Section {
                             ForEach(budgets) { budget in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        HStack(spacing: 6) {
-                                            Text(budget.name).font(.body)
-                                            if budget.isDefault {
-                                                Text("DEFAULT")
-                                                    .font(.caption2).fontWeight(.bold)
-                                                    .foregroundColor(.white)
-                                                    .padding(.horizontal, 6).padding(.vertical, 2)
-                                                    .background(Theme.Colors.primary)
-                                                    .cornerRadius(4)
+                                Button {
+                                    editingBudget = budget
+                                } label: {
+                                    HStack(spacing: Theme.Spacing.sm) {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            HStack(spacing: 6) {
+                                                Text(budget.name)
+                                                    .font(.body)
+                                                    .foregroundColor(Theme.Colors.textPrimary)
+                                                if budget.isDefault {
+                                                    Text("DEFAULT")
+                                                        .font(.caption2).fontWeight(.bold)
+                                                        .foregroundColor(.white)
+                                                        .padding(.horizontal, 6).padding(.vertical, 2)
+                                                        .background(Theme.Colors.primary)
+                                                        .cornerRadius(4)
+                                                }
                                             }
                                         }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption)
+                                            .foregroundColor(Theme.Colors.textSecondary)
                                     }
-                                    Spacer()
                                 }
                             }
+                        } header: {
+                            Text("Budgets")
+                        } footer: {
+                            Text("Tap a budget to rename, set as default, or delete it.")
+                                .font(.caption)
                         }
                     }
                 }
@@ -1095,8 +1125,67 @@ struct AllBudgetsView: View {
             .navigationTitle("All Budgets")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .navigationBarLeading) {
                     Button("Done") { isPresented = false }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showCreateBudget = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+            .sheet(item: $editingBudget) { budget in
+                BudgetEditSheet(
+                    budget: budget,
+                    apiClient: apiClient,
+                    onSave: { updated in
+                        if let idx = budgets.firstIndex(where: { $0.id == updated.id }) {
+                            budgets[idx] = updated
+                        }
+                        // If this is now default, clear default from others
+                        if updated.isDefault {
+                            for idx in budgets.indices where budgets[idx].id != updated.id {
+                                if budgets[idx].isDefault {
+                                    budgets[idx] = BudgetAPI(
+                                        id: budgets[idx].id,
+                                        userId: budgets[idx].userId,
+                                        name: budgets[idx].name,
+                                        isDefault: false,
+                                        createdAt: budgets[idx].createdAt,
+                                        updatedAt: budgets[idx].updatedAt
+                                    )
+                                }
+                            }
+                        }
+                        editingBudget = nil
+                    },
+                    onDelete: { deletedId in
+                        budgets.removeAll { $0.id == deletedId }
+                        editingBudget = nil
+                    }
+                )
+            }
+            .sheet(isPresented: $showCreateBudget) {
+                CreateBudgetSheet(apiClient: apiClient) { newBudget in
+                    // If new budget is default, clear others
+                    if newBudget.isDefault {
+                        for idx in budgets.indices {
+                            if budgets[idx].isDefault {
+                                budgets[idx] = BudgetAPI(
+                                    id: budgets[idx].id,
+                                    userId: budgets[idx].userId,
+                                    name: budgets[idx].name,
+                                    isDefault: false,
+                                    createdAt: budgets[idx].createdAt,
+                                    updatedAt: budgets[idx].updatedAt
+                                )
+                            }
+                        }
+                    }
+                    budgets.append(newBudget)
+                    showCreateBudget = false
                 }
             }
         }
@@ -1112,6 +1201,223 @@ struct AllBudgetsView: View {
             loadError = error.localizedDescription
         }
         isLoading = false
+    }
+}
+
+// MARK: - Budget Edit Sheet
+
+private struct BudgetEditSheet: View {
+    let budget: BudgetAPI
+    let apiClient: APIClient
+    let onSave: (BudgetAPI) -> Void
+    let onDelete: (String) -> Void
+
+    @State private var name: String
+    @State private var isDefault: Bool
+    @State private var isSaving = false
+    @State private var isDeleting = false
+    @State private var showDeleteConfirmation = false
+    @State private var errorMessage: String?
+    @Environment(\.dismiss) private var dismiss
+
+    init(budget: BudgetAPI, apiClient: APIClient, onSave: @escaping (BudgetAPI) -> Void, onDelete: @escaping (String) -> Void) {
+        self.budget = budget
+        self.apiClient = apiClient
+        self.onSave = onSave
+        self.onDelete = onDelete
+        _name = State(initialValue: budget.name)
+        _isDefault = State(initialValue: budget.isDefault)
+    }
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("Budget Details") {
+                    HStack {
+                        Text("Name")
+                        Spacer()
+                        TextField("Budget name", text: $name)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                    Toggle("Set as Default", isOn: $isDefault)
+                        .tint(Theme.Colors.primary)
+                }
+
+                if isDefault && budget.isDefault {
+                    Section {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            Image(systemName: "info.circle.fill")
+                                .foregroundColor(.blue)
+                            Text("This is your default budget, applied to months without a specific override.")
+                                .font(.caption)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                    }
+                }
+
+                if let error = errorMessage {
+                    Section {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                }
+
+                Section {
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if isDeleting {
+                                ProgressView()
+                            } else {
+                                Label("Delete Budget", systemImage: "trash")
+                            }
+                            Spacer()
+                        }
+                    }
+                    .disabled(isDeleting || isSaving)
+                }
+            }
+            .navigationTitle("Edit Budget")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if isSaving {
+                        ProgressView()
+                    } else {
+                        Button("Save") { Task { await save() } }
+                            .fontWeight(.semibold)
+                            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
+                    }
+                }
+            }
+            .confirmationDialog(
+                "Delete \"\(budget.name)\"?",
+                isPresented: $showDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete Budget", role: .destructive) { Task { await delete() } }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("This will delete the budget and all its line items. Transactions are not affected.")
+            }
+        }
+    }
+
+    private func save() async {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+
+        isSaving = true
+        errorMessage = nil
+        do {
+            let updated = try await apiClient.updateBudget(
+                budgetId: budget.id,
+                name: trimmed != budget.name ? trimmed : nil,
+                isDefault: isDefault != budget.isDefault ? isDefault : nil
+            )
+            onSave(updated)
+        } catch {
+            errorMessage = "Failed to save: \(error.localizedDescription)"
+        }
+        isSaving = false
+    }
+
+    private func delete() async {
+        isDeleting = true
+        errorMessage = nil
+        do {
+            try await apiClient.deleteBudget(budgetId: budget.id)
+            onDelete(budget.id)
+        } catch {
+            errorMessage = "Failed to delete: \(error.localizedDescription)"
+            isDeleting = false
+        }
+    }
+}
+
+// MARK: - Create Budget Sheet
+
+private struct CreateBudgetSheet: View {
+    let apiClient: APIClient
+    let onCreate: (BudgetAPI) -> Void
+
+    @State private var name = ""
+    @State private var isDefault = false
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("Budget Details") {
+                    HStack {
+                        Text("Name")
+                        Spacer()
+                        TextField("e.g. Monthly Budget", text: $name)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                    Toggle("Set as Default", isOn: $isDefault)
+                        .tint(Theme.Colors.primary)
+                }
+
+                Section {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                        Text("The default budget is applied to all months unless you set a specific budget for a month.")
+                            .font(.caption)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                }
+
+                if let error = errorMessage {
+                    Section {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                }
+            }
+            .navigationTitle("New Budget")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if isSaving {
+                        ProgressView()
+                    } else {
+                        Button("Create") { Task { await create() } }
+                            .fontWeight(.semibold)
+                            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
+                    }
+                }
+            }
+        }
+    }
+
+    private func create() async {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        isSaving = true
+        errorMessage = nil
+        do {
+            let created = try await apiClient.createBudget(name: trimmed, isDefault: isDefault)
+            onCreate(created)
+        } catch {
+            errorMessage = "Failed to create: \(error.localizedDescription)"
+            isSaving = false
+        }
     }
 }
 

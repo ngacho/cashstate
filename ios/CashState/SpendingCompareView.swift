@@ -16,14 +16,17 @@ struct CategoryComparison: Identifiable {
     var color: Color { Color(hex: colorHex) }
 }
 
-// MARK: - Chart Bar Data
+// MARK: - Stacked Bar Data
 
-private struct ComparisonBar: Identifiable {
+private struct StackedBarItem: Identifiable {
     let id = UUID()
+    let monthLabel: String
+    let categoryName: String
     let categoryIcon: String
     let amount: Double
-    let monthLabel: String
     let colorHex: String
+
+    var color: Color { Color(hex: colorHex) }
 }
 
 // MARK: - Spending Compare View
@@ -62,6 +65,10 @@ struct SpendingCompareView: View {
 
     private var thisMonthLabel: String { monthLabel(for: thisMonth) }
     private var lastMonthLabel: String { monthLabel(for: lastMonth) }
+
+    private var thisMonthTotal: Double { comparisons.reduce(0) { $0 + $1.thisMonth } }
+    private var lastMonthTotal: Double { comparisons.reduce(0) { $0 + $1.lastMonth } }
+    private var totalDelta: Double { thisMonthTotal - lastMonthTotal }
 
     var body: some View {
         ScrollView {
@@ -129,32 +136,16 @@ struct SpendingCompareView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 200)
                 } else {
-                    // Bar chart (top 8 categories by max spending)
-                    comparisonChart
+                    // Month totals summary
+                    monthTotalsCard
 
-                    // Legend
-                    HStack(spacing: Theme.Spacing.md) {
-                        HStack(spacing: 4) {
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Theme.Colors.primary)
-                                .frame(width: 14, height: 8)
-                            Text(thisMonthLabel)
-                                .font(.caption)
-                                .foregroundColor(Theme.Colors.textSecondary)
-                        }
-                        HStack(spacing: 4) {
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Theme.Colors.primary.opacity(0.35))
-                                .frame(width: 14, height: 8)
-                            Text(lastMonthLabel)
-                                .font(.caption)
-                                .foregroundColor(Theme.Colors.textSecondary)
-                        }
-                        Spacer()
-                    }
-                    .padding(.horizontal, Theme.Spacing.md)
+                    // Stacked bar chart
+                    stackedChart
 
-                    // Summary table
+                    // Category legend
+                    categoryLegend
+
+                    // Per-category detail table
                     summaryList
                 }
             }
@@ -172,44 +163,109 @@ struct SpendingCompareView: View {
         }
     }
 
-    // MARK: - Bar Chart
+    // MARK: - Month Totals Card
 
-    private var comparisonChart: some View {
-        let top = comparisons
-            .sorted { max($0.thisMonth, $0.lastMonth) > max($1.thisMonth, $1.lastMonth) }
-            .prefix(8)
+    private var monthTotalsCard: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(thisMonthLabel)
+                    .font(.caption)
+                    .foregroundColor(Theme.Colors.textSecondary)
+                Text("$\(String(format: "%.0f", thisMonthTotal))")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(Theme.Colors.textPrimary)
+            }
 
-        var bars: [ComparisonBar] = []
-        for comp in top {
-            bars.append(ComparisonBar(
-                categoryIcon: comp.icon,
-                amount: comp.thisMonth,
-                monthLabel: thisMonthLabel,
-                colorHex: comp.colorHex
-            ))
-            bars.append(ComparisonBar(
-                categoryIcon: comp.icon,
-                amount: comp.lastMonth,
-                monthLabel: lastMonthLabel,
-                colorHex: comp.colorHex
-            ))
+            Spacer()
+
+            // Delta indicator
+            VStack(spacing: 2) {
+                if abs(totalDelta) < 1 {
+                    Image(systemName: "equal")
+                        .foregroundColor(Theme.Colors.textSecondary)
+                } else if totalDelta > 0 {
+                    Image(systemName: "arrow.up")
+                        .foregroundColor(Theme.Colors.expense)
+                    Text("$\(String(format: "%.0f", totalDelta)) more")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Colors.expense)
+                } else {
+                    Image(systemName: "arrow.down")
+                        .foregroundColor(Theme.Colors.income)
+                    Text("$\(String(format: "%.0f", -totalDelta)) less")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Colors.income)
+                }
+            }
+            .font(.title3)
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(lastMonthLabel)
+                    .font(.caption)
+                    .foregroundColor(Theme.Colors.textSecondary)
+                Text("$\(String(format: "%.0f", lastMonthTotal))")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(Theme.Colors.textSecondary)
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .background(Theme.Colors.cardBackground)
+        .cornerRadius(Theme.CornerRadius.md)
+        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+        .padding(.horizontal, Theme.Spacing.md)
+    }
+
+    // MARK: - Stacked Bar Chart
+
+    private var stackedChart: some View {
+        let sorted = comparisons.sorted { max($0.thisMonth, $0.lastMonth) > max($1.thisMonth, $1.lastMonth) }
+
+        var bars: [StackedBarItem] = []
+        for comp in sorted {
+            if comp.thisMonth > 0 {
+                bars.append(StackedBarItem(
+                    monthLabel: thisMonthLabel,
+                    categoryName: comp.categoryName,
+                    categoryIcon: comp.icon,
+                    amount: comp.thisMonth,
+                    colorHex: comp.colorHex
+                ))
+            }
+            if comp.lastMonth > 0 {
+                bars.append(StackedBarItem(
+                    monthLabel: lastMonthLabel,
+                    categoryName: comp.categoryName,
+                    categoryIcon: comp.icon,
+                    amount: comp.lastMonth,
+                    colorHex: comp.colorHex
+                ))
+            }
         }
 
         return Chart(bars) { bar in
             BarMark(
-                x: .value("Category", bar.categoryIcon),
-                y: .value("Amount", bar.amount)
+                x: .value("Month", bar.monthLabel),
+                y: .value("Spending", bar.amount)
             )
-            .foregroundStyle(by: .value("Month", bar.monthLabel))
-            .position(by: .value("Month", bar.monthLabel))
+            .foregroundStyle(bar.color)
+            .cornerRadius(2)
         }
-        .chartForegroundStyleScale([
-            thisMonthLabel: Theme.Colors.primary,
-            lastMonthLabel: Theme.Colors.primary.opacity(0.35)
-        ])
         .chartXAxis {
-            AxisMarks(values: .automatic) {
-                AxisValueLabel().font(.body)
+            AxisMarks(values: [thisMonthLabel, lastMonthLabel]) { value in
+                AxisValueLabel {
+                    if let label = value.as(String.self) {
+                        Text(label)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(label == thisMonthLabel
+                                ? Theme.Colors.primary
+                                : Theme.Colors.textSecondary)
+                    }
+                }
             }
         }
         .chartYAxis {
@@ -223,8 +279,35 @@ struct SpendingCompareView: View {
                 }
             }
         }
-        .frame(height: 220)
+        .frame(height: 260)
         .padding(.horizontal, Theme.Spacing.md)
+    }
+
+    // MARK: - Category Legend
+
+    private var categoryLegend: some View {
+        let sorted = comparisons.sorted { max($0.thisMonth, $0.lastMonth) > max($1.thisMonth, $1.lastMonth) }
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Theme.Spacing.xs) {
+                ForEach(sorted) { comp in
+                    HStack(spacing: 4) {
+                        Text(comp.icon)
+                            .font(.caption2)
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(comp.color)
+                            .frame(width: 10, height: 10)
+                        Text(comp.categoryName)
+                            .font(.caption2)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Theme.Colors.cardBackground)
+                    .cornerRadius(Theme.CornerRadius.sm)
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+        }
     }
 
     // MARK: - Summary List
@@ -276,7 +359,6 @@ struct SpendingCompareView: View {
         errorMessage = nil
 
         do {
-            // Fetch both summaries + categories in parallel
             async let thisSummaryFetch = apiClient.getBudgetSummary(month: monthString(for: thisMonth))
             async let lastSummaryFetch = apiClient.getBudgetSummary(month: monthString(for: lastMonth))
             async let categoriesFetch = apiClient.fetchCategoriesTree()
@@ -285,20 +367,16 @@ struct SpendingCompareView: View {
                 thisSummaryFetch, lastSummaryFetch, categoriesFetch
             )
 
-            // Aggregate spending per category from both summaries
             func aggregateSpending(from summary: BudgetSummary) -> [String: Double] {
                 var spending: [String: Double] = [:]
-                // Category-level line items
                 for item in summary.lineItems where item.subcategoryId == nil {
                     spending[item.categoryId, default: 0] += abs(item.spent)
                 }
-                // Subcategory-level items (for categories without category-level items)
                 for item in summary.lineItems where item.subcategoryId != nil {
                     if spending[item.categoryId] == nil {
                         spending[item.categoryId, default: 0] += abs(item.spent)
                     }
                 }
-                // Unbudgeted categories
                 for item in summary.unbudgetedCategories {
                     if spending[item.categoryId] == nil {
                         spending[item.categoryId] = abs(item.spent)
@@ -311,13 +389,11 @@ struct SpendingCompareView: View {
             let lastSpend = aggregateSpending(from: lastSummary)
             let allCategoryIds = Set(thisSpend.keys).union(Set(lastSpend.keys))
 
-            // Build comparisons from category metadata
             var result: [CategoryComparison] = []
             for cat in categoriesTree where allCategoryIds.contains(cat.id) {
                 let thisAmt = thisSpend[cat.id] ?? 0
                 let lastAmt = lastSpend[cat.id] ?? 0
                 guard thisAmt > 0 || lastAmt > 0 else { continue }
-                // Skip income categories
                 if let catType = cat.type, catType == "income" { continue }
                 result.append(CategoryComparison(
                     id: cat.id,
