@@ -1,0 +1,14 @@
+{
+  "name": "cashstate",
+  "version": "1.0.0",
+  "description": "Personal finance tracker with bank sync via SimpleFin, budget management, goals, and AI transaction categorization.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "convex": "^1.32.0"
+  }
+}

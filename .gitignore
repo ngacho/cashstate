@@ -69,3 +69,9 @@ logs/
 *.xcuserstate
 xcuserdata/
 *.xcuserdatad/
+
+# Convex
+convex/_generated/
+
+# Node
+node_modules/

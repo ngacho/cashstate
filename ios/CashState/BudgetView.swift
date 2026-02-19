@@ -19,6 +19,9 @@ struct BudgetView: View {
     // Quick add category
     @State private var showAddCategory = false
 
+    // Budget account scoping
+    @State private var budgetAccountIds: [String] = []
+
     // Loading state
     @State private var isLoading = true
     @State private var loadError: String?
@@ -34,6 +37,11 @@ struct BudgetView: View {
     @State private var selectedMonth: Date = Date()
     @State private var hasPreviousData: Bool = false
     @State private var hasNextData: Bool = false
+    @State private var hasBudget = false
+    @State private var budgetName: String? = nil
+    @State private var budgetId: String? = nil
+
+    @State private var allBudgets: [BudgetAPI] = []
 
     var totalBudget: Double {
         categories.compactMap { $0.budgetAmount }.reduce(0, +)
@@ -53,11 +61,7 @@ struct BudgetView: View {
     }
 
     var isNextMonthAvailable: Bool {
-        let calendar = Calendar.current
-        guard let nextMonth = calendar.date(byAdding: .month, value: 1, to: selectedMonth) else {
-            return false
-        }
-        return nextMonth <= Date()
+        return hasNextData
     }
 
     var isCurrentMonth: Bool {
@@ -75,7 +79,7 @@ struct BudgetView: View {
             Group {
                 if isLoading {
                     ProgressView("Loading...")
-                } else if categories.isEmpty {
+                } else if !hasBudget {
                     // Show empty state for new users
                     BudgetEmptyStateView(
                         apiClient: apiClient,
@@ -110,7 +114,8 @@ struct BudgetView: View {
                     category: destination.category,
                     subcategory: destination.subcategory,
                     apiClient: apiClient,
-                    selectedMonth: selectedMonth
+                    selectedMonth: selectedMonth,
+                    accountIds: budgetAccountIds
                 )
             }
             .navigationDestination(for: AllBudgetsNavValue.self) { _ in
@@ -189,6 +194,11 @@ struct BudgetView: View {
                             Text(currentMonthYear)
                                 .font(.headline)
                                 .foregroundColor(Theme.Colors.textPrimary)
+                            if let name = budgetName {
+                                Text(name)
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                            }
                             if let days = daysRemainingText {
                                 Text(days)
                                     .font(.caption)
@@ -271,12 +281,46 @@ struct BudgetView: View {
                                 .font(.headline)
                                 .foregroundColor(Theme.Colors.textPrimary)
                             Spacer()
-                            NavigationLink(value: AllBudgetsNavValue()) {
-                                Text("All Budgets")
-                                    .font(.subheadline)
-                                    .foregroundColor(Theme.Colors.primary)
+                            Menu {
+                                // Current budget — checkmark, disabled
+                                if let name = budgetName {
+                                    Label(name, systemImage: "checkmark")
+                                        .foregroundColor(Theme.Colors.primary)
+                                }
+                                if allBudgets.count > 1 {
+                                    Divider()
+                                    ForEach(allBudgets.filter { $0.id != budgetId }) { budget in
+                                        Button {
+                                            Task { await switchToBudget(budget) }
+                                        } label: {
+                                            Label(
+                                                "\(budget.emoji ?? "") \(budget.name)",
+                                                systemImage: budget.isDefault ? "star.fill" : "doc.text"
+                                            )
+                                        }
+                                    }
+                                }
+                                Divider()
+                                Button {
+                                    navigationPath.append(AllBudgetsNavValue())
+                                } label: {
+                                    Label("View All Budgets", systemImage: "list.bullet")
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(budgetName ?? "Budget")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(Theme.Colors.primary)
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.caption2)
+                                        .foregroundColor(Theme.Colors.primary)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Theme.Colors.primary.opacity(0.1))
+                                .cornerRadius(12)
                             }
-                            .buttonStyle(.plain)
                         }
 
                         // Amount and status
@@ -444,11 +488,22 @@ struct BudgetView: View {
             }
             let monthString = "\(year)-\(String(format: "%02d", month))"
 
-            // Fetch budget summary and categories tree in parallel
+            // Fetch budget summary, categories tree, and all budgets in parallel
             async let summaryFetch = apiClient.getBudgetSummary(month: monthString)
             async let categoriesTreeFetch = apiClient.fetchCategoriesTree()
+            async let allBudgetsFetch = apiClient.fetchBudgets()
 
-            let (budgetSummary, categoriesTree) = try await (summaryFetch, categoriesTreeFetch)
+            let (budgetSummary, categoriesTree, fetchedBudgets) = try await (summaryFetch, categoriesTreeFetch, allBudgetsFetch)
+            self.allBudgets = fetchedBudgets
+
+            // Store budget's account IDs for scoping
+            self.budgetAccountIds = budgetSummary.accountIds ?? []
+            self.hasBudget = budgetSummary.budgetId != nil
+            self.budgetName = budgetSummary.budgetName
+            self.budgetId = budgetSummary.budgetId
+            self.hasPreviousData = budgetSummary.hasPreviousMonth ?? false
+            self.hasNextData = budgetSummary.hasNextMonth ?? false
+
 
             // Build category lookup
             var categoryLookup: [String: CategoryWithSubcategories] = [:]
@@ -537,19 +592,17 @@ struct BudgetView: View {
 
             // Load transactions for uncategorized list and month navigation flags
             let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: selectedMonth))!
-            let startTimestamp = Int(startOfMonth.timeIntervalSince1970)
+            let startTimestamp = Int(startOfMonth.timeIntervalSince1970) * 1000
             let startOfNextMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth)!
-            let endTimestamp = Int(startOfNextMonth.timeIntervalSince1970)
+            let endTimestamp = Int(startOfNextMonth.timeIntervalSince1970) * 1000
 
             let txResponse = try await apiClient.listSimplefinTransactions(
                 dateFrom: startTimestamp,
                 dateTo: endTimestamp,
                 limit: 1000,
-                offset: 0
+                offset: 0,
+                accountIds: budgetAccountIds.isEmpty ? nil : budgetAccountIds
             )
-
-            hasPreviousData = txResponse.hasPreviousMonth
-            hasNextData = txResponse.hasNextMonth
 
             self.uncategorizedTransactions = txResponse.items
                 .filter { tx in
@@ -560,10 +613,10 @@ struct BudgetView: View {
                 .map { tx in
                     CategorizableTransaction(
                         id: tx.id,
-                        merchantName: tx.payee ?? tx.description,
+                        merchantName: tx.payee ?? tx.description ?? "",
                         amount: tx.amount,
                         date: Date(timeIntervalSince1970: TimeInterval(tx.postedDate)),
-                        description: tx.description,
+                        description: tx.description ?? "",
                         categoryId: nil,
                         subcategoryId: nil
                     )
@@ -601,6 +654,17 @@ struct BudgetView: View {
         }
     }
 
+    private func switchToBudget(_ budget: BudgetAPI) async {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.year, .month], from: selectedMonth)
+        guard let year = components.year, let month = components.month else { return }
+        let monthString = "\(year)-\(String(format: "%02d", month))"
+        _ = try? await apiClient.assignBudgetMonth(budgetId: budget.id, month: monthString)
+        isLoading = true
+        loadTask?.cancel()
+        loadTask = Task { await loadData() }
+    }
+
     private func startAICategorization() async {
         guard !isAICategorizationRunning else { return }
 
@@ -608,48 +672,41 @@ struct BudgetView: View {
         aiCategorizationProgress = 0
         aiCategorizationError = nil
 
-        // Animate progress while waiting for API
-        let progressTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
-            if !isAICategorizationRunning || aiCategorizationProgress >= 0.95 {
-                timer.invalidate()
-            } else {
-                aiCategorizationProgress += 0.02
-            }
-        }
-
         do {
-            // Call backend AI categorization
+            // Start background categorization job
             let transactionIds = uncategorizedTransactions.map { $0.id }
-            let response = try await apiClient.categorizeWithAI(transactionIds: transactionIds, force: false)
+            let startResponse = try await apiClient.startCategorizationJob(
+                transactionIds: transactionIds,
+                force: false
+            )
+            let jobId = startResponse.jobId
 
-            // Build batch updates
-            let updates = response.results.compactMap { result -> (transactionId: String, categoryId: String?, subcategoryId: String?)? in
-                guard result.categoryId != nil else { return nil }
-                return (transactionId: result.transactionId,
-                       categoryId: result.categoryId,
-                       subcategoryId: result.subcategoryId)
+            // Poll for progress every 1.5 seconds
+            while true {
+                try await Task.sleep(nanoseconds: 1_500_000_000)
+
+                let job = try await apiClient.getCategorizationJobStatus(jobId: jobId)
+
+                // Update progress
+                if job.totalTransactions > 0 {
+                    aiCategorizationProgress = Double(job.categorizedCount) / Double(job.totalTransactions)
+                }
+
+                if job.status == "completed" {
+                    aiCategorizationProgress = 1.0
+                    try await Task.sleep(nanoseconds: 500_000_000)
+                    await loadData()
+                    isAICategorizationRunning = false
+                    aiCategorizationProgress = 0
+                    return
+                } else if job.status == "failed" {
+                    aiCategorizationError = job.errorMessage ?? "Categorization failed"
+                    isAICategorizationRunning = false
+                    aiCategorizationProgress = 0
+                    return
+                }
             }
-
-            // Save to backend (already done by categorizeWithAI, but batch update ensures consistency)
-            if !updates.isEmpty {
-                _ = try await apiClient.batchUpdateTransactions(updates)
-            }
-
-            // Complete progress
-            aiCategorizationProgress = 1.0
-
-            // Wait a moment to show completion
-            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-
-            // Reload data to refresh the view
-            await loadData()
-
-            // Reset state
-            isAICategorizationRunning = false
-            aiCategorizationProgress = 0
-
         } catch {
-            progressTimer.invalidate()
             aiCategorizationError = "Failed to categorize: \(error.localizedDescription)"
             isAICategorizationRunning = false
             aiCategorizationProgress = 0
@@ -1298,8 +1355,7 @@ struct AllBudgetsView: View {
                             isDefault: false,
                             emoji: budgets[idx].emoji,
                             color: budgets[idx].color,
-                            createdAt: budgets[idx].createdAt,
-                            updatedAt: budgets[idx].updatedAt
+                            accountIds: budgets[idx].accountIds
                         )
                     }
                 }
@@ -1324,8 +1380,7 @@ struct AllBudgetsView: View {
                         isDefault: false,
                         emoji: budgets[idx].emoji,
                         color: budgets[idx].color,
-                        createdAt: budgets[idx].createdAt,
-                        updatedAt: budgets[idx].updatedAt
+                        accountIds: budgets[idx].accountIds
                     )
                 }
             }
@@ -3177,53 +3232,55 @@ struct ExpandableCategoryCard: View {
                 .padding(.top, 4)
             }
 
-            // Expandable subcategories section
-            if isExpanded && !category.subcategories.isEmpty {
+            // Expandable section
+            if isExpanded {
                 VStack(spacing: Theme.Spacing.xs) {
                     Divider()
                         .padding(.vertical, Theme.Spacing.xs)
 
-                    // Subcategories header
-                    HStack {
-                        Text("Subcategories")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundColor(Theme.Colors.textSecondary)
-                            .textCase(.uppercase)
-                        Spacer()
-                        Text("\(category.subcategories.count)")
-                            .font(.caption2)
-                            .foregroundColor(Theme.Colors.textSecondary)
-                    }
-                    .padding(.horizontal, Theme.Spacing.xs)
-
-                    // Subcategory list
-                    ForEach($category.subcategories) { $subcategory in
-                        SubcategoryRow(
-                            category: category,
-                            subcategory: $subcategory,
-                            categoryColor: category.color,
-                            apiClient: apiClient,
-                            onDeleteSubcategoryBudget: subcategory.lineItemId != nil ? {
-                                let sub = subcategory
-                                await deleteSubcategoryBudget(subcategory: sub)
-                            } : nil
-                        )
-                    }
-
-                    // Add subcategory button
-                    Button {
-                        showAddSubcategory = true
-                    } label: {
-                        HStack(spacing: Theme.Spacing.xs) {
-                            Image(systemName: "plus.circle.fill")
+                    if !category.subcategories.isEmpty {
+                        // Subcategories header
+                        HStack {
+                            Text("Subcategories")
                                 .font(.caption)
-                            Text("Add Subcategory")
-                                .font(.caption)
-                                .fontWeight(.medium)
+                                .fontWeight(.semibold)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                                .textCase(.uppercase)
+                            Spacer()
+                            Text("\(category.subcategories.count)")
+                                .font(.caption2)
+                                .foregroundColor(Theme.Colors.textSecondary)
                         }
-                        .foregroundColor(category.color)
-                        .padding(.vertical, Theme.Spacing.xs)
+                        .padding(.horizontal, Theme.Spacing.xs)
+
+                        // Subcategory list
+                        ForEach($category.subcategories) { $subcategory in
+                            SubcategoryRow(
+                                category: category,
+                                subcategory: $subcategory,
+                                categoryColor: category.color,
+                                apiClient: apiClient,
+                                onDeleteSubcategoryBudget: subcategory.lineItemId != nil ? {
+                                    let sub = subcategory
+                                    await deleteSubcategoryBudget(subcategory: sub)
+                                } : nil
+                            )
+                        }
+
+                        // Add subcategory button
+                        Button {
+                            showAddSubcategory = true
+                        } label: {
+                            HStack(spacing: Theme.Spacing.xs) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.caption)
+                                Text("Add Subcategory")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .foregroundColor(category.color)
+                            .padding(.vertical, Theme.Spacing.xs)
+                        }
                     }
 
                     // View all transactions button

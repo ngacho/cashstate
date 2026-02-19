@@ -784,7 +784,7 @@ struct AccountDetailView: View {
         var merchantTotals: [String: Double] = [:]
 
         for transaction in filteredTransactions where transaction.amount < 0 {
-            let merchant = transaction.payee ?? transaction.description
+            let merchant = transaction.payee ?? transaction.description ?? ""
             merchantTotals[merchant, default: 0] += abs(transaction.amount)
         }
 

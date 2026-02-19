@@ -99,7 +99,7 @@ private struct TransactionDetailContentView: View {
     }
 
     var merchantName: String {
-        transaction.payee ?? transaction.description
+        transaction.payee ?? transaction.description ?? "Unknown"
     }
 
     var formattedDate: String {
@@ -148,8 +148,8 @@ private struct TransactionDetailContentView: View {
                                 .foregroundColor(Theme.Colors.textSecondary)
 
                             // Description/Memo
-                            if !transaction.description.isEmpty && transaction.description != merchantName {
-                                Text(transaction.description)
+                            if let desc = transaction.description, !desc.isEmpty, desc != merchantName {
+                                Text(desc)
                                     .font(.caption)
                                     .foregroundColor(Theme.Colors.textSecondary)
                                     .multilineTextAlignment(.center)
@@ -631,26 +631,24 @@ struct CategorySelectionCard: View {
 
     let mockTransaction = Transaction(
         id: "1",
-        simplefinAccountId: "acc1",
+        accountId: "acc1",
+        accountName: "Checking",
         simplefinTransactionId: "txn1",
         amount: -45.50,
         currency: "USD",
-        postedDate: Int(Date().timeIntervalSince1970),
-        transactionDate: Int(Date().timeIntervalSince1970),
+        date: Int(Date().timeIntervalSince1970 * 1000),
+        transactedAt: nil,
         description: "Whole Foods Market",
         payee: "Whole Foods",
-        memo: "Weekly groceries",
         pending: false,
         categoryId: nil,
-        subcategoryId: nil,
-        createdAt: ISO8601DateFormatter().string(from: Date()),
-        updatedAt: ISO8601DateFormatter().string(from: Date())
+        subcategoryId: nil
     )
 
-    return TransactionDetailView(
+    TransactionDetailView(
         transaction: mockTransaction,
         categories: BudgetCategory.mockCategories,
-        apiClient: APIClient(),
+        apiClient: APIClient.shared,
         isPresented: $isPresented,
         onCategoryUpdated: $onUpdate
     )

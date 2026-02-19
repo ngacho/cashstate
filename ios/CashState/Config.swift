@@ -2,27 +2,12 @@ import Foundation
 
 /// App configuration - UPDATE THESE VALUES
 enum Config {
-    // MARK: - Backend (ngrok)
+    // MARK: - Convex
 
-    /// Your ngrok URL - UPDATE THIS!
-    /// Example: "https://abc123.ngrok.io"
-    static let backendURL = "http://localhost:8000"
-
-    /// API version prefix
-    static let apiVersion = "/app/v1"
-
-    /// Full API base URL
-    static var apiBaseURL: String {
-        backendURL + apiVersion
-    }
-
-    // MARK: - Supabase
-
-    /// Supabase project URL
-    static let supabaseURL = "https://qdilsbsgdssmwbmtoxdf.supabase.co"
-
-    /// Supabase anon key (public, safe to embed)
-    static let supabasePublishableKey = "sb_publishable_Fp-QAXA1hicpWDDVj4b0wg_U5i-1f8d"
+    /// Your Convex deployment URL
+    /// Find it at: https://dashboard.convex.dev → your project → Settings
+    /// Example: "https://your-deployment.convex.cloud"
+    static let convexURL = "https://flexible-bison-651.convex.cloud"
 
     // MARK: - App
 

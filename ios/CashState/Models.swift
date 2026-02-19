@@ -1,59 +1,56 @@
 import Foundation
 
-// MARK: - Auth Response (matches backend TokenResponse)
+// MARK: - Auth Response
+// Note: Auth is now handled by Clerk iOS SDK directly.
+// This struct is kept for compatibility during transition.
 
 struct AuthResponse: Codable {
     let accessToken: String
-    let refreshToken: String
     let tokenType: String
-    let expiresIn: Int
-    let userId: String
 
     enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
-        case refreshToken = "refresh_token"
         case tokenType = "token_type"
-        case expiresIn = "expires_in"
-        case userId = "user_id"
     }
 }
 
-// MARK: - SimpleFin Transaction (matches backend SimplefinTransactionResponse)
+// MARK: - SimpleFin Transaction (matches Convex simplefinTransactions table)
 
 struct Transaction: Identifiable, Codable, Hashable {
-    let id: String
-    let simplefinAccountId: String
-    let simplefinTransactionId: String
+    let id: String                      // Convex _id
+    let accountId: String               // Convex simplefinAccounts _id
+    let accountName: String             // denormalized account name
+    let simplefinTransactionId: String  // external SimpleFin ID (simplefinTxId)
     let amount: Double
     let currency: String
-    let postedDate: Int          // Unix timestamp
-    let transactionDate: Int     // Unix timestamp
-    let description: String
+    let date: Int                       // Unix ms (posted date)
+    let transactedAt: Int?              // Unix ms (transaction date, optional)
+    let description: String?
     let payee: String?
-    let memo: String?
     let pending: Bool
-    let categoryId: String?      // Category assignment
-    let subcategoryId: String?   // Subcategory assignment
-    let createdAt: String
-    let updatedAt: String
+    let categoryId: String?
+    let subcategoryId: String?
 
     enum CodingKeys: String, CodingKey {
-        case id
-        case simplefinAccountId = "simplefin_account_id"
-        case simplefinTransactionId = "simplefin_transaction_id"
+        case id = "_id"
+        case accountId
+        case accountName
+        case simplefinTransactionId = "simplefinTxId"
         case amount
         case currency
-        case postedDate = "posted_date"
-        case transactionDate = "transaction_date"
+        case date
+        case transactedAt
         case description
         case payee
-        case memo
         case pending
-        case categoryId = "category_id"
-        case subcategoryId = "subcategory_id"
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
+        case categoryId
+        case subcategoryId
     }
+
+    // Compatibility computed properties — views reference these
+    var simplefinAccountId: String { accountId }
+    var postedDate: Int { date / 1000 }       // convert ms → seconds for Date()
+    var transactionDate: Int { (transactedAt ?? date) / 1000 }
 
     var isExpense: Bool { amount < 0 }
 
@@ -63,21 +60,18 @@ struct Transaction: Identifiable, Codable, Hashable {
     }
 
     var displayDate: String {
-        // Convert Unix timestamp to readable format
-        let date = Date(timeIntervalSince1970: TimeInterval(postedDate))
+        let d = Date(timeIntervalSince1970: TimeInterval(date) / 1000.0)
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d"
-        return formatter.string(from: date)
+        return formatter.string(from: d)
     }
 
-    // Use payee as primary name, fall back to description
-    var name: String { payee ?? description }
-
-    // Use description as merchant name
-    var merchantName: String { description }
+    var name: String { payee ?? description ?? "" }
+    var merchantName: String { description ?? "" }
+    var memo: String? { nil } // removed from Convex schema
 }
 
-// Transaction list response with navigation metadata
+// Transaction list response (adapts Convex paginated format)
 struct TransactionListResponse: Codable {
     let items: [Transaction]
     let total: Int
@@ -115,23 +109,21 @@ struct SpendingInsight {
     }
 }
 
-// MARK: - SimpleFin Models
+// MARK: - SimpleFin Models (matches Convex schema)
 
 struct SimplefinItem: Identifiable, Codable {
     let id: String
     let institutionName: String?
     let status: String
-    let lastSyncedAt: String?
-    let createdAt: String
-    let updatedAt: String
+    let lastSyncedAt: Double? // Unix ms from Convex
+
+    var createdAt: String { "" } // not in Convex, kept for compat
 
     enum CodingKeys: String, CodingKey {
-        case id
-        case institutionName = "institution_name"
+        case id = "_id"
+        case institutionName
         case status
-        case lastSyncedAt = "last_synced_at"
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
+        case lastSyncedAt
     }
 }
 
@@ -142,24 +134,18 @@ struct SimplefinAccount: Identifiable, Codable {
     let currency: String
     let balance: Double?
     let availableBalance: Double?
-    let balanceDate: Int?
-    let organizationName: String?
-    let organizationDomain: String?
-    let createdAt: String
-    let updatedAt: String
+    let balanceDate: Double? // Unix ms
+    let organizationName: String? // orgName in Convex
 
     enum CodingKeys: String, CodingKey {
-        case id
-        case simplefinAccountId = "simplefin_account_id"
+        case id = "_id"
+        case simplefinAccountId
         case name
         case currency
         case balance
-        case availableBalance = "available_balance"
-        case balanceDate = "balance_date"
-        case organizationName = "organization_name"
-        case organizationDomain = "organization_domain"
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
+        case availableBalance
+        case balanceDate
+        case organizationName = "orgName"
     }
 
     var displayBalance: String {
@@ -178,11 +164,11 @@ struct BudgetAccountItem: Identifiable, Codable {
     var id: String { accountId }
 
     enum CodingKeys: String, CodingKey {
-        case budgetId = "budget_id"
-        case accountId = "account_id"
-        case accountName = "account_name"
+        case budgetId
+        case accountId
+        case accountName
         case balance
-        case createdAt = "created_at"
+        case createdAt
     }
 }
 
@@ -194,21 +180,11 @@ struct BudgetAccountListResponse: Codable {
 struct SimplefinSetupRequest: Codable {
     let setupToken: String
     let institutionName: String?
-
-    enum CodingKeys: String, CodingKey {
-        case setupToken = "setup_token"
-        case institutionName = "institution_name"
-    }
 }
 
 struct SimplefinSetupResponse: Codable {
     let itemId: String
     let institutionName: String?
-
-    enum CodingKeys: String, CodingKey {
-        case itemId = "item_id"
-        case institutionName = "institution_name"
-    }
 }
 
 struct SimplefinSyncResponse: Codable {
@@ -218,15 +194,6 @@ struct SimplefinSyncResponse: Codable {
     let transactionsAdded: Int
     let transactionsUpdated: Int
     let errors: [String]
-
-    enum CodingKeys: String, CodingKey {
-        case success
-        case syncJobId = "sync_job_id"
-        case accountsSynced = "accounts_synced"
-        case transactionsAdded = "transactions_added"
-        case transactionsUpdated = "transactions_updated"
-        case errors
-    }
 }
 
 // MARK: - Snapshots
@@ -249,13 +216,6 @@ struct SnapshotsResponse: Codable {
     let endDate: String
     let granularity: String
     let data: [SnapshotData]
-
-    enum CodingKeys: String, CodingKey {
-        case startDate = "start_date"
-        case endDate = "end_date"
-        case granularity
-        case data
-    }
 }
 
 // MARK: - Goals
@@ -275,11 +235,6 @@ enum GoalType: String, Codable, CaseIterable {
 struct GoalAccountRequest: Codable {
     let simplefinAccountId: String
     let allocationPercentage: Double
-
-    enum CodingKeys: String, CodingKey {
-        case simplefinAccountId = "simplefin_account_id"
-        case allocationPercentage = "allocation_percentage"
-    }
 }
 
 struct GoalCreate: Codable {
@@ -289,15 +244,6 @@ struct GoalCreate: Codable {
     let targetAmount: Double
     let targetDate: String?
     let accounts: [GoalAccountRequest]
-
-    enum CodingKeys: String, CodingKey {
-        case name
-        case description
-        case goalType = "goal_type"
-        case targetAmount = "target_amount"
-        case targetDate = "target_date"
-        case accounts
-    }
 }
 
 struct GoalUpdate: Codable {
@@ -307,15 +253,6 @@ struct GoalUpdate: Codable {
     let targetDate: String?
     let isCompleted: Bool?
     let accounts: [GoalAccountRequest]?
-
-    enum CodingKeys: String, CodingKey {
-        case name
-        case description
-        case targetAmount = "target_amount"
-        case targetDate = "target_date"
-        case isCompleted = "is_completed"
-        case accounts
-    }
 }
 
 struct GoalAccountResponse: Codable, Identifiable {
@@ -324,15 +261,15 @@ struct GoalAccountResponse: Codable, Identifiable {
     let accountName: String
     let allocationPercentage: Double
     let currentBalance: Double
-    let startingBalance: Double?  // debt_payment goals only — balance at creation
+    let startingBalance: Double?
 
     enum CodingKeys: String, CodingKey {
         case id
-        case simplefinAccountId = "simplefin_account_id"
-        case accountName = "account_name"
-        case allocationPercentage = "allocation_percentage"
-        case currentBalance = "current_balance"
-        case startingBalance = "starting_balance"
+        case simplefinAccountId
+        case accountName
+        case allocationPercentage
+        case currentBalance
+        case startingBalance
     }
 }
 
@@ -351,18 +288,18 @@ struct Goal: Codable, Identifiable {
     let updatedAt: String
 
     enum CodingKeys: String, CodingKey {
-        case id
+        case id = "_id"
         case name
         case description
-        case goalType = "goal_type"
-        case targetAmount = "target_amount"
-        case targetDate = "target_date"
-        case isCompleted = "is_completed"
-        case currentAmount = "current_amount"
-        case progressPercent = "progress_percent"
+        case goalType
+        case targetAmount
+        case targetDate
+        case isCompleted
+        case currentAmount
+        case progressPercent
         case accounts
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
+        case createdAt
+        case updatedAt
     }
 }
 
@@ -382,23 +319,51 @@ struct GoalDetail: Codable {
     let updatedAt: String
 
     enum CodingKeys: String, CodingKey {
-        case id
+        case id = "_id"
         case name
         case description
-        case goalType = "goal_type"
-        case targetAmount = "target_amount"
-        case targetDate = "target_date"
-        case isCompleted = "is_completed"
-        case currentAmount = "current_amount"
-        case progressPercent = "progress_percent"
+        case goalType
+        case targetAmount
+        case targetDate
+        case isCompleted
+        case currentAmount
+        case progressPercent
         case accounts
-        case progressData = "progress_data"
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
+        case progressData
+        case createdAt
+        case updatedAt
     }
 }
 
 struct GoalListResponse: Codable {
     let items: [Goal]
     let total: Int
+}
+
+// MARK: - Categorization Jobs
+
+struct CategorizationJobStartResponse: Codable {
+    let jobId: String
+}
+
+struct CategorizationJob: Codable, Identifiable {
+    let id: String
+    let userId: String
+    let status: String // "running" | "completed" | "failed"
+    let totalTransactions: Int
+    let categorizedCount: Int
+    let failedCount: Int
+    let errorMessage: String?
+    let completedAt: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case id = "_id"
+        case userId
+        case status
+        case totalTransactions
+        case categorizedCount
+        case failedCount
+        case errorMessage
+        case completedAt
+    }
 }

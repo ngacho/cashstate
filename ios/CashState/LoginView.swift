@@ -1,11 +1,12 @@
 import SwiftUI
 
 struct LoginView: View {
-    @State private var email = ""
+    @State private var username = ""
     @State private var password = ""
     @State private var isLoading = false
     @State private var errorMessage = ""
     @State private var showError = false
+    @State private var isRegistering = false
     @Binding var isAuthenticated: Bool
 
     let apiClient: APIClient
@@ -33,20 +34,20 @@ struct LoginView: View {
 
                 // Form
                 VStack(spacing: Theme.Spacing.md) {
-                    TextField("Email", text: $email)
+                    TextField("Username", text: $username)
                         .textFieldStyle(.roundedBorder)
                         .textInputAutocapitalization(.never)
-                        .keyboardType(.emailAddress)
+                        .autocorrectionDisabled()
 
                     SecureField("Password", text: $password)
                         .textFieldStyle(.roundedBorder)
 
-                    Button(action: login) {
+                    Button(action: submit) {
                         if isLoading {
                             ProgressView()
                                 .tint(.white)
                         } else {
-                            Text("Sign In")
+                            Text(isRegistering ? "Create Account" : "Sign In")
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -54,7 +55,13 @@ struct LoginView: View {
                     .background(Theme.Colors.primary)
                     .foregroundColor(.white)
                     .cornerRadius(12)
-                    .disabled(isLoading)
+                    .disabled(isLoading || username.isEmpty || password.isEmpty)
+
+                    Button(action: { isRegistering.toggle() }) {
+                        Text(isRegistering ? "Already have an account? Sign In" : "New here? Create Account")
+                            .font(.subheadline)
+                            .foregroundColor(Theme.Colors.primary)
+                    }
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
 
@@ -68,23 +75,16 @@ struct LoginView: View {
         }
     }
 
-    func login() {
+    func submit() {
         isLoading = true
 
         Task {
             do {
-                struct LoginRequest: Encodable {
-                    let email: String
-                    let password: String
+                if isRegistering {
+                    let _ = try await apiClient.register(username: username, password: password)
+                } else {
+                    let _ = try await apiClient.login(username: username, password: password)
                 }
-
-                let response: AuthResponse = try await apiClient.request(
-                    endpoint: "/auth/login",
-                    method: "POST",
-                    body: LoginRequest(email: email, password: password)
-                )
-
-                await apiClient.setAccessToken(response.accessToken)
                 isAuthenticated = true
             } catch {
                 errorMessage = error.localizedDescription

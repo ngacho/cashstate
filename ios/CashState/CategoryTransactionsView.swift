@@ -6,6 +6,7 @@ struct CategoryTransactionsNavigableView: View {
     let subcategory: BudgetSubcategory?
     let apiClient: APIClient
     let selectedMonth: Date
+    var accountIds: [String] = []
 
     var body: some View {
         CategoryTransactionsContentView(
@@ -13,6 +14,7 @@ struct CategoryTransactionsNavigableView: View {
             subcategory: subcategory,
             apiClient: apiClient,
             selectedMonth: selectedMonth,
+            accountIds: accountIds,
             isPresented: nil
         )
     }
@@ -24,6 +26,7 @@ struct CategoryTransactionsView: View {
     let subcategory: BudgetSubcategory?
     let apiClient: APIClient
     let selectedMonth: Date
+    var accountIds: [String] = []
     @Binding var isPresented: Bool
 
     var body: some View {
@@ -33,6 +36,7 @@ struct CategoryTransactionsView: View {
                 subcategory: subcategory,
                 apiClient: apiClient,
                 selectedMonth: selectedMonth,
+                accountIds: accountIds,
                 isPresented: $isPresented
             )
             .toolbar {
@@ -53,6 +57,7 @@ private struct CategoryTransactionsContentView: View {
     let subcategory: BudgetSubcategory?
     let apiClient: APIClient
     let selectedMonth: Date
+    var accountIds: [String] = []
     var isPresented: Binding<Bool>?
 
     @State private var transactions: [Transaction] = []
@@ -275,29 +280,33 @@ private struct CategoryTransactionsContentView: View {
             // Fetch all transactions for the selected month
             let calendar = Calendar.current
             let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: selectedMonth))!
-            let startTimestamp = Int(startOfMonth.timeIntervalSince1970)
+            let startTimestamp = Int(startOfMonth.timeIntervalSince1970) * 1000
 
             // Calculate end of selected month
             let startOfNextMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth)!
-            let endTimestamp = Int(startOfNextMonth.timeIntervalSince1970)
+            let endTimestamp = Int(startOfNextMonth.timeIntervalSince1970) * 1000
 
             let response = try await apiClient.listSimplefinTransactions(
                 dateFrom: startTimestamp,
                 dateTo: endTimestamp,
                 limit: 1000,
-                offset: 0
+                offset: 0,
+                accountIds: accountIds.isEmpty ? nil : accountIds
             )
 
-            // Filter transactions by category and subcategory
-            if let sub = subcategory {
-                // Filter by subcategory
+            // Filter transactions by category and subcategory (expenses only)
+            if category.id == "uncategorized" {
+                // Show all uncategorized expense transactions
+                transactions = response.items.filter { $0.categoryId == nil && $0.amount < 0 }
+            } else if let sub = subcategory {
+                // Filter by subcategory (expenses only)
                 transactions = response.items.filter {
-                    $0.categoryId == category.id && $0.subcategoryId == sub.id
+                    $0.categoryId == category.id && $0.subcategoryId == sub.id && $0.amount < 0
                 }
             } else {
-                // Filter by category only (all subcategories)
+                // Filter by category only (all subcategories, expenses only)
                 transactions = response.items.filter {
-                    $0.categoryId == category.id
+                    $0.categoryId == category.id && $0.amount < 0
                 }
             }
 
@@ -329,7 +338,7 @@ struct TransactionRowView: View {
     }
 
     var merchantName: String {
-        transaction.payee ?? transaction.description
+        transaction.payee ?? transaction.description ?? ""
     }
 
     var body: some View {

@@ -1,0 +1,45 @@
+"use node";
+
+import { internalAction } from "./_generated/server";
+import { internal } from "./_generated/api";
+
+export const dailySync = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const items = await ctx.runQuery(internal.cronHelpers._getActiveItems, {});
+
+    for (const item of items) {
+      try {
+        await ctx.runAction(internal.actions.simplefinSync.sync as any, {
+          userId: item.userId,
+          itemId: item._id,
+          forceSync: true,
+        });
+      } catch (e: any) {
+        console.error(`Cron sync failed for item ${item._id}: ${e.message}`);
+      }
+    }
+  },
+});
+
+export const dailySnapshot = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const users = await ctx.runQuery(
+      internal.cronHelpers._getUsersWithAccounts,
+      {}
+    );
+
+    for (const userId of users) {
+      try {
+        await ctx.runMutation(internal.cronHelpers._calculateSnapshot, {
+          userId,
+        });
+      } catch (e: any) {
+        console.error(
+          `Cron snapshot failed for user ${userId}: ${e.message}`
+        );
+      }
+    }
+  },
+});
