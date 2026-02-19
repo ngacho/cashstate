@@ -76,6 +76,7 @@ class BudgetService:
 
         category_spending = spending["categories"]
         subcategory_spending = spending["subcategories"]
+        uncategorized_spending = spending["uncategorized"]
 
         # Build line items with actuals
         summary_line_items = []
@@ -116,6 +117,7 @@ class BudgetService:
         total_budgeted = sum(item["amount"] for item in summary_line_items)
         total_spent = sum(item["spent"] for item in summary_line_items)
         total_spent += sum(uc["spent"] for uc in unbudgeted_categories)
+        total_spent += uncategorized_spending
 
         return {
             "budget_id": budget_id,
@@ -128,6 +130,7 @@ class BudgetService:
             "subcategory_spending": {
                 k: round(v, 2) for k, v in subcategory_spending.items()
             },
+            "uncategorized_spending": round(uncategorized_spending, 2),
         }
 
 
