@@ -93,7 +93,7 @@ struct HomeView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: Theme.Spacing.lg) {
+                VStack(spacing: Theme.Spacing.md) {
                     // Mint-style Hero Card
                     VStack(spacing: Theme.Spacing.md) {
                         // Header
@@ -110,13 +110,19 @@ struct HomeView: View {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                     .scaleEffect(0.8)
+                                    .frame(width: 36, height: 36)
+                                    .background(Color.white.opacity(0.2))
+                                    .clipShape(Circle())
                             } else {
                                 Button(action: {
                                     Task { await resyncAllAccounts() }
                                 }) {
                                     Image(systemName: "arrow.triangle.2.circlepath")
-                                        .font(.system(size: 16, weight: .semibold))
+                                        .font(.system(size: 15, weight: .semibold))
                                         .foregroundColor(Theme.Colors.textOnPrimary)
+                                        .frame(width: 36, height: 36)
+                                        .background(Color.white.opacity(0.2))
+                                        .clipShape(Circle())
                                 }
                                 .disabled(simplefinItems.isEmpty)
                             }
@@ -146,32 +152,23 @@ struct HomeView: View {
                     .cornerRadius(Theme.CornerRadius.xl)
                     .shadow(color: (totalBalance < 0 ? Theme.Colors.expense : Theme.Colors.income).opacity(0.3), radius: 12, x: 0, y: 6)
                     .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.top, Theme.Spacing.sm)
+                    .padding(.top, Theme.Spacing.md)
 
                     // Net Worth Chart Section
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                         HStack {
-                            Text("Net Worth")
-                                .font(.headline)
-                                .foregroundColor(Theme.Colors.textPrimary)
+                            Text("NET WORTH")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(Theme.Colors.textSecondary)
                             Spacer()
-                            // Time range menu
-                            Menu {
-                                Picker("Period", selection: $selectedTimeRange) {
-                                    Text("Week").tag(TimeRange.week)
-                                    Text("Month").tag(TimeRange.month)
-                                    Text("Year").tag(TimeRange.year)
-                                }
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Text(selectedTimeRange.rawValue)
-                                        .font(.subheadline)
-                                        .foregroundColor(Theme.Colors.textPrimary)
-                                    Image(systemName: "chevron.down")
-                                        .font(.caption)
-                                        .foregroundColor(Theme.Colors.textSecondary)
-                                }
+                            Picker("Period", selection: $selectedTimeRange) {
+                                Text("Week").tag(TimeRange.week)
+                                Text("Month").tag(TimeRange.month)
+                                Text("Year").tag(TimeRange.year)
                             }
+                            .pickerStyle(.segmented)
+                            .frame(width: 180)
                         }
                         .padding(.horizontal, Theme.Spacing.md)
 
@@ -191,7 +188,7 @@ struct HomeView: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 200)
                             .background(Theme.Colors.cardBackground)
-                            .cornerRadius(Theme.CornerRadius.md)
+                            .cornerRadius(Theme.CornerRadius.lg)
                             .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
                             .padding(.horizontal, Theme.Spacing.md)
                         } else {
@@ -199,7 +196,7 @@ struct HomeView: View {
                                 .frame(height: 200)
                                 .padding(Theme.Spacing.md)
                                 .background(Theme.Colors.cardBackground)
-                                .cornerRadius(Theme.CornerRadius.md)
+                                .cornerRadius(Theme.CornerRadius.lg)
                                 .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
                                 .padding(.horizontal, Theme.Spacing.md)
                         }
@@ -228,18 +225,20 @@ struct HomeView: View {
                         .padding(.vertical, 60)
                     } else {
                         // Grouped Accounts (Mint style)
-                        VStack(spacing: Theme.Spacing.lg) {
+                        VStack(spacing: Theme.Spacing.md) {
                             ForEach(accountGroups, id: \.type) { group in
                                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                                     // Group header
                                     HStack {
-                                        Text(group.type)
-                                            .font(.headline)
-                                            .foregroundColor(Theme.Colors.textPrimary)
+                                        Text(group.type.uppercased())
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
+                                            .foregroundColor(Theme.Colors.textSecondary)
                                         Spacer()
-                                        Text(group.totalBalance)
-                                            .font(.headline)
-                                            .foregroundColor(Theme.Colors.textPrimary)
+                                        Text(formattedTotal(group.total))
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                            .foregroundColor(group.total < 0 ? Theme.Colors.expense : Theme.Colors.textPrimary)
                                     }
                                     .padding(.horizontal, Theme.Spacing.md)
                                     .padding(.bottom, 4)
@@ -268,8 +267,7 @@ struct HomeView: View {
                 .padding(.vertical, Theme.Spacing.sm)
             }
             .background(Theme.Colors.background)
-            .navigationTitle("Overview")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarHidden(true)
             .refreshable {
                 await loadAccounts()
                 await loadSnapshots()
@@ -289,6 +287,14 @@ struct HomeView: View {
                 Text("All accounts have been synced successfully")
             }
         }
+    }
+
+    private func formattedTotal(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencySymbol = "$"
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? "$0.00"
     }
 
     func loadAccounts() async {
@@ -546,9 +552,9 @@ struct MintAccountRow: View {
 
     var body: some View {
         HStack(spacing: Theme.Spacing.md) {
-            // Bank Icon (circular, colored background)
+            // Bank Icon (rounded square, colored background)
             ZStack {
-                Circle()
+                RoundedRectangle(cornerRadius: 10)
                     .fill(iconBackgroundColor)
                     .frame(width: 44, height: 44)
                 Image(systemName: accountIcon)
