@@ -15,10 +15,7 @@ def get_supabase_client() -> Client:
     NOT suitable for RLS-protected table operations - use get_authenticated_postgrest_client() instead.
     """
     settings = get_settings()
-    return create_client(
-        settings.supabase_url,
-        settings.supabase_secret_key
-    )
+    return create_client(settings.supabase_url, settings.supabase_secret_key)
 
 
 def get_authenticated_postgrest_client(access_token: str) -> SyncPostgrestClient:
@@ -74,7 +71,9 @@ class Database:
         return result.data[0]
 
     def get_simplefin_item_by_id(self, item_id: str) -> dict | None:
-        result = self.client.table("simplefin_items").select("*").eq("id", item_id).execute()
+        result = (
+            self.client.table("simplefin_items").select("*").eq("id", item_id).execute()
+        )
         return result.data[0] if result.data else None
 
     def get_user_simplefin_items(self, user_id: str) -> list[dict]:
@@ -107,7 +106,12 @@ class Database:
         return result.data
 
     def update_simplefin_item(self, item_id: str, data: dict) -> dict:
-        result = self.client.table("simplefin_items").update(data).eq("id", item_id).execute()
+        result = (
+            self.client.table("simplefin_items")
+            .update(data)
+            .eq("id", item_id)
+            .execute()
+        )
         return result.data[0] if result.data else None
 
     def delete_simplefin_item(self, item_id: str) -> None:
@@ -121,7 +125,9 @@ class Database:
             return []
         result = (
             self.client.table("simplefin_accounts")
-            .upsert(accounts, on_conflict="user_id,simplefin_item_id,simplefin_account_id")
+            .upsert(
+                accounts, on_conflict="user_id,simplefin_item_id,simplefin_account_id"
+            )
             .execute()
         )
         return result.data
@@ -183,7 +189,9 @@ class Database:
         )
         return result.data[0] if result.data else None
 
-    def get_simplefin_transactions_by_ids(self, transaction_ids: list[str]) -> list[dict]:
+    def get_simplefin_transactions_by_ids(
+        self, transaction_ids: list[str]
+    ) -> list[dict]:
         """Batch fetch SimpleFin transactions by IDs in ONE query."""
         result = (
             self.client.table("simplefin_transactions")
@@ -197,39 +205,42 @@ class Database:
         """Batch update multiple SimpleFin transactions in ONE SQL query using RPC.
 
         Args:
-            updates: List of dicts with 'id' and fields to update (category_id, subcategory_id)
+            updates: List of dicts with 'id' and fields to update
 
         Returns:
             Number of transactions updated
         """
         import logging
+
         logger = logging.getLogger("cashstate.database")
 
         if not updates:
-            logger.warning("[DB] batch_update_simplefin_transactions: No updates provided")
+            logger.warning(
+                "[DB] batch_update_simplefin_transactions: No updates provided"
+            )
             return 0
 
         logger.info(f"[DB] Batch updating {len(updates)} transactions")
-        logger.debug(f"[DB] Sample update: {updates[0] if updates else 'None'}")
 
-        # Build arrays for batch RPC call
         transaction_ids = [u["id"] for u in updates]
         category_ids = [u.get("category_id") for u in updates]
         subcategory_ids = [u.get("subcategory_id") for u in updates]
+        categorization_sources = [u.get("categorization_source", "ai") for u in updates]
 
-        # Call stored procedure that does batch update in single SQL
         result = self.client.rpc(
             "batch_update_transaction_categories",
             {
                 "transaction_ids": transaction_ids,
                 "category_ids": category_ids,
                 "subcategory_ids": subcategory_ids,
+                "categorization_sources": categorization_sources,
             },
         ).execute()
 
-        # RPC returns number of updated rows
         updated_count = result.data if isinstance(result.data, int) else len(updates)
-        logger.info(f"[DB] ✓ Batch update complete: {updated_count} transactions updated")
+        logger.info(
+            f"[DB] ✓ Batch update complete: {updated_count} transactions updated"
+        )
 
         return updated_count
 
@@ -241,24 +252,13 @@ class Database:
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict]:
-        """Get user's SimpleFin transactions.
-
-        Args:
-            user_id: User UUID
-            date_from: Unix timestamp (seconds since epoch)
-            date_to: Unix timestamp (seconds since epoch)
-            limit: Max number of results
-            offset: Offset for pagination
-        """
+        """Get user's SimpleFin transactions."""
         query = self.client.table("simplefin_transactions").select("*")
         query = query.eq("user_id", user_id)
 
-        # Note: Use 'is not None' to handle edge case where date_from could be 0 (Unix epoch)
         if date_from is not None:
             query = query.gte("posted_date", date_from)
         if date_to is not None:
-            # Use lt (less than) not lte to exclude transactions at exactly the end timestamp
-            # This ensures when querying for a month, we don't include the first moment of next month
             query = query.lt("posted_date", date_to)
         result = (
             query.order("posted_date", desc=True)
@@ -292,21 +292,7 @@ class Database:
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict]:
-        """Get user's transactions with joined account information from transactions_view.
-
-        This method queries the transactions_view which joins transactions with accounts
-        to provide all fields needed for the TransactionResponse schema.
-
-        Args:
-            user_id: User UUID
-            date_from: Start date in YYYY-MM-DD format
-            date_to: End date in YYYY-MM-DD format
-            limit: Max number of results
-            offset: Offset for pagination
-
-        Returns:
-            List of transaction dicts with account info (simplefin_item_id, account_name, etc.)
-        """
+        """Get user's transactions with joined account information from transactions_view."""
         query = self.client.table("transactions_view").select("*")
         query = query.eq("user_id", user_id)
 
@@ -316,9 +302,7 @@ class Database:
             query = query.lte("date", date_to)
 
         result = (
-            query.order("posted", desc=True)
-            .range(offset, offset + limit - 1)
-            .execute()
+            query.order("posted", desc=True).range(offset, offset + limit - 1).execute()
         )
         return result.data
 
@@ -328,16 +312,7 @@ class Database:
         date_from: str | None = None,
         date_to: str | None = None,
     ) -> int:
-        """Count user's transactions from the transactions_view.
-
-        Args:
-            user_id: User UUID
-            date_from: Start date in YYYY-MM-DD format
-            date_to: End date in YYYY-MM-DD format
-
-        Returns:
-            Total count of matching transactions
-        """
+        """Count user's transactions from the transactions_view."""
         query = self.client.table("transactions_view").select("id", count="exact")
         query = query.eq("user_id", user_id)
 
@@ -357,10 +332,17 @@ class Database:
         return result.data[0]
 
     def get_simplefin_sync_job_by_id(self, job_id: str) -> dict | None:
-        result = self.client.table("simplefin_sync_jobs").select("*").eq("id", job_id).execute()
+        result = (
+            self.client.table("simplefin_sync_jobs")
+            .select("*")
+            .eq("id", job_id)
+            .execute()
+        )
         return result.data[0] if result.data else None
 
-    def get_simplefin_sync_jobs_for_user(self, user_id: str, limit: int = 20) -> list[dict]:
+    def get_simplefin_sync_jobs_for_user(
+        self, user_id: str, limit: int = 20
+    ) -> list[dict]:
         """Get user's SimpleFin sync jobs."""
         result = (
             self.client.table("simplefin_sync_jobs")
@@ -373,7 +355,12 @@ class Database:
         return result.data
 
     def update_simplefin_sync_job(self, job_id: str, data: dict) -> dict:
-        result = self.client.table("simplefin_sync_jobs").update(data).eq("id", job_id).execute()
+        result = (
+            self.client.table("simplefin_sync_jobs")
+            .update(data)
+            .eq("id", job_id)
+            .execute()
+        )
         return result.data[0] if result.data else None
 
     # --- Categories ---
@@ -392,9 +379,17 @@ class Database:
     def get_category_by_id(self, category_id: str) -> dict | None:
         """Get category by ID."""
         result = (
+            self.client.table("categories").select("*").eq("id", category_id).execute()
+        )
+        return result.data[0] if result.data else None
+
+    def get_user_category_by_name(self, user_id: str, name: str) -> dict | None:
+        """Get a user's category by name."""
+        result = (
             self.client.table("categories")
             .select("*")
-            .eq("id", category_id)
+            .eq("user_id", user_id)
+            .eq("name", name)
             .execute()
         )
         return result.data[0] if result.data else None
@@ -407,16 +402,24 @@ class Database:
     def update_category(self, category_id: str, data: dict) -> dict | None:
         """Update a category."""
         result = (
-            self.client.table("categories")
-            .update(data)
-            .eq("id", category_id)
-            .execute()
+            self.client.table("categories").update(data).eq("id", category_id).execute()
         )
         return result.data[0] if result.data else None
 
     def delete_category(self, category_id: str) -> None:
         """Delete a category."""
         self.client.table("categories").delete().eq("id", category_id).execute()
+
+    def reassign_transactions_category(
+        self, user_id: str, from_category_id: str, to_category_id: str
+    ) -> None:
+        """Reassign all transactions from one category to another."""
+        self.client.table("simplefin_transactions").update(
+            {
+                "category_id": to_category_id,
+                "subcategory_id": None,
+            }
+        ).eq("user_id", user_id).eq("category_id", from_category_id).execute()
 
     # --- Subcategories ---
 
@@ -457,295 +460,260 @@ class Database:
         """Delete a subcategory."""
         self.client.table("subcategories").delete().eq("id", subcategory_id).execute()
 
+    def clear_transaction_subcategory(self, user_id: str, subcategory_id: str) -> None:
+        """Null out subcategory_id on all transactions with the given subcategory."""
+        self.client.table("simplefin_transactions").update(
+            {
+                "subcategory_id": None,
+            }
+        ).eq("user_id", user_id).eq("subcategory_id", subcategory_id).execute()
+
     # ========================================================================
-    # Budget Templates
+    # Categorization Rules
     # ========================================================================
 
-    def create_budget_template(self, template_data: dict) -> dict:
-        """Create a new budget template with optional account associations."""
-        # Extract account_ids before inserting
-        account_ids = template_data.pop("account_ids", [])
+    def get_categorization_rules(self, user_id: str) -> list[dict]:
+        """Get all categorization rules for a user."""
+        result = (
+            self.client.table("categorization_rules")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return result.data
 
+    def get_categorization_rule_by_id(self, rule_id: str) -> dict | None:
+        """Get a single categorization rule by ID."""
+        result = (
+            self.client.table("categorization_rules")
+            .select("*")
+            .eq("id", rule_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def create_categorization_rule(self, rule_data: dict) -> dict:
+        """Create a new categorization rule."""
+        result = self.client.table("categorization_rules").insert(rule_data).execute()
+        return result.data[0]
+
+    def delete_categorization_rule(self, rule_id: str) -> None:
+        """Delete a categorization rule."""
+        self.client.table("categorization_rules").delete().eq("id", rule_id).execute()
+
+    # ========================================================================
+    # Budgets
+    # ========================================================================
+
+    def create_budget(self, budget_data: dict) -> dict:
+        """Create a new budget."""
         # If setting as default, unset other defaults first
-        if template_data.get("is_default"):
-            self.client.table("budget_templates").update({"is_default": False}).eq(
-                "user_id", template_data["user_id"]
+        if budget_data.get("is_default"):
+            self.client.table("budgets").update({"is_default": False}).eq(
+                "user_id", budget_data["user_id"]
             ).execute()
 
-        # Create template
-        result = self.client.table("budget_templates").insert(template_data).execute()
-        template = result.data[0]
+        result = self.client.table("budgets").insert(budget_data).execute()
+        return result.data[0]
 
-        # Create account associations
-        if account_ids:
-            self._create_template_accounts(template["id"], account_ids)
-
-        template["account_ids"] = account_ids
-        return template
-
-    def get_budget_templates(self, user_id: str) -> list[dict]:
-        """Get all budget templates for a user."""
-        result = self.client.table("budget_templates").select("*").eq("user_id", user_id).execute()
-        templates = result.data
-
-        # Fetch account associations
-        for template in templates:
-            template["account_ids"] = self._get_template_account_ids(template["id"])
-
-        return templates
-
-    def get_budget_template(self, template_id: str) -> dict | None:
-        """Get a single budget template by ID."""
-        result = self.client.table("budget_templates").select("*").eq("id", template_id).execute()
-        if not result.data:
-            return None
-
-        template = result.data[0]
-        template["account_ids"] = self._get_template_account_ids(template_id)
-        return template
-
-    def get_default_budget_template(self, user_id: str) -> dict | None:
-        """Get the default budget template for a user."""
+    def get_budgets(self, user_id: str) -> list[dict]:
+        """Get all budgets for a user."""
         result = (
-            self.client.table("budget_templates")
+            self.client.table("budgets")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return result.data
+
+    def get_budget(self, budget_id: str) -> dict | None:
+        """Get a single budget by ID."""
+        result = self.client.table("budgets").select("*").eq("id", budget_id).execute()
+        return result.data[0] if result.data else None
+
+    def get_default_budget(self, user_id: str) -> dict | None:
+        """Get the default budget for a user."""
+        result = (
+            self.client.table("budgets")
             .select("*")
             .eq("user_id", user_id)
             .eq("is_default", True)
             .execute()
         )
-        if not result.data:
-            return None
+        return result.data[0] if result.data else None
 
-        template = result.data[0]
-        template["account_ids"] = self._get_template_account_ids(template["id"])
-        return template
-
-    def update_budget_template(self, template_id: str, update_data: dict) -> dict | None:
-        """Update a budget template."""
-        # Extract account_ids for separate handling
-        account_ids = update_data.pop("account_ids", None)
-
+    def update_budget(self, budget_id: str, update_data: dict) -> dict | None:
+        """Update a budget."""
         # If setting as default, unset other defaults first
         if update_data.get("is_default"):
-            # Get user_id of this template
-            template = self.get_budget_template(template_id)
-            if template:
-                self.client.table("budget_templates").update({"is_default": False}).eq(
-                    "user_id", template["user_id"]
+            budget = self.get_budget(budget_id)
+            if budget:
+                self.client.table("budgets").update({"is_default": False}).eq(
+                    "user_id", budget["user_id"]
                 ).execute()
 
-        # Update template fields
-        if update_data:
-            result = self.client.table("budget_templates").update(update_data).eq("id", template_id).execute()
-            if not result.data:
-                return None
-            template = result.data[0]
-        else:
-            template = self.get_budget_template(template_id)
-
-        # Update account associations
-        if account_ids is not None:
-            self._delete_template_accounts(template_id)
-            if account_ids:
-                self._create_template_accounts(template_id, account_ids)
-
-        template["account_ids"] = self._get_template_account_ids(template_id)
-        return template
-
-    def delete_budget_template(self, template_id: str) -> None:
-        """Delete a budget template (cascades to categories, subcategories, accounts, periods)."""
-        self.client.table("budget_templates").delete().eq("id", template_id).execute()
-
-    def _create_template_accounts(self, template_id: str, account_ids: list[str]) -> None:
-        """Create template-account associations."""
-        if not account_ids:
-            return
-
-        associations = [
-            {"template_id": template_id, "account_id": account_id}
-            for account_id in account_ids
-        ]
-        self.client.table("budget_template_accounts").insert(associations).execute()
-
-    def _get_template_account_ids(self, template_id: str) -> list[str]:
-        """Get account IDs associated with a template."""
         result = (
-            self.client.table("budget_template_accounts")
+            self.client.table("budgets")
+            .update(update_data)
+            .eq("id", budget_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def delete_budget(self, budget_id: str) -> None:
+        """Delete a budget (cascades to line_items, accounts, months)."""
+        self.client.table("budgets").delete().eq("id", budget_id).execute()
+
+    # ========================================================================
+    # Budget Accounts
+    # ========================================================================
+
+    def get_budget_accounts(self, budget_id: str) -> list[dict]:
+        """Get all accounts linked to a budget."""
+        result = (
+            self.client.table("budget_accounts")
+            .select("*, simplefin_accounts(id, name, balance, currency)")
+            .eq("budget_id", budget_id)
+            .execute()
+        )
+        rows = []
+        for row in result.data:
+            account = row.pop("simplefin_accounts", {}) or {}
+            row["account_name"] = account.get("name", "")
+            row["balance"] = float(account.get("balance") or 0.0)
+            rows.append(row)
+        return rows
+
+    def get_account_budget(self, account_id: str) -> dict | None:
+        """Find which budget an account belongs to (if any)."""
+        result = (
+            self.client.table("budget_accounts")
+            .select("*, budgets(id, name, user_id)")
+            .eq("account_id", account_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+    def add_budget_account(self, budget_id: str, account_id: str) -> dict:
+        """Add an account to a budget. Raises error if account already linked."""
+        result = (
+            self.client.table("budget_accounts")
+            .insert(
+                {
+                    "budget_id": budget_id,
+                    "account_id": account_id,
+                }
+            )
+            .execute()
+        )
+        return result.data[0]
+
+    def remove_budget_account(self, budget_id: str, account_id: str) -> None:
+        """Remove an account from a budget."""
+        self.client.table("budget_accounts").delete().eq("budget_id", budget_id).eq(
+            "account_id", account_id
+        ).execute()
+
+    def get_budget_account_ids(self, budget_id: str) -> list[str]:
+        """Get just the account IDs for a budget."""
+        result = (
+            self.client.table("budget_accounts")
             .select("account_id")
-            .eq("template_id", template_id)
+            .eq("budget_id", budget_id)
             .execute()
         )
         return [row["account_id"] for row in result.data]
 
-    def _delete_template_accounts(self, template_id: str) -> None:
-        """Delete all account associations for a template."""
-        self.client.table("budget_template_accounts").delete().eq("template_id", template_id).execute()
-
     # ========================================================================
-    # Budget Categories
+    # Budget Line Items
     # ========================================================================
 
-    def create_budget_category(self, category_data: dict) -> dict:
-        """Create a category budget within a template."""
-        result = self.client.table("budget_categories").insert(category_data).execute()
-        created = result.data[0]
-        self._recalculate_template_total(created["template_id"])
-        return created
-
-    def get_budget_categories(self, template_id: str) -> list[dict]:
-        """Get all category budgets for a template."""
-        result = self.client.table("budget_categories").select("*").eq("template_id", template_id).execute()
-        return result.data
-
-    def update_budget_category(self, category_budget_id: str, update_data: dict) -> dict | None:
-        """Update a category budget."""
-        result = self.client.table("budget_categories").update(update_data).eq("id", category_budget_id).execute()
-        updated = result.data[0] if result.data else None
-        if updated:
-            self._recalculate_template_total(updated["template_id"])
-        return updated
-
-    def delete_budget_category(self, category_budget_id: str) -> None:
-        """Delete a category budget."""
-        # Fetch template_id first so we can recalculate after delete
-        fetch_result = self.client.table("budget_categories").select("template_id").eq("id", category_budget_id).execute()
-        self.client.table("budget_categories").delete().eq("id", category_budget_id).execute()
-        if fetch_result.data:
-            self._recalculate_template_total(fetch_result.data[0]["template_id"])
-
-    def _recalculate_template_total(self, template_id: str) -> None:
-        """Recalculate and update total_amount for a template based on category budgets."""
-        result = self.client.table("budget_categories").select("amount").eq("template_id", template_id).execute()
-        total = sum(row["amount"] for row in result.data)
-        self.client.table("budget_templates").update({"total_amount": total}).eq("id", template_id).execute()
-
-    # ========================================================================
-    # Budget Subcategories
-    # ========================================================================
-
-    def create_budget_subcategory(self, subcategory_data: dict) -> dict:
-        """Create a subcategory budget within a template."""
-        result = self.client.table("budget_subcategories").insert(subcategory_data).execute()
-        return result.data[0]
-
-    def get_budget_subcategories(self, template_id: str) -> list[dict]:
-        """Get all subcategory budgets for a template."""
-        result = self.client.table("budget_subcategories").select("*").eq("template_id", template_id).execute()
-        return result.data
-
-    def update_budget_subcategory(self, subcategory_budget_id: str, update_data: dict) -> dict | None:
-        """Update a subcategory budget."""
-        result = self.client.table("budget_subcategories").update(update_data).eq("id", subcategory_budget_id).execute()
-        return result.data[0] if result.data else None
-
-    def delete_budget_subcategory(self, subcategory_budget_id: str) -> None:
-        """Delete a subcategory budget."""
-        self.client.table("budget_subcategories").delete().eq("id", subcategory_budget_id).execute()
-
-    # ========================================================================
-    # Budget Periods
-    # ========================================================================
-
-    def create_budget_period(self, period_data: dict) -> dict:
-        """Apply a template to a specific month."""
-        result = self.client.table("budget_periods").insert(period_data).execute()
-        return result.data[0]
-
-    def get_budget_period(self, user_id: str, period_month: str) -> dict | None:
-        """Get budget period for a specific month (YYYY-MM-DD format)."""
+    def get_budget_line_items(self, budget_id: str) -> list[dict]:
+        """Get all line items for a budget."""
         result = (
-            self.client.table("budget_periods")
+            self.client.table("budget_line_items")
             .select("*")
-            .eq("user_id", user_id)
-            .eq("period_month", period_month)
+            .eq("budget_id", budget_id)
+            .execute()
+        )
+        return result.data
+
+    def get_budget_line_item(self, item_id: str) -> dict | None:
+        """Get a single line item by ID."""
+        result = (
+            self.client.table("budget_line_items")
+            .select("*")
+            .eq("id", item_id)
             .execute()
         )
         return result.data[0] if result.data else None
 
-    def get_budget_period_by_id(self, user_id: str, period_id: str) -> dict | None:
-        """Get budget period by its UUID (for ownership check before delete)."""
+    def create_budget_line_item(self, item_data: dict) -> dict:
+        """Create a new line item in a budget."""
+        result = self.client.table("budget_line_items").insert(item_data).execute()
+        return result.data[0]
+
+    def update_budget_line_item(self, item_id: str, update_data: dict) -> dict | None:
+        """Update a budget line item."""
         result = (
-            self.client.table("budget_periods")
-            .select("*")
-            .eq("id", period_id)
-            .eq("user_id", user_id)
+            self.client.table("budget_line_items")
+            .update(update_data)
+            .eq("id", item_id)
             .execute()
         )
         return result.data[0] if result.data else None
 
-    def get_budget_periods(self, user_id: str) -> list[dict]:
-        """Get all budget periods for a user."""
-        result = self.client.table("budget_periods").select("*").eq("user_id", user_id).order("period_month", desc=True).execute()
+    def delete_budget_line_item(self, item_id: str) -> None:
+        """Delete a budget line item."""
+        self.client.table("budget_line_items").delete().eq("id", item_id).execute()
+
+    # ========================================================================
+    # Budget Months
+    # ========================================================================
+
+    def get_budget_months(self, user_id: str) -> list[dict]:
+        """Get all budget month overrides for a user."""
+        result = (
+            self.client.table("budget_months")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("month", desc=True)
+            .execute()
+        )
         return result.data
 
-    def delete_budget_period(self, period_id: str) -> None:
-        """Delete a budget period (reverts to default template)."""
-        self.client.table("budget_periods").delete().eq("id", period_id).execute()
-
-    def get_budget_for_month(self, user_id: str, year: int, month: int) -> dict | None:
-        """Get budget for a specific month with inheritance logic and spending.
-
-        Returns template + categories + subcategories + spending data.
-        Implements inheritance: checks for period override, falls back to default.
-        """
-        from datetime import date
-
-        # Format period_month as YYYY-MM-01
-        period_month = date(year, month, 1)
-
-        # Check if user has override for this month
-        period = self.get_budget_period(user_id, period_month.isoformat())
-
-        if period:
-            # User selected specific template for this month
-            template_id = period["template_id"]
-        else:
-            # Use default template
-            template = self.get_default_budget_template(user_id)
-            if not template:
-                return None
-            template_id = template["id"]
-
-        # Load template details
-        template = self.get_budget_template(template_id)
-        if not template:
-            return None
-
-        # Get categories and subcategories
-        categories = self.get_budget_categories(template_id)
-        subcategories = self.get_budget_subcategories(template_id)
-
-        # Calculate spending for this month
-        start_date = period_month
-        if month == 12:
-            end_date = date(year + 1, 1, 1)
-        else:
-            end_date = date(year, month + 1, 1)
-
-        spending = self.get_spending_by_category(
-            user_id=user_id,
-            start_date=start_date,
-            end_date=end_date,
-            account_ids=template.get("account_ids", [])
+    def get_budget_month(self, user_id: str, month: str) -> dict | None:
+        """Get budget month override for a specific month (YYYY-MM-01 format)."""
+        result = (
+            self.client.table("budget_months")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("month", month)
+            .execute()
         )
+        return result.data[0] if result.data else None
 
-        # Attach spending to categories
-        for cat in categories:
-            cat["spent"] = spending["categories"].get(cat["category_id"], 0)
+    def get_budget_month_by_id(self, month_id: str) -> dict | None:
+        """Get budget month by ID."""
+        result = (
+            self.client.table("budget_months").select("*").eq("id", month_id).execute()
+        )
+        return result.data[0] if result.data else None
 
-        # Attach spending to subcategories
-        for subcat in subcategories:
-            subcat["spent"] = spending["subcategories"].get(subcat["subcategory_id"], 0)
+    def create_budget_month(self, month_data: dict) -> dict:
+        """Assign a budget to a specific month."""
+        result = self.client.table("budget_months").insert(month_data).execute()
+        return result.data[0]
 
-        return {
-            "template": template,
-            "categories": categories,
-            "subcategories": subcategories,
-            "subcategory_spending": spending["subcategories"],
-            "period_month": period_month.isoformat(),
-            "total_spent": spending["total"],
-            "has_override": period is not None,
-        }
+    def delete_budget_month(self, month_id: str) -> None:
+        """Delete a budget month override."""
+        self.client.table("budget_months").delete().eq("id", month_id).execute()
+
+    # ========================================================================
+    # Budget Summary
+    # ========================================================================
 
     def get_spending_by_category(
         self, user_id: str, start_date, end_date, account_ids: list[str] = None
@@ -801,12 +769,10 @@ class Database:
             amount = abs(txn["amount"])  # Convert to positive for spending
             total += amount
 
-            # Aggregate by category
             if txn.get("category_id"):
                 cat_id = txn["category_id"]
                 categories[cat_id] = categories.get(cat_id, 0) + amount
 
-            # Aggregate by subcategory
             if txn.get("subcategory_id"):
                 sub_id = txn["subcategory_id"]
                 subcategories[sub_id] = subcategories.get(sub_id, 0) + amount
@@ -816,10 +782,6 @@ class Database:
             "categories": categories,
             "subcategories": subcategories,
         }
-
-    # ========================================================================
-    # Transaction Categorization
-    # ========================================================================
 
     # ========================================================================
     # Goals
@@ -867,7 +829,6 @@ class Database:
             .eq("goal_id", goal_id)
             .execute()
         )
-        # Flatten the joined data
         rows = []
         for row in result.data:
             account = row.pop("simplefin_accounts", {}) or {}
@@ -913,12 +874,7 @@ class Database:
         granularity: str = "day",
         goal_type: str = "savings",
     ) -> list[dict]:
-        """Compute progress over time for a goal.
-
-        Savings:      balance at each date × allocation% (attributed balance)
-        Debt payoff:  abs(starting_balance) - abs(balance_at_date)
-                      = amount paid off since goal creation (starts at 0, grows)
-        """
+        """Compute progress over time for a goal."""
         from collections import defaultdict
 
         goal_accounts = self.get_goal_accounts(goal_id)
@@ -931,7 +887,6 @@ class Database:
             for ga in goal_accounts
         }
 
-        # Fetch balance history for all linked accounts in date range
         result = (
             self.client.table("account_balance_history")
             .select("simplefin_account_id, snapshot_date, balance")
@@ -942,22 +897,18 @@ class Database:
             .execute()
         )
 
-        # Aggregate per date
         daily_totals: dict[str, float] = defaultdict(float)
         for row in result.data:
-            date = row["snapshot_date"]
+            d = row["snapshot_date"]
             balance = float(row["balance"] or 0)
             account_id = row["simplefin_account_id"]
 
             if goal_type == "debt_payment":
-                # Raw negative balance over time so the chart trends upward as debt is paid off.
-                # e.g. starts at -22432, moves toward -16432 (goal balance).
-                daily_totals[date] += balance
+                daily_totals[d] += balance
             else:
                 alloc = allocation_map.get(account_id, 0)
-                daily_totals[date] += balance * alloc
+                daily_totals[d] += balance * alloc
 
-        # Apply granularity (day = all, week/month/year = keep last per period)
         if granularity == "day":
             snapshots = [
                 {"date": d, "balance": round(b, 2)}
@@ -976,7 +927,6 @@ class Database:
                     return str(d.year)
                 return date_str
 
-            # Keep last balance per period
             period_last: dict[str, tuple[str, float]] = {}
             for date_str, balance in sorted(daily_totals.items()):
                 key = period_key(date_str)
@@ -994,17 +944,32 @@ class Database:
     # ========================================================================
 
     def update_transaction_category(
-        self, transaction_id: str, category_id: str | None, subcategory_id: str | None
+        self,
+        transaction_id: str,
+        category_id: str | None,
+        subcategory_id: str | None,
+        categorization_source: str = "manual",
     ) -> dict | None:
         """Update transaction categorization."""
         import logging
+
         logger = logging.getLogger("cashstate.database")
 
-        logger.debug(f"[DB] Updating transaction {transaction_id}: category_id={category_id}, subcategory_id={subcategory_id}")
+        logger.debug(
+            f"[DB] Updating transaction {transaction_id}: "
+            f"category_id={category_id}, subcategory_id={subcategory_id}, "
+            f"source={categorization_source}"
+        )
 
         result = (
             self.client.table("simplefin_transactions")
-            .update({"category_id": category_id, "subcategory_id": subcategory_id})
+            .update(
+                {
+                    "category_id": category_id,
+                    "subcategory_id": subcategory_id,
+                    "categorization_source": categorization_source,
+                }
+            )
             .eq("id", transaction_id)
             .execute()
         )
@@ -1013,5 +978,5 @@ class Database:
             logger.debug(f"[DB] ✓ Successfully updated transaction {transaction_id}")
             return result.data[0]
         else:
-            logger.error(f"[DB] ✗ Failed to update transaction {transaction_id} - no data returned")
+            logger.error(f"[DB] ✗ Failed to update transaction {transaction_id}")
             return None

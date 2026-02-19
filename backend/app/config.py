@@ -41,10 +41,16 @@ class Settings(BaseSettings):
 
     # AI Categorization
     categorization_provider: str = "claude"  # Provider: "claude" or "openrouter"
-    anthropic_api_key: str | None = None  # Anthropic API key for Claude AI categorization
+    anthropic_api_key: str | None = (
+        None  # Anthropic API key for Claude AI categorization
+    )
     claude_model: str = "claude-3-5-sonnet-20241022"  # Claude model for categorization
-    openrouter_api_key: str | None = None  # OpenRouter API key for cheaper categorization
-    openrouter_model: str = "meta-llama/llama-3.1-8b-instruct:free"  # OpenRouter model (free tier default)
+    openrouter_api_key: str | None = (
+        None  # OpenRouter API key for cheaper categorization
+    )
+    openrouter_model: str = (
+        "meta-llama/llama-3.1-8b-instruct:free"  # OpenRouter model (free tier default)
+    )
 
     # SimpleFin (optional, for development/testing only)
     simplefin_access_url: str | None = None  # Pre-claimed access URL for dev/test

@@ -24,7 +24,9 @@ def main():
     simplefin_access_url = os.getenv("SIMPLEFIN_ACCESS_URL")
 
     if not simplefin_token and not simplefin_access_url:
-        print("❌ Need either SIMPLEFIN_TOKEN (to claim) or SIMPLEFIN_ACCESS_URL (already claimed)")
+        print(
+            "❌ Need either SIMPLEFIN_TOKEN (to claim) or SIMPLEFIN_ACCESS_URL (already claimed)"
+        )
         return
 
     print("=" * 60)
@@ -41,7 +43,7 @@ def main():
     else:
         # Step 1: Decode setup token to get claim URL
         print("\n[1] Decoding setup token...")
-        claim_url = base64.b64decode(simplefin_token).decode('utf-8')
+        claim_url = base64.b64decode(simplefin_token).decode("utf-8")
         print(f"✅ Claim URL: {claim_url}")
 
         # Step 2: Claim an Access URL (ONE-TIME ONLY!)
@@ -68,12 +70,13 @@ def main():
         prev_year_end = datetime.datetime(year - 1, 12, 31)
         start_timestamp = int(prev_year_end.timestamp())
 
-        print(f"   Fetching transactions from {prev_year_end.date()} (timestamp: {start_timestamp})")
+        print(
+            f"   Fetching transactions from {prev_year_end.date()} (timestamp: {start_timestamp})"
+        )
 
         # Fetch accounts with start-date parameter
         response = requests.get(
-            f"{access_url}/accounts",
-            params={"start-date": start_timestamp}
+            f"{access_url}/accounts", params={"start-date": start_timestamp}
         )
         response.raise_for_status()
         data = response.json()
@@ -86,17 +89,19 @@ def main():
         print(f"\n✅ Found {len(data.get('accounts', []))} accounts")
 
         # Display account data
-        for account in data.get('accounts', []):
-            balance_date = ts_to_datetime(account['balance-date'])
+        for account in data.get("accounts", []):
+            balance_date = ts_to_datetime(account["balance-date"])
             print(f"\n{balance_date} {account['balance']:>8} {account['name']}")
-            print('-' * 60)
+            print("-" * 60)
 
-            for transaction in account.get('transactions', []):
-                posted = ts_to_datetime(transaction['posted'])
-                print(f"{posted} {transaction['amount']:>8} {transaction['description']}")
+            for transaction in account.get("transactions", []):
+                posted = ts_to_datetime(transaction["posted"])
+                print(
+                    f"{posted} {transaction['amount']:>8} {transaction['description']}"
+                )
 
         # Show errors if any
-        if data.get('errors'):
+        if data.get("errors"):
             print(f"\n⚠️  Errors: {data['errors']}")
 
         print("\n" + "=" * 60)
@@ -106,6 +111,7 @@ def main():
     except Exception as e:
         print(f"❌ Fetch failed: {e}")
         import traceback
+
         traceback.print_exc()
         return
 
