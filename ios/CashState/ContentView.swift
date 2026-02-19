@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var isAuthenticated = false
-    private let apiClient = APIClient()
+    private let apiClient = APIClient.shared
 
     var body: some View {
         Group {
@@ -13,16 +13,15 @@ struct ContentView: View {
             }
         }
         .task {
-            // DEV ONLY: Auto-login if we have a stored token
             await checkStoredAuth()
         }
     }
 
     func checkStoredAuth() async {
-        if await apiClient.hasStoredToken() {
-            await apiClient.loadStoredToken()
+        let hasSession = await apiClient.loadStoredSession()
+        if hasSession {
             isAuthenticated = true
-            print("✅ DEV: Auto-logged in with stored token")
+            print("Auto-logged in with stored userId")
         }
     }
 }

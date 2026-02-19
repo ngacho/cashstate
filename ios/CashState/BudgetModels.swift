@@ -1,7 +1,8 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Budget API Models (Backend API)
+// MARK: - Budget API Models (Convex budgets table)
+// Convex returns camelCase JSON — CodingKeys updated from snake_case
 
 struct BudgetAPI: Identifiable, Codable {
     let id: String
@@ -10,18 +11,18 @@ struct BudgetAPI: Identifiable, Codable {
     let isDefault: Bool
     let emoji: String?
     let color: String?
-    let createdAt: String
-    let updatedAt: String
+    let accountIds: [String]
+
+    var createdAt: String { "" } // not returned, kept for compat
 
     enum CodingKeys: String, CodingKey {
-        case id
-        case userId = "user_id"
+        case id = "_id"
+        case userId
         case name
-        case isDefault = "is_default"
+        case isDefault
         case emoji
         case color
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
+        case accountIds
     }
 }
 
@@ -29,15 +30,15 @@ struct BudgetMonth: Identifiable, Codable {
     let id: String
     let budgetId: String
     let userId: String
-    let month: String  // "YYYY-MM"
-    let createdAt: String
+    let month: String // "YYYY-MM"
+
+    var createdAt: String { "" }
 
     enum CodingKeys: String, CodingKey {
-        case id
-        case budgetId = "budget_id"
-        case userId = "user_id"
+        case id = "_id"
+        case budgetId
+        case userId
         case month
-        case createdAt = "created_at"
     }
 }
 
@@ -62,17 +63,16 @@ struct BudgetLineItem: Identifiable, Codable {
     let categoryId: String
     let subcategoryId: String?
     let amount: Double
-    let createdAt: String
-    let updatedAt: String
+
+    var createdAt: String { "" }
+    var updatedAt: String { "" }
 
     enum CodingKeys: String, CodingKey {
-        case id
-        case budgetId = "budget_id"
-        case categoryId = "category_id"
-        case subcategoryId = "subcategory_id"
+        case id = "_id"
+        case budgetId
+        case categoryId
+        case subcategoryId
         case amount
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
     }
 }
 
@@ -89,54 +89,31 @@ struct BudgetSummaryLineItem: Identifiable, Codable {
     let amount: Double
     let spent: Double
     let remaining: Double
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case budgetId = "budget_id"
-        case categoryId = "category_id"
-        case subcategoryId = "subcategory_id"
-        case amount, spent, remaining
-    }
 }
 
 struct UnbudgetedCategory: Codable {
     let categoryId: String
     let spent: Double
-
-    enum CodingKeys: String, CodingKey {
-        case categoryId = "category_id"
-        case spent
-    }
 }
 
 struct BudgetSummary: Codable {
-    let budgetId: String
-    let budgetName: String
+    let budgetId: String?
+    let budgetName: String?
     let month: String
     let totalBudgeted: Double
     let totalSpent: Double
     let lineItems: [BudgetSummaryLineItem]
     let unbudgetedCategories: [UnbudgetedCategory]
-    let subcategorySpending: [String: Double]?  // subcategory_id → amount spent
-    let uncategorizedSpending: Double?           // spending with no category assigned
-
-    enum CodingKeys: String, CodingKey {
-        case budgetId = "budget_id"
-        case budgetName = "budget_name"
-        case month
-        case totalBudgeted = "total_budgeted"
-        case totalSpent = "total_spent"
-        case lineItems = "line_items"
-        case unbudgetedCategories = "unbudgeted_categories"
-        case subcategorySpending = "subcategory_spending"
-        case uncategorizedSpending = "uncategorized_spending"
-    }
+    let subcategorySpending: [String: Double]?
+    let uncategorizedSpending: Double?
+    let accountIds: [String]?
+    let hasPreviousMonth: Bool?
+    let hasNextMonth: Bool?
 }
 
-// MARK: - Budget Category
+// MARK: - Budget Category (local UI model, not from API)
 
 struct BudgetCategory: Identifiable, Codable, Hashable {
-    // Custom Hashable implementation to only hash the id
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
@@ -144,25 +121,23 @@ struct BudgetCategory: Identifiable, Codable, Hashable {
     static func == (lhs: BudgetCategory, rhs: BudgetCategory) -> Bool {
         lhs.id == rhs.id
     }
-    let id: String  // Category ID
+    let id: String
     var name: String
     var icon: String
-    var colorHex: String  // Store hex string directly from database
+    var colorHex: String
     let type: CategoryType
     var subcategories: [BudgetSubcategory]
     var budgetAmount: Double?
     var spentAmount: Double
 
-    // Budget metadata (for updates)
-    var lineItemId: String?  // ID from budget_line_items table
-    var budgetId: String?    // ID of the parent budget
+    var lineItemId: String?
+    var budgetId: String?
 
     enum CategoryType: String, Codable, CaseIterable {
         case expense = "Expense"
         case income = "Income"
     }
 
-    // Computed property to convert hex to SwiftUI Color
     var color: Color {
         Color(hex: colorHex)
     }
@@ -177,14 +152,13 @@ struct BudgetCategory: Identifiable, Codable, Hashable {
         return spentAmount > budget
     }
 
-    // Map JSON "color" key to "colorHex" property
     enum CodingKeys: String, CodingKey {
         case id, name, icon, type, subcategories, budgetAmount, spentAmount
         case colorHex = "color"
     }
 }
 
-// MARK: - Color Palette for UI Pickers
+// MARK: - Color Palette
 
 enum ColorPalette: String, CaseIterable, Identifiable {
     case blue = "#3B82F6"
@@ -223,7 +197,6 @@ enum ColorPalette: String, CaseIterable, Identifiable {
 // MARK: - Budget Subcategory
 
 struct BudgetSubcategory: Identifiable, Codable, Hashable {
-    // Custom Hashable implementation to only hash the id
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
@@ -231,19 +204,18 @@ struct BudgetSubcategory: Identifiable, Codable, Hashable {
     static func == (lhs: BudgetSubcategory, rhs: BudgetSubcategory) -> Bool {
         lhs.id == rhs.id
     }
-    let id: String  // Subcategory ID
+    let id: String
     let name: String
     let icon: String
     var budgetAmount: Double?
     var spentAmount: Double
     var transactionCount: Int
 
-    // Budget metadata (for updates)
-    var lineItemId: String?  // ID from budget_line_items table
-    var budgetId: String?    // ID of the parent budget
+    var lineItemId: String?
+    var budgetId: String?
 }
 
-// MARK: - Budget
+// MARK: - Budget (local UI model)
 
 struct Budget: Identifiable, Codable {
     let id: String
@@ -252,18 +224,16 @@ struct Budget: Identifiable, Codable {
     var type: BudgetType
     var period: BudgetPeriod
     var startDate: Date
-    var colorHex: String  // Store hex string directly
-    var includedCategories: [String] // Category IDs
-    var excludedCategories: [String] // Category IDs
+    var colorHex: String
+    var includedCategories: [String]
+    var excludedCategories: [String]
     var transactionFilters: [TransactionFilter]
     var accountFilters: [AccountFilter]
 
-    // Computed property to convert hex to SwiftUI Color
     var color: Color {
         Color(hex: colorHex)
     }
 
-    // Map JSON "color" key to "colorHex" property
     enum CodingKeys: String, CodingKey {
         case id, name, amount, type, period, startDate
         case colorHex = "color"
@@ -322,7 +292,7 @@ extension BudgetCategory {
             id: "1",
             name: "Entertainment",
             icon: "🍿",
-            colorHex: "#3B82F6",  // Blue
+            colorHex: "#3B82F6",
             type: .expense,
             subcategories: [
                 BudgetSubcategory(id: "1-1", name: "Movies", icon: "🍿", budgetAmount: 100.00, spentAmount: 45.00, transactionCount: 3),
@@ -336,7 +306,7 @@ extension BudgetCategory {
             id: "2",
             name: "Food",
             icon: "🍔",
-            colorHex: "#F59E0B",  // Orange
+            colorHex: "#F59E0B",
             type: .expense,
             subcategories: [
                 BudgetSubcategory(id: "2-1", name: "Groceries", icon: "🛒", budgetAmount: 500.00, spentAmount: 450.00, transactionCount: 28),
@@ -346,62 +316,6 @@ extension BudgetCategory {
             budgetAmount: 800.00,
             spentAmount: 765.00
         ),
-        BudgetCategory(
-            id: "3",
-            name: "Transport",
-            icon: "🚗",
-            colorHex: "#06B6D4",  // Teal
-            type: .expense,
-            subcategories: [
-                BudgetSubcategory(id: "3-1", name: "Gas", icon: "⛽", spentAmount: 180.00, transactionCount: 8),
-                BudgetSubcategory(id: "3-2", name: "Public Transit", icon: "🚊", spentAmount: 45.00, transactionCount: 22),
-                BudgetSubcategory(id: "3-3", name: "Rideshare", icon: "🚕", spentAmount: 60.00, transactionCount: 4)
-            ],
-            budgetAmount: 400.00,
-            spentAmount: 285.00
-        ),
-        BudgetCategory(
-            id: "4",
-            name: "Home & Utilities",
-            icon: "🏠",
-            colorHex: "#8B5CF6",  // Purple
-            type: .expense,
-            subcategories: [
-                BudgetSubcategory(id: "4-1", name: "Rent", icon: "🏘️", budgetAmount: 1500.00, spentAmount: 1500.00, transactionCount: 1),
-                BudgetSubcategory(id: "4-2", name: "Electricity", icon: "💡", budgetAmount: 150.00, spentAmount: 85.00, transactionCount: 1),
-                BudgetSubcategory(id: "4-3", name: "Internet", icon: "📡", spentAmount: 60.00, transactionCount: 1)
-            ],
-            budgetAmount: 1800.00,
-            spentAmount: 1645.00
-        ),
-        BudgetCategory(
-            id: "5",
-            name: "Personal & Medical",
-            icon: "❤️",
-            colorHex: "#EC4899",  // Pink
-            type: .expense,
-            subcategories: [
-                BudgetSubcategory(id: "5-1", name: "Healthcare", icon: "💊", spentAmount: 120.00, transactionCount: 2),
-                BudgetSubcategory(id: "5-2", name: "Fitness", icon: "🏃", spentAmount: 50.00, transactionCount: 1),
-                BudgetSubcategory(id: "5-3", name: "Personal Care", icon: "💇", spentAmount: 75.00, transactionCount: 3)
-            ],
-            budgetAmount: 300.00,
-            spentAmount: 245.00
-        ),
-        BudgetCategory(
-            id: "6",
-            name: "Shopping",
-            icon: "🛍️",
-            colorHex: "#FBBF24",  // Yellow
-            type: .expense,
-            subcategories: [
-                BudgetSubcategory(id: "6-1", name: "Clothing", icon: "👕", spentAmount: 200.00, transactionCount: 5),
-                BudgetSubcategory(id: "6-2", name: "Electronics", icon: "📱", spentAmount: 0.00, transactionCount: 0),
-                BudgetSubcategory(id: "6-3", name: "Other", icon: "🎁", spentAmount: 50.00, transactionCount: 2)
-            ],
-            budgetAmount: 400.00,
-            spentAmount: 250.00
-        )
     ]
 }
 
@@ -419,80 +333,11 @@ struct CategoryTransaction: Identifiable {
 }
 
 extension CategoryTransaction {
-    static let mockTransactions: [CategoryTransaction] = [
-        // Entertainment - Movies
-        CategoryTransaction(id: "t1", categoryId: "1", subcategoryId: "1-1", merchantName: "AMC Theatres", amount: 25.00, date: Date().addingTimeInterval(-86400 * 2), description: "Movie tickets", pending: false),
-        CategoryTransaction(id: "t2", categoryId: "1", subcategoryId: "1-1", merchantName: "Regal Cinemas", amount: 15.00, date: Date().addingTimeInterval(-86400 * 5), description: "Matinee showing", pending: false),
-        CategoryTransaction(id: "t3", categoryId: "1", subcategoryId: "1-1", merchantName: "Movie Theater", amount: 5.00, date: Date().addingTimeInterval(-86400 * 10), description: "Concessions", pending: false),
-
-        // Entertainment - Music
-        CategoryTransaction(id: "t4", categoryId: "1", subcategoryId: "1-2", merchantName: "Spotify", amount: 9.99, date: Date().addingTimeInterval(-86400 * 1), description: "Premium subscription", pending: false),
-
-        // Entertainment - Activities
-        CategoryTransaction(id: "t5", categoryId: "1", subcategoryId: "1-3", merchantName: "Bowling Alley", amount: 45.00, date: Date().addingTimeInterval(-86400 * 3), description: "Friday night bowling", pending: false),
-        CategoryTransaction(id: "t6", categoryId: "1", subcategoryId: "1-3", merchantName: "Mini Golf", amount: 30.00, date: Date().addingTimeInterval(-86400 * 7), description: "Weekend activity", pending: false),
-        CategoryTransaction(id: "t7", categoryId: "1", subcategoryId: "1-3", merchantName: "Escape Room", amount: 45.00, date: Date().addingTimeInterval(-86400 * 14), description: "Group activity", pending: false),
-
-        // Food - Groceries (showing first 5 of 28)
-        CategoryTransaction(id: "t8", categoryId: "2", subcategoryId: "2-1", merchantName: "Whole Foods", amount: 85.50, date: Date().addingTimeInterval(-86400 * 1), description: "Weekly groceries", pending: false),
-        CategoryTransaction(id: "t9", categoryId: "2", subcategoryId: "2-1", merchantName: "Trader Joe's", amount: 42.30, date: Date().addingTimeInterval(-86400 * 3), description: "Specialty items", pending: false),
-        CategoryTransaction(id: "t10", categoryId: "2", subcategoryId: "2-1", merchantName: "Safeway", amount: 123.45, date: Date().addingTimeInterval(-86400 * 5), description: "Bulk shopping", pending: false),
-        CategoryTransaction(id: "t11", categoryId: "2", subcategoryId: "2-1", merchantName: "Farmers Market", amount: 28.75, date: Date().addingTimeInterval(-86400 * 6), description: "Fresh produce", pending: false),
-        CategoryTransaction(id: "t12", categoryId: "2", subcategoryId: "2-1", merchantName: "Costco", amount: 170.00, date: Date().addingTimeInterval(-86400 * 8), description: "Monthly stock-up", pending: false),
-
-        // Food - Dining Out (showing first 5 of 12)
-        CategoryTransaction(id: "t13", categoryId: "2", subcategoryId: "2-2", merchantName: "Thai Restaurant", amount: 45.60, date: Date().addingTimeInterval(-86400 * 1), description: "Dinner", pending: false),
-        CategoryTransaction(id: "t14", categoryId: "2", subcategoryId: "2-2", merchantName: "Pizza Place", amount: 32.00, date: Date().addingTimeInterval(-86400 * 2), description: "Takeout", pending: true),
-        CategoryTransaction(id: "t15", categoryId: "2", subcategoryId: "2-2", merchantName: "Sushi Bar", amount: 67.50, date: Date().addingTimeInterval(-86400 * 4), description: "Date night", pending: false),
-        CategoryTransaction(id: "t16", categoryId: "2", subcategoryId: "2-2", merchantName: "Mexican Grill", amount: 28.90, date: Date().addingTimeInterval(-86400 * 6), description: "Quick lunch", pending: false),
-        CategoryTransaction(id: "t17", categoryId: "2", subcategoryId: "2-2", merchantName: "Italian Bistro", amount: 56.00, date: Date().addingTimeInterval(-86400 * 8), description: "Weekend brunch", pending: false),
-
-        // Food - Coffee (showing first 5 of 18)
-        CategoryTransaction(id: "t18", categoryId: "2", subcategoryId: "2-3", merchantName: "Starbucks", amount: 6.75, date: Date().addingTimeInterval(-86400 * 1), description: "Morning coffee", pending: false),
-        CategoryTransaction(id: "t19", categoryId: "2", subcategoryId: "2-3", merchantName: "Local Cafe", amount: 4.50, date: Date().addingTimeInterval(-86400 * 2), description: "Americano", pending: false),
-        CategoryTransaction(id: "t20", categoryId: "2", subcategoryId: "2-3", merchantName: "Starbucks", amount: 8.25, date: Date().addingTimeInterval(-86400 * 3), description: "Latte + pastry", pending: false),
-        CategoryTransaction(id: "t21", categoryId: "2", subcategoryId: "2-3", merchantName: "Peet's Coffee", amount: 5.50, date: Date().addingTimeInterval(-86400 * 5), description: "Cold brew", pending: false),
-        CategoryTransaction(id: "t22", categoryId: "2", subcategoryId: "2-3", merchantName: "Coffee Shop", amount: 7.00, date: Date().addingTimeInterval(-86400 * 6), description: "Cappuccino", pending: false),
-    ]
-
     static func transactions(for categoryId: String, subcategoryId: String? = nil) -> [CategoryTransaction] {
-        mockTransactions.filter { transaction in
-            if let subId = subcategoryId {
-                return transaction.categoryId == categoryId && transaction.subcategoryId == subId
-            } else {
-                return transaction.categoryId == categoryId
-            }
-        }
+        return []
     }
 }
 
 extension Budget {
-    static let mockBudgets: [Budget] = [
-        Budget(
-            id: "1",
-            name: "Monthly Budget",
-            amount: 4200.00,
-            type: .expense,
-            period: .month,
-            startDate: Calendar.current.date(from: DateComponents(year: 2025, month: 2, day: 1))!,
-            colorHex: "#3B82F6",  // Blue
-            includedCategories: ["1", "2", "3", "4", "5", "6"],
-            excludedCategories: [],
-            transactionFilters: [.default, .expense],
-            accountFilters: [.allAccounts]
-        ),
-        Budget(
-            id: "2",
-            name: "Savings Goal",
-            amount: 1000.00,
-            type: .savings,
-            period: .month,
-            startDate: Calendar.current.date(from: DateComponents(year: 2025, month: 2, day: 1))!,
-            colorHex: "#10B981",  // Green
-            includedCategories: [],
-            excludedCategories: [],
-            transactionFilters: [.income],
-            accountFilters: [.bank]
-        )
-    ]
+    static let mockBudgets: [Budget] = []
 }

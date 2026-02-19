@@ -1,13 +1,17 @@
 import Foundation
 
-enum APIError: Error {
+// MARK: - Error Types
+
+enum APIError: LocalizedError {
     case invalidURL
     case invalidResponse
     case unauthorized
     case serverError(Int, String?)
     case networkError(Error)
+    case convexError(String)
+    case notLoggedIn
 
-    var localizedDescription: String {
+    var errorDescription: String? {
         switch self {
         case .invalidURL:
             return "Invalid URL"
@@ -19,175 +23,162 @@ enum APIError: Error {
             return message ?? "Server error (\(code))"
         case .networkError(let error):
             return "Network error: \(error.localizedDescription)"
+        case .convexError(let message):
+            return "Error: \(message)"
+        case .notLoggedIn:
+            return "Not logged in"
         }
     }
 }
 
+// MARK: - Convex HTTP API response wrappers
+
+private struct ConvexResponse<T: Decodable>: Decodable {
+    let status: String
+    let value: T?
+    let errorMessage: String?
+}
+
+private struct ConvexVoidResponse: Decodable {
+    let status: String
+    let errorMessage: String?
+}
+
+// Convex paginated result from .paginate()
+struct ConvexPage<T: Decodable>: Decodable {
+    let page: [T]
+    let isDone: Bool
+    let continueCursor: String
+}
+
+// MARK: - Dev Auth Models
+
+struct DevAuthResponse: Decodable {
+    let userId: String
+    let username: String
+}
+
+// MARK: - APIClient Actor
+
+/// Networking actor that calls the Convex HTTP API.
+/// Uses naive dev auth: stores userId and injects it into every call.
 actor APIClient {
     private let session: URLSession
-    private var accessToken: String?
+    private var userId: String?
+
+    static let shared = APIClient()
 
     init() {
-        self.session = URLSession.shared
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = Config.requestTimeout
+        self.session = URLSession(configuration: config)
     }
 
-    // Custom date decoder that handles ISO8601 with fractional seconds
-    private static let iso8601Formatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
+    // MARK: - Dev Auth
 
-    private static let iso8601FormatterNoFractional: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
+    func register(username: String, password: String) async throws -> DevAuthResponse {
+        let result: DevAuthResponse = try await convexMutation(
+            function: "devAuth:register",
+            args: ["username": username, "password": password],
+            skipUserId: true
+        )
+        self.userId = result.userId
+        UserDefaults.standard.set(result.userId, forKey: "dev_user_id")
+        UserDefaults.standard.set(result.username, forKey: "dev_username")
+        return result
+    }
 
-    private static func customDateDecoder(decoder: Decoder) throws -> Date {
-        let container = try decoder.singleValueContainer()
-        let dateString = try container.decode(String.self)
+    func login(username: String, password: String) async throws -> DevAuthResponse {
+        let result: DevAuthResponse = try await convexMutation(
+            function: "devAuth:login",
+            args: ["username": username, "password": password],
+            skipUserId: true
+        )
+        self.userId = result.userId
+        UserDefaults.standard.set(result.userId, forKey: "dev_user_id")
+        UserDefaults.standard.set(result.username, forKey: "dev_username")
+        return result
+    }
 
-        // Try with fractional seconds first
-        if let date = Self.iso8601Formatter.date(from: dateString) {
-            return date
-        }
-
-        // Fallback to without fractional seconds
-        if let date = Self.iso8601FormatterNoFractional.date(from: dateString) {
-            return date
-        }
-
-        throw DecodingError.dataCorruptedError(
-            in: container,
-            debugDescription: "Date string does not match ISO8601 format: \(dateString)"
+    func me() async throws -> DevAuthResponse {
+        guard let uid = currentUserId() else { throw APIError.notLoggedIn }
+        return try await convexQuery(
+            function: "devAuth:me",
+            args: ["userId": uid],
+            skipUserId: true
         )
     }
 
-    func setAccessToken(_ token: String) {
-        self.accessToken = token
-        // DEV ONLY: Persist token for auto-login (NOT production-ready!)
-        UserDefaults.standard.set(token, forKey: "dev_access_token")
-    }
-
-    func loadStoredToken() {
-        // DEV ONLY: Load persisted token for auto-login
-        if let token = UserDefaults.standard.string(forKey: "dev_access_token") {
-            self.accessToken = token
+    func loadStoredSession() -> Bool {
+        if let storedId = UserDefaults.standard.string(forKey: "dev_user_id") {
+            self.userId = storedId
+            return true
         }
+        return false
     }
 
-    func hasStoredToken() -> Bool {
-        return UserDefaults.standard.string(forKey: "dev_access_token") != nil
+    func isLoggedIn() -> Bool {
+        return currentUserId() != nil
     }
 
-    func clearStoredToken() {
-        UserDefaults.standard.removeObject(forKey: "dev_access_token")
-        self.accessToken = nil
+    func logout() {
+        self.userId = nil
+        UserDefaults.standard.removeObject(forKey: "dev_user_id")
+        UserDefaults.standard.removeObject(forKey: "dev_username")
     }
 
-    func request<T: Decodable>(
-        endpoint: String,
-        method: String = "GET",
-        body: Encodable? = nil
-    ) async throws -> T {
-        guard let url = URL(string: Config.apiBaseURL + endpoint) else {
+    func currentUserId() -> String? {
+        if let uid = userId { return uid }
+        if let stored = UserDefaults.standard.string(forKey: "dev_user_id") {
+            self.userId = stored
+            return stored
+        }
+        return nil
+    }
+
+    // MARK: - Convex Base Methods
+
+    private func convexQuery<T: Decodable>(function: String, args: [String: Any] = [:], skipUserId: Bool = false) async throws -> T {
+        return try await convexCall(endpoint: "/api/query", function: function, args: args, skipUserId: skipUserId)
+    }
+
+    private func convexMutation<T: Decodable>(function: String, args: [String: Any] = [:], skipUserId: Bool = false) async throws -> T {
+        return try await convexCall(endpoint: "/api/mutation", function: function, args: args, skipUserId: skipUserId)
+    }
+
+    private func convexAction<T: Decodable>(function: String, args: [String: Any] = [:], skipUserId: Bool = false) async throws -> T {
+        return try await convexCall(endpoint: "/api/action", function: function, args: args, skipUserId: skipUserId)
+    }
+
+    private func convexCall<T: Decodable>(endpoint: String, function: String, args: [String: Any], skipUserId: Bool = false) async throws -> T {
+        guard let url = URL(string: Config.convexURL + endpoint) else {
             throw APIError.invalidURL
         }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        if let body = body {
-            request.httpBody = try JSONEncoder().encode(body)
-        }
-
-        if Config.debugMode {
-            print("→ \(method) \(endpoint)")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if Config.debugMode {
-            print("← \(httpResponse.statusCode) \(endpoint)")
-        }
-
-        guard (200...299).contains(httpResponse.statusCode) else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
+        // Auto-inject userId into args unless skipped (for auth endpoints)
+        var finalArgs = args
+        if !skipUserId {
+            guard let uid = currentUserId() else {
+                throw APIError.notLoggedIn
             }
-
-            // Try to extract error detail from response
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
+            if finalArgs["userId"] == nil {
+                finalArgs["userId"] = uid
             }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
-        }
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom(Self.customDateDecoder)
-        return try decoder.decode(T.self, from: data)
-    }
-
-    // MARK: - SimpleFin Methods
-
-    func setupSimplefin(setupToken: String, institutionName: String?) async throws -> SimplefinSetupResponse {
-        let body = SimplefinSetupRequest(
-            setupToken: setupToken,
-            institutionName: institutionName
-        )
-        return try await request(
-            endpoint: "/simplefin/setup",
-            method: "POST",
-            body: body
-        )
-    }
-
-    func listSimplefinItems() async throws -> [SimplefinItem] {
-        return try await request(endpoint: "/simplefin/items")
-    }
-
-    func syncSimplefin(itemId: String, startDate: Int? = nil, forceSync: Bool = false) async throws -> SimplefinSyncResponse {
-        var components = URLComponents(string: Config.apiBaseURL + "/simplefin/sync/\(itemId)")
-        var queryItems: [URLQueryItem] = []
-
-        if let startDate = startDate {
-            queryItems.append(URLQueryItem(name: "start_date", value: String(startDate)))
-        }
-        if forceSync {
-            queryItems.append(URLQueryItem(name: "force_sync", value: "true"))
-        }
-
-        if !queryItems.isEmpty {
-            components?.queryItems = queryItems
-        }
-
-        guard let url = components?.url else {
-            throw APIError.invalidURL
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
+        let body: [String: Any] = [
+            "path": function,
+            "args": finalArgs,
+            "format": "json",
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         if Config.debugMode {
-            print("→ POST /simplefin/sync/\(itemId)")
+            print("→ CONVEX \(function)")
         }
 
         let (data, response) = try await session.data(for: request)
@@ -197,41 +188,89 @@ actor APIClient {
         }
 
         if Config.debugMode {
-            print("← \(httpResponse.statusCode) /simplefin/sync/\(itemId)")
+            print("← \(httpResponse.statusCode) \(function)")
         }
 
-        guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
-            }
-
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
-            }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
+        if httpResponse.statusCode == 401 {
+            throw APIError.unauthorized
         }
 
+        // Parse Convex envelope
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let status = json["status"] as? String ?? ""
+            if status == "error" {
+                let msg = json["errorMessage"] as? String ?? "Unknown error"
+                throw APIError.convexError(msg)
+            }
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.serverError(httpResponse.statusCode, nil)
+        }
+
+        // Decode the "value" field from the Convex envelope
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom(Self.customDateDecoder)
-        return try decoder.decode(SimplefinSyncResponse.self, from: data)
+        if let valueData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let value = valueData["value"] {
+            let valueJSON = try JSONSerialization.data(withJSONObject: value)
+            return try decoder.decode(T.self, from: valueJSON)
+        }
+
+        return try decoder.decode(T.self, from: data)
+    }
+
+    // MARK: - SimpleFin Methods
+
+    func setupSimplefin(setupToken: String, institutionName: String?) async throws -> SimplefinSetupResponse {
+        var args: [String: Any] = ["setupToken": setupToken]
+        if let name = institutionName { args["institutionName"] = name }
+        return try await convexAction(function: "actions/simplefinSync:setup", args: args)
+    }
+
+    func listSimplefinItems() async throws -> [SimplefinItem] {
+        return try await convexQuery(function: "accounts:listItems")
+    }
+
+    func syncSimplefin(itemId: String, startDate: Int? = nil, forceSync: Bool = false) async throws -> SimplefinSyncResponse {
+        var args: [String: Any] = ["itemId": itemId, "forceSync": forceSync]
+        if let sd = startDate { args["startDate"] = sd }
+        return try await convexAction(function: "actions/simplefinSync:sync", args: args)
     }
 
     func deleteSimplefinItem(itemId: String) async throws {
-        struct DeleteResponse: Codable {
-            let success: Bool
-            let message: String
-        }
-        let _: DeleteResponse = try await request(
-            endpoint: "/simplefin/items/\(itemId)",
-            method: "DELETE"
-        )
+        struct VoidResult: Decodable { let success: Bool }
+        let _: VoidResult = try await convexMutation(function: "accounts:disconnect", args: ["itemId": itemId])
     }
 
     func listSimplefinAccounts(itemId: String) async throws -> [SimplefinAccount] {
-        return try await request(endpoint: "/simplefin/accounts/\(itemId)")
+        return try await convexQuery(function: "accounts:listAccounts", args: ["itemId": itemId])
+    }
+
+    func listAllAccounts() async throws -> [SimplefinAccount] {
+        return try await convexQuery(function: "accounts:listAllAccounts")
+    }
+
+    func listSimplefinTransactions(
+        dateFrom: Int? = nil,
+        dateTo: Int? = nil,
+        limit: Int = 50,
+        offset: Int = 0,
+        accountIds: [String]? = nil
+    ) async throws -> TransactionListResponse {
+        var args: [String: Any] = [
+            "paginationOpts": ["numItems": limit, "cursor": NSNull()],
+        ]
+        if let dateFrom = dateFrom { args["dateFrom"] = dateFrom }
+        if let dateTo = dateTo { args["dateTo"] = dateTo }
+        if let accountIds = accountIds, !accountIds.isEmpty { args["accountIds"] = accountIds }
+
+        let page: ConvexPage<Transaction> = try await convexQuery(function: "transactions:list", args: args)
+        return TransactionListResponse(
+            items: page.page,
+            total: page.page.count,
+            hasPreviousMonth: offset > 0,
+            hasNextMonth: !page.isDone
+        )
     }
 
     // MARK: - Snapshots
@@ -241,176 +280,23 @@ actor APIClient {
         endDate: Date? = nil,
         granularity: String = "day"
     ) async throws -> SnapshotsResponse {
-        var components = URLComponents(string: Config.apiBaseURL + "/snapshots")
-        var queryItems: [URLQueryItem] = []
-
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
-
-        if let startDate = startDate {
-            queryItems.append(URLQueryItem(name: "start_date", value: formatter.string(from: startDate)))
-        }
-        if let endDate = endDate {
-            queryItems.append(URLQueryItem(name: "end_date", value: formatter.string(from: endDate)))
-        }
-        queryItems.append(URLQueryItem(name: "granularity", value: granularity))
-
-        components?.queryItems = queryItems
-
-        guard let url = components?.url else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        if Config.debugMode {
-            print("→ GET /snapshots?granularity=\(granularity)")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if Config.debugMode {
-            print("← \(httpResponse.statusCode) /snapshots")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
-            }
-
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
-            }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
-        }
-
-        let decoder = JSONDecoder()
-        return try decoder.decode(SnapshotsResponse.self, from: data)
+        var args: [String: Any] = ["granularity": granularity]
+        if let sd = startDate { args["startDate"] = formatter.string(from: sd) }
+        if let ed = endDate { args["endDate"] = formatter.string(from: ed) }
+        return try await convexQuery(function: "snapshots:list", args: args)
     }
 
-    func calculateSnapshots(
-        startDate: Date? = nil,
-        endDate: Date? = nil
-    ) async throws {
-        var components = URLComponents(string: Config.apiBaseURL + "/snapshots/calculate")
-        var queryItems: [URLQueryItem] = []
-
+    func calculateSnapshots(startDate: Date? = nil, endDate: Date? = nil) async throws {
+        struct VoidResult: Decodable { let success: Bool }
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
-
-        if let startDate = startDate {
-            queryItems.append(URLQueryItem(name: "start_date", value: formatter.string(from: startDate)))
-        }
-        if let endDate = endDate {
-            queryItems.append(URLQueryItem(name: "end_date", value: formatter.string(from: endDate)))
-        }
-
-        if !queryItems.isEmpty {
-            components?.queryItems = queryItems
-        }
-
-        guard let url = components?.url else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        let (_, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            throw APIError.serverError(httpResponse.statusCode, nil)
-        }
+        var args: [String: Any] = [:]
+        if let sd = startDate { args["startDate"] = formatter.string(from: sd) }
+        if let ed = endDate { args["endDate"] = formatter.string(from: ed) }
+        let _: VoidResult = try await convexMutation(function: "snapshots:calculate", args: args)
     }
-
-    func listSimplefinTransactions(
-        dateFrom: Int? = nil,
-        dateTo: Int? = nil,
-        limit: Int = 50,
-        offset: Int = 0
-    ) async throws -> TransactionListResponse {
-        var components = URLComponents(string: Config.apiBaseURL + "/simplefin/transactions")
-        var queryItems: [URLQueryItem] = []
-
-        if let dateFrom = dateFrom {
-            queryItems.append(URLQueryItem(name: "date_from", value: String(dateFrom)))
-        }
-        if let dateTo = dateTo {
-            queryItems.append(URLQueryItem(name: "date_to", value: String(dateTo)))
-        }
-        queryItems.append(URLQueryItem(name: "limit", value: String(limit)))
-        queryItems.append(URLQueryItem(name: "offset", value: String(offset)))
-
-        components?.queryItems = queryItems
-
-        guard let url = components?.url else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        if Config.debugMode {
-            print("→ GET /simplefin/transactions")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if Config.debugMode {
-            print("← \(httpResponse.statusCode) /simplefin/transactions")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
-            }
-
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
-            }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
-        }
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom(Self.customDateDecoder)
-        return try decoder.decode(TransactionListResponse.self, from: data)
-    }
-
-    // MARK: - Account Snapshots (per-account balance history)
 
     func getAccountSnapshots(
         accountId: String,
@@ -418,269 +304,49 @@ actor APIClient {
         endDate: Date? = nil,
         granularity: String = "day"
     ) async throws -> SnapshotsResponse {
-        var components = URLComponents(string: Config.apiBaseURL + "/snapshots/account/\(accountId)")
-        var queryItems: [URLQueryItem] = []
-
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
-
-        if let startDate = startDate {
-            queryItems.append(URLQueryItem(name: "start_date", value: formatter.string(from: startDate)))
-        }
-        if let endDate = endDate {
-            queryItems.append(URLQueryItem(name: "end_date", value: formatter.string(from: endDate)))
-        }
-        queryItems.append(URLQueryItem(name: "granularity", value: granularity))
-
-        components?.queryItems = queryItems
-
-        guard let url = components?.url else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        if Config.debugMode {
-            print("→ GET /snapshots/account/\(accountId)?granularity=\(granularity)")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if Config.debugMode {
-            print("← \(httpResponse.statusCode) /snapshots/account/\(accountId)")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
-            }
-
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
-            }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
-        }
-
-        let decoder = JSONDecoder()
-        return try decoder.decode(SnapshotsResponse.self, from: data)
+        var args: [String: Any] = ["accountId": accountId, "granularity": granularity]
+        if let sd = startDate { args["startDate"] = formatter.string(from: sd) }
+        if let ed = endDate { args["endDate"] = formatter.string(from: ed) }
+        return try await convexQuery(function: "snapshots:listForAccount", args: args)
     }
 
     // MARK: - Categories
 
     func seedDefaultCategories(monthlyBudget: Double, accountIds: [String] = []) async throws -> SeedDefaultsResponse {
-        guard let url = URL(string: Config.apiBaseURL + "/categories/seed-defaults") else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        let body: [String: Any] = [
-            "monthly_budget": monthlyBudget,
-            "account_ids": accountIds
+        let args: [String: Any] = [
+            "monthlyBudget": monthlyBudget,
+            "accountIds": accountIds,
         ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        if Config.debugMode {
-            print("→ POST /categories/seed-defaults")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if Config.debugMode {
-            print("← \(httpResponse.statusCode) /categories/seed-defaults")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
-            }
-
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
-            }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
-        }
-
-        // DEBUG: Print raw JSON response
-        if let jsonString = String(data: data, encoding: .utf8) {
-            print("=== RAW JSON RESPONSE ===")
-            print(jsonString)
-            print("=========================")
-        }
-
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-
-        do {
-            return try decoder.decode(SeedDefaultsResponse.self, from: data)
-        } catch {
-            print("=== DECODING ERROR ===")
-            print("Error: \(error)")
-            if let decodingError = error as? DecodingError {
-                switch decodingError {
-                case .keyNotFound(let key, let context):
-                    print("Key '\(key.stringValue)' not found:", context.debugDescription)
-                    print("Context path:", context.codingPath.map { $0.stringValue }.joined(separator: " -> "))
-                case .typeMismatch(let type, let context):
-                    print("Type '\(type)' mismatch:", context.debugDescription)
-                    print("Context path:", context.codingPath.map { $0.stringValue }.joined(separator: " -> "))
-                case .valueNotFound(let type, let context):
-                    print("Value '\(type)' not found:", context.debugDescription)
-                    print("Context path:", context.codingPath.map { $0.stringValue }.joined(separator: " -> "))
-                case .dataCorrupted(let context):
-                    print("Data corrupted:", context.debugDescription)
-                    print("Context path:", context.codingPath.map { $0.stringValue }.joined(separator: " -> "))
-                @unknown default:
-                    print("Unknown decoding error:", error)
-                }
-            }
-            print("======================")
-            throw error
-        }
+        return try await convexMutation(function: "categories:seedDefaults", args: args)
     }
 
     func fetchCategories() async throws -> [Category] {
-        guard let url = URL(string: Config.apiBaseURL + "/categories") else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        if Config.debugMode {
-            print("→ GET /categories")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if Config.debugMode {
-            print("← \(httpResponse.statusCode) /categories")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
-            }
-
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
-            }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
-        }
-
-        let decoder = JSONDecoder()
-        let listResponse = try decoder.decode(CategoryListResponse.self, from: data)
-        return listResponse.items
+        return try await convexQuery(function: "categories:list")
     }
 
     func fetchCategoriesTree() async throws -> [CategoryWithSubcategories] {
-        guard let url = URL(string: Config.apiBaseURL + "/categories/tree") else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        if Config.debugMode {
-            print("→ GET /categories/tree")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if Config.debugMode {
-            print("← \(httpResponse.statusCode) /categories/tree")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
-            }
-
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
-            }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
-        }
-
-        let decoder = JSONDecoder()
-        let treeResponse = try decoder.decode(CategoriesTreeResponse.self, from: data)
-        return treeResponse.items
+        return try await convexQuery(function: "categories:tree")
     }
 
     func createSubcategory(categoryId: String, name: String, icon: String) async throws -> Subcategory {
-        struct CreateBody: Encodable { let name: String; let icon: String }
-        return try await request(
-            endpoint: "/categories/\(categoryId)/subcategories",
-            method: "POST",
-            body: CreateBody(name: name, icon: icon)
+        return try await convexMutation(
+            function: "categories:createSubcategory",
+            args: ["categoryId": categoryId, "name": name, "icon": icon]
         )
     }
 
     func updateCategory(categoryId: String, name: String, icon: String, color: String) async throws -> Category {
-        struct UpdateBody: Encodable { let name: String; let icon: String; let color: String }
-        return try await request(
-            endpoint: "/categories/\(categoryId)",
-            method: "PATCH",
-            body: UpdateBody(name: name, icon: icon, color: color)
+        return try await convexMutation(
+            function: "categories:update",
+            args: ["id": categoryId, "name": name, "icon": icon, "color": color]
         )
     }
 
     func deleteCategory(categoryId: String) async throws {
-        struct SuccessResponse: Codable { let success: Bool; let message: String }
-        let _: SuccessResponse = try await request(
-            endpoint: "/categories/\(categoryId)",
-            method: "DELETE"
-        )
+        struct VoidResult: Decodable { let success: Bool }
+        let _: VoidResult = try await convexMutation(function: "categories:deleteCategory", args: ["id": categoryId])
     }
 
     func categorizeTransaction(
@@ -689,382 +355,166 @@ actor APIClient {
         subcategoryId: String?,
         createRule: Bool = false
     ) async throws {
-        struct ManualCategorizationBody: Encodable {
-            let categoryId: String?
-            let subcategoryId: String?
-            let createRule: Bool
-            enum CodingKeys: String, CodingKey {
-                case categoryId = "category_id"
-                case subcategoryId = "subcategory_id"
-                case createRule = "create_rule"
-            }
-        }
-        struct SuccessResponse: Codable { let success: Bool; let message: String }
-        let _: SuccessResponse = try await request(
-            endpoint: "/categories/transactions/\(transactionId)/categorize",
-            method: "PATCH",
-            body: ManualCategorizationBody(categoryId: categoryId, subcategoryId: subcategoryId, createRule: createRule)
-        )
+        struct VoidResult: Decodable { let success: Bool }
+        var args: [String: Any] = [
+            "txId": transactionId,
+            "createRule": createRule,
+        ]
+        if let cid = categoryId { args["categoryId"] = cid }
+        if let sid = subcategoryId { args["subcategoryId"] = sid }
+        let _: VoidResult = try await convexMutation(function: "transactions:categorize", args: args)
     }
 
     func listCategorizationRules() async throws -> [CategorizationRule] {
-        let response: CategorizationRuleListResponse = try await request(endpoint: "/categories/rules")
-        return response.items
+        return try await convexQuery(function: "categories:listRules")
     }
 
     func createCategorizationRule(matchField: String, matchValue: String, categoryId: String, subcategoryId: String?) async throws -> CategorizationRule {
-        struct CreateBody: Encodable {
-            let matchField: String
-            let matchValue: String
-            let categoryId: String
-            let subcategoryId: String?
-            enum CodingKeys: String, CodingKey {
-                case matchField = "match_field"
-                case matchValue = "match_value"
-                case categoryId = "category_id"
-                case subcategoryId = "subcategory_id"
-            }
-        }
-        return try await request(
-            endpoint: "/categories/rules",
-            method: "POST",
-            body: CreateBody(matchField: matchField, matchValue: matchValue, categoryId: categoryId, subcategoryId: subcategoryId)
-        )
+        var args: [String: Any] = [
+            "matchField": matchField,
+            "matchValue": matchValue,
+            "categoryId": categoryId,
+        ]
+        if let sid = subcategoryId { args["subcategoryId"] = sid }
+        return try await convexMutation(function: "categories:createRule", args: args)
     }
 
     func deleteCategorizationRule(ruleId: String) async throws {
-        struct SuccessResponse: Codable { let success: Bool; let message: String }
-        let _: SuccessResponse = try await request(
-            endpoint: "/categories/rules/\(ruleId)",
-            method: "DELETE"
-        )
+        struct VoidResult: Decodable { let success: Bool }
+        let _: VoidResult = try await convexMutation(function: "categories:deleteRule", args: ["id": ruleId])
     }
 
     func createCategory(name: String, icon: String, color: String) async throws -> Category {
-        guard let url = URL(string: Config.apiBaseURL + "/categories") else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        let body = [
-            "name": name,
-            "icon": icon,
-            "color": color,
-            "display_order": 0
-        ] as [String : Any]
-
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        if Config.debugMode {
-            print("→ POST /categories")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if Config.debugMode {
-            print("← \(httpResponse.statusCode) /categories")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
-            }
-
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
-            }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
-        }
-
-        let decoder = JSONDecoder()
-        return try decoder.decode(Category.self, from: data)
+        return try await convexMutation(
+            function: "categories:create",
+            args: ["name": name, "icon": icon, "color": color]
+        )
     }
 
     // MARK: - Budgets
 
     func getBudgetSummary(month: String) async throws -> BudgetSummary {
-        return try await request(endpoint: "/budgets/summary?month=\(month)")
+        return try await convexQuery(function: "budgets:summary", args: ["month": month])
     }
 
     func fetchBudgets() async throws -> [BudgetAPI] {
-        let response: BudgetAPIListResponse = try await request(endpoint: "/budgets")
-        return response.items
+        return try await convexQuery(function: "budgets:list")
     }
 
     func createBudgetLineItem(budgetId: String, categoryId: String, subcategoryId: String?, amount: Double) async throws -> BudgetLineItem {
-        struct CreateBody: Encodable {
-            let categoryId: String
-            let subcategoryId: String?
-            let amount: Double
-            enum CodingKeys: String, CodingKey {
-                case categoryId = "category_id"
-                case subcategoryId = "subcategory_id"
-                case amount
-            }
-        }
-        return try await request(
-            endpoint: "/budgets/\(budgetId)/line-items",
-            method: "POST",
-            body: CreateBody(categoryId: categoryId, subcategoryId: subcategoryId, amount: amount)
-        )
+        var args: [String: Any] = [
+            "budgetId": budgetId,
+            "categoryId": categoryId,
+            "amount": amount,
+        ]
+        if let sid = subcategoryId { args["subcategoryId"] = sid }
+        return try await convexMutation(function: "budgets:createLineItem", args: args)
     }
 
     func updateBudgetLineItem(budgetId: String, lineItemId: String, amount: Double) async throws -> BudgetLineItem {
-        struct UpdateBody: Encodable { let amount: Double }
-        return try await request(
-            endpoint: "/budgets/\(budgetId)/line-items/\(lineItemId)",
-            method: "PATCH",
-            body: UpdateBody(amount: amount)
+        return try await convexMutation(
+            function: "budgets:updateLineItem",
+            args: ["id": lineItemId, "amount": amount]
         )
     }
 
     func deleteBudgetLineItem(budgetId: String, lineItemId: String) async throws {
-        struct SuccessResponse: Codable { let success: Bool; let message: String }
-        let _: SuccessResponse = try await request(
-            endpoint: "/budgets/\(budgetId)/line-items/\(lineItemId)",
-            method: "DELETE"
-        )
+        struct VoidResult: Decodable { let success: Bool }
+        let _: VoidResult = try await convexMutation(function: "budgets:deleteLineItem", args: ["id": lineItemId])
     }
 
     func fetchBudgetLineItems(budgetId: String) async throws -> [BudgetLineItem] {
-        let response: BudgetLineItemListResponse = try await request(
-            endpoint: "/budgets/\(budgetId)/line-items"
-        )
-        return response.items
+        return try await convexQuery(function: "budgets:listLineItems", args: ["budgetId": budgetId])
     }
 
     func createBudget(name: String, isDefault: Bool, emoji: String? = "💰", color: String? = "#00A699") async throws -> BudgetAPI {
-        struct CreateBody: Encodable {
-            let name: String
-            let isDefault: Bool
-            let accountIds: [String]
-            let emoji: String?
-            let color: String?
-            enum CodingKeys: String, CodingKey {
-                case name
-                case isDefault = "is_default"
-                case accountIds = "account_ids"
-                case emoji
-                case color
-            }
-        }
-        return try await request(
-            endpoint: "/budgets",
-            method: "POST",
-            body: CreateBody(name: name, isDefault: isDefault, accountIds: [], emoji: emoji, color: color)
-        )
+        var args: [String: Any] = ["name": name, "isDefault": isDefault]
+        if let e = emoji { args["emoji"] = e }
+        if let c = color { args["color"] = c }
+        return try await convexMutation(function: "budgets:create", args: args)
     }
 
     func updateBudget(budgetId: String, name: String? = nil, isDefault: Bool? = nil, emoji: String? = nil, color: String? = nil) async throws -> BudgetAPI {
-        struct UpdateBody: Encodable {
-            let name: String?
-            let isDefault: Bool?
-            let emoji: String?
-            let color: String?
-            enum CodingKeys: String, CodingKey {
-                case name
-                case isDefault = "is_default"
-                case emoji
-                case color
-            }
-        }
-        return try await request(
-            endpoint: "/budgets/\(budgetId)",
-            method: "PATCH",
-            body: UpdateBody(name: name, isDefault: isDefault, emoji: emoji, color: color)
-        )
+        var args: [String: Any] = ["id": budgetId]
+        if let n = name { args["name"] = n }
+        if let d = isDefault { args["isDefault"] = d }
+        if let e = emoji { args["emoji"] = e }
+        if let c = color { args["color"] = c }
+        return try await convexMutation(function: "budgets:update", args: args)
     }
 
     func fetchBudgetMonths() async throws -> [BudgetMonth] {
-        let response: BudgetMonthAPIListResponse = try await request(endpoint: "/budgets/months")
-        return response.items
+        return try await convexQuery(function: "budgets:listMonths")
     }
 
     func assignBudgetMonth(budgetId: String, month: String) async throws -> BudgetMonth {
-        struct CreateBody: Encodable {
-            let budgetId: String
-            let month: String
-            enum CodingKeys: String, CodingKey {
-                case budgetId = "budget_id"
-                case month
-            }
-        }
-        return try await request(
-            endpoint: "/budgets/months",
-            method: "POST",
-            body: CreateBody(budgetId: budgetId, month: month)
+        return try await convexMutation(
+            function: "budgets:assignMonth",
+            args: ["budgetId": budgetId, "month": month]
         )
     }
 
     func deleteBudgetMonth(monthId: String) async throws {
-        struct SuccessResponse: Codable { let success: Bool; let message: String }
-        let _: SuccessResponse = try await request(
-            endpoint: "/budgets/months/\(monthId)",
-            method: "DELETE"
-        )
+        struct VoidResult: Decodable { let success: Bool }
+        let _: VoidResult = try await convexMutation(function: "budgets:deleteMonth", args: ["id": monthId])
     }
 
     func deleteBudget(budgetId: String) async throws {
-        struct SuccessResponse: Codable { let success: Bool; let message: String }
-        let _: SuccessResponse = try await request(
-            endpoint: "/budgets/\(budgetId)",
-            method: "DELETE"
-        )
+        struct VoidResult: Decodable { let success: Bool }
+        let _: VoidResult = try await convexMutation(function: "budgets:deleteBudget", args: ["id": budgetId])
     }
 
     func listBudgetAccounts(budgetId: String) async throws -> [BudgetAccountItem] {
-        let response: BudgetAccountListResponse = try await request(endpoint: "/budgets/\(budgetId)/accounts")
-        return response.items
+        return try await convexQuery(function: "budgets:listAccounts", args: ["budgetId": budgetId])
     }
 
     func addBudgetAccount(budgetId: String, accountId: String) async throws -> BudgetAccountItem {
-        struct Body: Encodable {
-            let accountId: String
-            enum CodingKeys: String, CodingKey { case accountId = "account_id" }
-        }
-        return try await request(
-            endpoint: "/budgets/\(budgetId)/accounts",
-            method: "POST",
-            body: Body(accountId: accountId)
+        return try await convexMutation(
+            function: "budgets:addAccount",
+            args: ["budgetId": budgetId, "accountId": accountId]
         )
     }
 
     func removeBudgetAccount(budgetId: String, accountId: String) async throws {
-        struct SuccessResponse: Codable { let success: Bool; let message: String }
-        let _: SuccessResponse = try await request(
-            endpoint: "/budgets/\(budgetId)/accounts/\(accountId)",
-            method: "DELETE"
+        struct VoidResult: Decodable { let success: Bool }
+        let _: VoidResult = try await convexMutation(
+            function: "budgets:removeAccount",
+            args: ["budgetId": budgetId, "accountId": accountId]
         )
     }
 
     // MARK: - Transaction Categorization
 
     func batchUpdateTransactions(_ updates: [(transactionId: String, categoryId: String?, subcategoryId: String?)]) async throws -> BatchUpdateResponse {
-        guard let url = URL(string: Config.apiBaseURL + "/transactions/batch/categorize") else {
-            throw APIError.invalidURL
+        let updateList = updates.map { u -> [String: Any] in
+            var d: [String: Any] = ["txId": u.transactionId]
+            if let cid = u.categoryId { d["categoryId"] = cid }
+            if let sid = u.subcategoryId { d["subcategoryId"] = sid }
+            return d
         }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "PATCH"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        let updatesArray = updates.map { update in
-            [
-                "transaction_id": update.transactionId,
-                "category_id": update.categoryId as Any,
-                "subcategory_id": update.subcategoryId as Any
-            ]
-        }
-
-        let body = ["updates": updatesArray]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        if Config.debugMode {
-            print("→ PATCH /transactions/batch/categorize (\(updates.count) transactions)")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if Config.debugMode {
-            print("← \(httpResponse.statusCode) /transactions/batch/categorize")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
-            }
-
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
-            }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
-        }
-
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try decoder.decode(BatchUpdateResponse.self, from: data)
+        return try await convexMutation(function: "transactions:batchCategorize", args: ["updates": updateList])
     }
 
     func categorizeWithAI(transactionIds: [String]? = nil, force: Bool = false) async throws -> AICategorizationResponse {
-        guard let url = URL(string: Config.apiBaseURL + "/categories/ai/categorize") else {
-            throw APIError.invalidURL
-        }
+        var args: [String: Any] = ["force": force]
+        if let ids = transactionIds { args["transactionIds"] = ids }
+        return try await convexAction(function: "actions/aiCategorize:categorize", args: args)
+    }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    // MARK: - Categorization Jobs
 
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
+    func startCategorizationJob(transactionIds: [String]? = nil, force: Bool = false) async throws -> CategorizationJobStartResponse {
+        var args: [String: Any] = ["force": force]
+        if let ids = transactionIds { args["transactionIds"] = ids }
+        return try await convexMutation(function: "categorizationJobs:start", args: args)
+    }
 
-        var body: [String: Any] = ["force": force]
-        if let transactionIds = transactionIds {
-            body["transaction_ids"] = transactionIds
-        }
-
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        if Config.debugMode {
-            print("→ POST /categories/ai/categorize")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if Config.debugMode {
-            print("← \(httpResponse.statusCode) /categories/ai/categorize")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 401 {
-                throw APIError.unauthorized
-            }
-
-            var errorMessage: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String {
-                errorMessage = detail
-            }
-
-            throw APIError.serverError(httpResponse.statusCode, errorMessage)
-        }
-
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try decoder.decode(AICategorizationResponse.self, from: data)
+    func getCategorizationJobStatus(jobId: String) async throws -> CategorizationJob {
+        return try await convexQuery(function: "categorizationJobs:getStatus", args: ["jobId": jobId])
     }
 }
 
-// MARK: - Transaction Categorization Response Models
+// MARK: - Response Models
 
 struct BatchUpdateResponse: Codable {
     let updatedCount: Int
@@ -1086,14 +536,12 @@ struct AICategorizationResult: Codable {
     let reasoning: String?
 }
 
-// MARK: - Goals API extension (defined at end of file for clarity)
+// MARK: - Goals
+
 extension APIClient {
 
-    // MARK: Goals
-
     func fetchGoals() async throws -> [Goal] {
-        let response: GoalListResponse = try await request(endpoint: "/goals")
-        return response.items
+        return try await convexQuery(function: "goals:list")
     }
 
     func createGoal(
@@ -1104,15 +552,15 @@ extension APIClient {
         targetDate: String?,
         accounts: [GoalAccountRequest]
     ) async throws -> Goal {
-        let body = GoalCreate(
-            name: name,
-            description: description,
-            goalType: goalType,
-            targetAmount: targetAmount,
-            targetDate: targetDate,
-            accounts: accounts
-        )
-        return try await request(endpoint: "/goals", method: "POST", body: body)
+        var args: [String: Any] = [
+            "name": name,
+            "goalType": goalType.rawValue,
+            "targetAmount": targetAmount,
+            "accounts": accounts.map { ["accountId": $0.simplefinAccountId, "allocationPercentage": $0.allocationPercentage] },
+        ]
+        if let d = description { args["description"] = d }
+        if let td = targetDate { args["targetDate"] = td }
+        return try await convexMutation(function: "goals:create", args: args)
     }
 
     func fetchGoalDetail(
@@ -1121,41 +569,12 @@ extension APIClient {
         endDate: Date? = nil,
         granularity: String = "day"
     ) async throws -> GoalDetail {
-        var components = URLComponents(string: Config.apiBaseURL + "/goals/\(goalId)")
-        var queryItems: [URLQueryItem] = [
-            URLQueryItem(name: "granularity", value: granularity)
-        ]
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
-
-        if let startDate = startDate {
-            queryItems.append(URLQueryItem(name: "start_date", value: formatter.string(from: startDate)))
-        }
-        if let endDate = endDate {
-            queryItems.append(URLQueryItem(name: "end_date", value: formatter.string(from: endDate)))
-        }
-        components?.queryItems = queryItems
-
-        guard let url = components?.url else { throw APIError.invalidURL }
-
-        var req = URLRequest(url: url)
-        req.httpMethod = "GET"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let token = accessToken {
-            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        let (data, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
-        guard http.statusCode == 200 else {
-            if http.statusCode == 401 { throw APIError.unauthorized }
-            var msg: String?
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let detail = json["detail"] as? String { msg = detail }
-            throw APIError.serverError(http.statusCode, msg)
-        }
-        let decoder = JSONDecoder()
-        return try decoder.decode(GoalDetail.self, from: data)
+        var args: [String: Any] = ["id": goalId, "granularity": granularity]
+        if let sd = startDate { args["startDate"] = formatter.string(from: sd) }
+        if let ed = endDate { args["endDate"] = formatter.string(from: ed) }
+        return try await convexQuery(function: "goals:get", args: args)
     }
 
     func updateGoal(
@@ -1167,19 +586,20 @@ extension APIClient {
         isCompleted: Bool? = nil,
         accounts: [GoalAccountRequest]? = nil
     ) async throws -> Goal {
-        let body = GoalUpdate(
-            name: name,
-            description: description,
-            targetAmount: targetAmount,
-            targetDate: targetDate,
-            isCompleted: isCompleted,
-            accounts: accounts
-        )
-        return try await request(endpoint: "/goals/\(goalId)", method: "PUT", body: body)
+        var args: [String: Any] = ["id": goalId]
+        if let n = name { args["name"] = n }
+        if let d = description { args["description"] = d }
+        if let ta = targetAmount { args["targetAmount"] = ta }
+        if let td = targetDate { args["targetDate"] = td }
+        if let ic = isCompleted { args["isCompleted"] = ic }
+        if let accs = accounts {
+            args["accounts"] = accs.map { ["accountId": $0.simplefinAccountId, "allocationPercentage": $0.allocationPercentage] }
+        }
+        return try await convexMutation(function: "goals:update", args: args)
     }
 
     func deleteGoal(goalId: String) async throws {
-        struct DeleteResponse: Codable { let success: Bool; let message: String }
-        let _: DeleteResponse = try await request(endpoint: "/goals/\(goalId)", method: "DELETE")
+        struct VoidResult: Decodable { let success: Bool }
+        let _: VoidResult = try await convexMutation(function: "goals:deleteGoal", args: ["id": goalId])
     }
 }

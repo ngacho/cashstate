@@ -1,6 +1,7 @@
 import Foundation
 
-// MARK: - Category Models (Backend API)
+// MARK: - Category Models (Convex categories table)
+// Convex returns camelCase JSON — CodingKeys updated from snake_case
 
 struct Category: Identifiable, Codable, Hashable {
     let id: String
@@ -10,16 +11,15 @@ struct Category: Identifiable, Codable, Hashable {
     let color: String
     let isDefault: Bool
     let displayOrder: Int
-    let createdAt: String
-    let updatedAt: String
 
     enum CodingKeys: String, CodingKey {
-        case id, name, icon, color
-        case userId = "user_id"
-        case isDefault = "is_default"
-        case displayOrder = "display_order"
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
+        case id = "_id"
+        case userId
+        case name
+        case icon
+        case color
+        case isDefault
+        case displayOrder
     }
 }
 
@@ -33,11 +33,13 @@ struct Subcategory: Identifiable, Codable, Hashable {
     let displayOrder: Int
 
     enum CodingKeys: String, CodingKey {
-        case id, name, icon
-        case categoryId = "category_id"
-        case userId = "user_id"
-        case isDefault = "is_default"
-        case displayOrder = "display_order"
+        case id = "_id"
+        case categoryId
+        case userId
+        case name
+        case icon
+        case isDefault
+        case displayOrder
     }
 }
 
@@ -50,16 +52,16 @@ struct CategorizationRule: Identifiable, Codable {
     let matchValue: String
     let categoryId: String
     let subcategoryId: String?
-    let createdAt: String
+
+    var createdAt: String { "" } // not returned from Convex, kept for compat
 
     enum CodingKeys: String, CodingKey {
-        case id
-        case userId = "user_id"
-        case matchField = "match_field"
-        case matchValue = "match_value"
-        case categoryId = "category_id"
-        case subcategoryId = "subcategory_id"
-        case createdAt = "created_at"
+        case id = "_id"
+        case userId
+        case matchField
+        case matchValue
+        case categoryId
+        case subcategoryId
     }
 }
 
@@ -73,8 +75,17 @@ struct CategoryWithSubcategories: Identifiable, Codable {
     let name: String
     let icon: String
     let color: String
-    let type: String?  // "income" or "expense", defaults to "expense" if nil
+    let type: String?
     let subcategories: [Subcategory]
+
+    enum CodingKeys: String, CodingKey {
+        case id = "_id"
+        case name
+        case icon
+        case color
+        case type
+        case subcategories
+    }
 }
 
 struct CategoryListResponse: Codable {
@@ -97,13 +108,4 @@ struct SeedDefaultsResponse: Codable {
     let budgetsCreated: Int
     let monthlyBudget: Double
     let budgetPerCategory: Double
-
-    enum CodingKeys: String, CodingKey {
-        case categoriesCreated = "categories_created"
-        case subcategoriesCreated = "subcategories_created"
-        case budgetsCreated = "budgets_created"
-        case monthlyBudget = "monthly_budget"
-        case budgetPerCategory = "budget_per_category"
-    }
 }
-
