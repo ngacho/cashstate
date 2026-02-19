@@ -824,28 +824,31 @@ struct AccountDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: Theme.Spacing.lg) {
+            VStack(spacing: Theme.Spacing.md) {
+
                 // Account Summary Card
-                VStack(spacing: Theme.Spacing.sm) {
+                VStack(spacing: 6) {
                     Text(account.name)
                         .font(.title3)
                         .fontWeight(.semibold)
                         .foregroundColor(Theme.Colors.textPrimary)
                     if let org = account.organizationName {
                         Text(org)
-                            .font(.caption)
+                            .font(.subheadline)
                             .foregroundColor(Theme.Colors.textSecondary)
                     }
                     Text(account.displayBalance)
-                        .font(.system(size: 32, weight: .bold))
+                        .font(.system(size: 40, weight: .bold))
                         .foregroundColor((account.balance ?? 0) < 0 ? Theme.Colors.expense : Theme.Colors.primary)
+                        .padding(.top, 4)
                 }
                 .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.white)
-                .cornerRadius(16)
-                .shadow(color: .gray.opacity(0.1), radius: 4, x: 0, y: 2)
-                .padding(.horizontal)
+                .padding(.vertical, Theme.Spacing.lg)
+                .padding(.horizontal, Theme.Spacing.md)
+                .background(Theme.Colors.cardBackground)
+                .cornerRadius(Theme.CornerRadius.xl)
+                .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+                .padding(.horizontal, Theme.Spacing.md)
 
                 // Time Range Picker
                 Picker("Period", selection: $selectedTimeRange) {
@@ -855,12 +858,13 @@ struct AccountDetailView: View {
                     Text("Custom").tag(TimeRange.custom)
                 }
                 .pickerStyle(.segmented)
-                .padding(.horizontal)
+                .padding(.horizontal, Theme.Spacing.md)
 
                 // Date Range Selector
                 Button(action: { showDatePicker = true }) {
-                    HStack {
+                    HStack(spacing: Theme.Spacing.sm) {
                         Image(systemName: "calendar")
+                            .font(.system(size: 15))
                             .foregroundColor(Theme.Colors.primary)
                         Text(dateRangeText)
                             .font(.subheadline)
@@ -870,116 +874,128 @@ struct AccountDetailView: View {
                             .font(.caption)
                             .foregroundColor(Theme.Colors.textSecondary)
                     }
-                    .padding()
-                    .background(Color.white)
-                    .cornerRadius(12)
-                    .shadow(color: .gray.opacity(0.1), radius: 4, x: 0, y: 2)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.sm)
+                    .background(Theme.Colors.cardBackground)
+                    .cornerRadius(Theme.CornerRadius.md)
+                    .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, Theme.Spacing.md)
 
-                // Chart Section with Dropdown
-                if !filteredTransactions.isEmpty {
-                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                        // Chart type toggle
-                        Picker("Chart Type", selection: $selectedChartType) {
-                            ForEach(ChartType.allCases, id: \.self) { type in
-                                Text(type.displayName).tag(type)
-                            }
+                // Chart Card: toggle + chart together
+                VStack(spacing: 0) {
+                    // Chart type toggle inside the card
+                    Picker("Chart Type", selection: $selectedChartType) {
+                        ForEach(ChartType.allCases, id: \.self) { type in
+                            Text(type.displayName).tag(type)
                         }
-                        .pickerStyle(.segmented)
-                        .padding(.horizontal)
-
-                        // Chart content
-                        Group {
-                            switch selectedChartType {
-                            case .balance:
-                                AccountBalanceChart(
-                                    transactions: filteredTransactions,
-                                    currentBalance: account.balance ?? 0,
-                                    timeRange: effectiveTimeRange
-                                )
-                            case .transactions:
-                                SpendingCreditChart(
-                                    transactions: filteredTransactions,
-                                    timeRange: effectiveTimeRange
-                                )
-                            }
-                        }
-                        .frame(height: 200)
-                        .padding()
-                        .background(Color.white)
-                        .cornerRadius(16)
-                        .shadow(color: .gray.opacity(0.1), radius: 4, x: 0, y: 2)
-                        .padding(.horizontal)
                     }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.top, Theme.Spacing.md)
+                    .padding(.bottom, Theme.Spacing.sm)
+
+                    // Chart
+                    Group {
+                        switch selectedChartType {
+                        case .balance:
+                            AccountBalanceChart(
+                                transactions: filteredTransactions,
+                                currentBalance: account.balance ?? 0,
+                                timeRange: effectiveTimeRange
+                            )
+                        case .transactions:
+                            SpendingCreditChart(
+                                transactions: filteredTransactions,
+                                timeRange: effectiveTimeRange
+                            )
+                        }
+                    }
+                    .frame(height: 180)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.bottom, Theme.Spacing.md)
                 }
+                .background(Theme.Colors.cardBackground)
+                .cornerRadius(Theme.CornerRadius.xl)
+                .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+                .padding(.horizontal, Theme.Spacing.md)
 
                 // Spending Breakdown Section
                 if !filteredTransactions.isEmpty && totalSpent > 0 {
-                    VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                        Text("Spending Breakdown")
-                            .font(.headline)
-                            .foregroundColor(Theme.Colors.textPrimary)
-                            .padding(.horizontal)
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        // Section header
+                        Text("SPENDING BREAKDOWN")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                            .padding(.horizontal, Theme.Spacing.md)
 
-                        // Donut Chart
-                        ZStack {
-                            DonutChart(
-                                categories: merchantBreakdown.prefix(5).map {
-                                    InsightsView.CategorySpending(category: $0.merchant, amount: $0.amount)
-                                },
-                                total: totalSpent
-                            )
-                            .frame(height: 200)
-
-                            // Total in center
-                            VStack(spacing: 4) {
-                                Text("Total spent")
-                                    .font(.caption)
-                                    .foregroundColor(Theme.Colors.textSecondary)
-                                Text("$\(String(format: "%.2f", totalSpent))")
-                                    .font(.system(size: 24, weight: .bold))
-                                    .foregroundColor(Theme.Colors.textPrimary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal)
-
-                        // Top Merchants Legend
-                        if !merchantBreakdown.isEmpty {
-                            VStack(spacing: Theme.Spacing.xs) {
-                                ForEach(Array(merchantBreakdown.prefix(5).enumerated()), id: \.element.id) { index, item in
-                                    HStack(spacing: Theme.Spacing.sm) {
-                                        Circle()
-                                            .fill(categoryColor(for: index))
-                                            .frame(width: 12, height: 12)
-                                        Text(item.merchant)
-                                            .font(.subheadline)
-                                            .foregroundColor(Theme.Colors.textPrimary)
-                                            .lineLimit(1)
-                                        Spacer()
-                                        Text("\(Int((item.amount / totalSpent) * 100))%")
-                                            .font(.subheadline)
-                                            .fontWeight(.semibold)
-                                            .foregroundColor(Theme.Colors.textSecondary)
-                                        Text("$\(String(format: "%.2f", item.amount))")
-                                            .font(.subheadline)
-                                            .foregroundColor(Theme.Colors.textPrimary)
-                                    }
-                                    .padding(.horizontal)
+                        // Donut + Merchant list in one card
+                        VStack(spacing: 0) {
+                            // Donut Chart with centered total
+                            ZStack {
+                                DonutChart(
+                                    categories: merchantBreakdown.prefix(5).map {
+                                        InsightsView.CategorySpending(category: $0.merchant, amount: $0.amount)
+                                    },
+                                    total: totalSpent
+                                )
+                                .frame(height: 200)
+                                VStack(spacing: 2) {
+                                    Text("Total spent")
+                                        .font(.caption)
+                                        .foregroundColor(Theme.Colors.textSecondary)
+                                    Text("$\(String(format: "%.0f", totalSpent))")
+                                        .font(.system(size: 22, weight: .bold))
+                                        .foregroundColor(Theme.Colors.textPrimary)
                                 }
                             }
-                            .padding(.vertical, Theme.Spacing.sm)
-                            .background(Color.white)
-                            .cornerRadius(16)
-                            .shadow(color: .gray.opacity(0.1), radius: 4, x: 0, y: 2)
-                            .padding(.horizontal)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, Theme.Spacing.md)
+
+                            // Merchant Legend
+                            if !merchantBreakdown.isEmpty {
+                                VStack(spacing: 0) {
+                                    ForEach(Array(merchantBreakdown.prefix(5).enumerated()), id: \.element.id) { index, item in
+                                        HStack(spacing: Theme.Spacing.sm) {
+                                            Circle()
+                                                .fill(categoryColor(for: index))
+                                                .frame(width: 10, height: 10)
+                                            Text(item.merchant)
+                                                .font(.subheadline)
+                                                .foregroundColor(Theme.Colors.textPrimary)
+                                                .lineLimit(1)
+                                            Spacer()
+                                            Text("\(Int((item.amount / totalSpent) * 100))%")
+                                                .font(.subheadline)
+                                                .foregroundColor(Theme.Colors.textSecondary)
+                                                .frame(width: 36, alignment: .trailing)
+                                            Text("$\(String(format: "%.2f", item.amount))")
+                                                .font(.subheadline)
+                                                .fontWeight(.semibold)
+                                                .foregroundColor(Theme.Colors.textPrimary)
+                                                .frame(width: 72, alignment: .trailing)
+                                        }
+                                        .padding(.horizontal, Theme.Spacing.md)
+                                        .padding(.vertical, 10)
+
+                                        if index < min(merchantBreakdown.count, 5) - 1 {
+                                            Divider().padding(.leading, Theme.Spacing.md)
+                                        }
+                                    }
+                                }
+                                .padding(.bottom, Theme.Spacing.sm)
+                            }
                         }
+                        .background(Theme.Colors.cardBackground)
+                        .cornerRadius(Theme.CornerRadius.xl)
+                        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+                        .padding(.horizontal, Theme.Spacing.md)
                     }
                 }
 
-                // Summary Cards - fixed size and centered
-                HStack(spacing: 12) {
+                // Stats Row (Spent / Credit / Net)
+                HStack(spacing: Theme.Spacing.sm) {
                     StatCard(
                         title: "Spent",
                         amount: totalSpent,
@@ -999,27 +1015,25 @@ struct AccountDetailView: View {
                         icon: "equal.circle.fill"
                     )
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, Theme.Spacing.md)
 
-                // Transaction Tabs
-                Picker("Type", selection: $selectedTab) {
-                    ForEach(TransactionTab.allCases, id: \.self) { tab in
-                        Label(tab.rawValue, systemImage: tab.icon).tag(tab)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-
-                // Transactions List
+                // Transaction Filter Tabs + List
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    HStack {
-                        Text("\(filteredTransactions.count) transaction\(filteredTransactions.count == 1 ? "" : "s")")
-                            .font(.headline)
-                            .foregroundColor(Theme.Colors.textPrimary)
-                        Spacer()
+                    // Tabs
+                    Picker("Type", selection: $selectedTab) {
+                        ForEach(TransactionTab.allCases, id: \.self) { tab in
+                            Text(tab.rawValue).tag(tab)
+                        }
                     }
-                    .padding(.horizontal)
+                    .pickerStyle(.segmented)
 
+                    // Transaction count
+                    Text("\(filteredTransactions.count) TRANSACTION\(filteredTransactions.count == 1 ? "" : "S")")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.primary)
+
+                    // Transaction list
                     if isLoading {
                         ProgressView()
                             .frame(maxWidth: .infinity)
@@ -1027,9 +1041,10 @@ struct AccountDetailView: View {
                     } else if filteredTransactions.isEmpty {
                         VStack(spacing: Theme.Spacing.sm) {
                             Image(systemName: "doc.text")
-                                .font(.system(size: 40))
-                                .foregroundColor(Theme.Colors.textSecondary)
+                                .font(.system(size: 36))
+                                .foregroundColor(Theme.Colors.textSecondary.opacity(0.5))
                             Text("No transactions")
+                                .font(.subheadline)
                                 .foregroundColor(Theme.Colors.textSecondary)
                         }
                         .frame(maxWidth: .infinity)
@@ -1048,14 +1063,14 @@ struct AccountDetailView: View {
                                 }
                             }
                         }
-                        .background(Color.white)
-                        .cornerRadius(16)
-                        .shadow(color: .gray.opacity(0.1), radius: 4, x: 0, y: 2)
-                        .padding(.horizontal)
+                        .background(Theme.Colors.cardBackground)
+                        .cornerRadius(Theme.CornerRadius.xl)
+                        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
                     }
                 }
+                .padding(.horizontal, Theme.Spacing.md)
             }
-            .padding(.vertical)
+            .padding(.vertical, Theme.Spacing.md)
         }
         .background(Theme.Colors.background)
         .navigationTitle("Account Details")
@@ -1075,7 +1090,6 @@ struct AccountDetailView: View {
                     apiClient: apiClient,
                     isPresented: $showTransactionDetail,
                     onCategoryUpdated: .constant({ _, _ in
-                        // Reload transactions after category update
                         Task {
                             await loadTransactions()
                         }
@@ -1195,18 +1209,15 @@ struct TransactionRow: View {
     var body: some View {
         HStack(spacing: Theme.Spacing.md) {
             // Icon
-            ZStack {
-                Circle()
-                    .fill(iconColor.opacity(0.1))
-                    .frame(width: 40, height: 40)
-                Image(systemName: iconName)
-                    .foregroundColor(iconColor)
-            }
+            Image(systemName: iconName)
+                .font(.system(size: 30))
+                .foregroundColor(iconColor)
+                .frame(width: 40, height: 40)
 
             // Info
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(transaction.name)
-                    .font(.body)
+                    .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundColor(Theme.Colors.textPrimary)
                 Text(transaction.displayDate)
@@ -1218,10 +1229,12 @@ struct TransactionRow: View {
 
             // Amount
             Text(transaction.displayAmount)
-                .font(.headline)
+                .font(.subheadline)
+                .fontWeight(.semibold)
                 .foregroundColor(transaction.isExpense ? Theme.Colors.expense : Theme.Colors.income)
         }
-        .padding()
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm)
     }
 
     var iconName: String {

@@ -764,6 +764,7 @@ class Database:
         total = 0
         categories = {}
         subcategories = {}
+        uncategorized = 0.0
 
         for txn in transactions:
             amount = abs(txn["amount"])  # Convert to positive for spending
@@ -772,6 +773,8 @@ class Database:
             if txn.get("category_id"):
                 cat_id = txn["category_id"]
                 categories[cat_id] = categories.get(cat_id, 0) + amount
+            else:
+                uncategorized += amount
 
             if txn.get("subcategory_id"):
                 sub_id = txn["subcategory_id"]
@@ -781,6 +784,7 @@ class Database:
             "total": total,
             "categories": categories,
             "subcategories": subcategories,
+            "uncategorized": uncategorized,
         }
 
     # ========================================================================
