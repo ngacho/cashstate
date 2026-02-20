@@ -88,6 +88,11 @@ struct CategoryWithSubcategories: Identifiable, Codable {
     }
 }
 
+extension CategoryWithSubcategories: Hashable {
+    static func == (lhs: CategoryWithSubcategories, rhs: CategoryWithSubcategories) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
+
 struct CategoryListResponse: Codable {
     let items: [Category]
     let total: Int

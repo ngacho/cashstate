@@ -3,7 +3,6 @@ import SwiftUI
 struct BudgetView: View {
     let apiClient: APIClient
     @State private var categories: [BudgetCategory] = []
-    @State private var showEditBudget = false
     @State private var selectedCategory: BudgetCategory?
     @State private var navigationPath = NavigationPath()
 
@@ -15,9 +14,6 @@ struct BudgetView: View {
     @State private var isAICategorizationRunning = false
     @State private var aiCategorizationProgress: Double = 0
     @State private var aiCategorizationError: String?
-
-    // Quick add category
-    @State private var showAddCategory = false
 
     // Budget account scoping
     @State private var budgetAccountIds: [String] = []
@@ -121,13 +117,35 @@ struct BudgetView: View {
             .navigationDestination(for: AllBudgetsNavValue.self) { _ in
                 AllBudgetsView(apiClient: apiClient)
             }
+            .navigationDestination(for: CategoryEditDestination.self) { dest in
+                CategoryLineItemEditView(
+                    lineItem: dest.lineItem,
+                    category: dest.category,
+                    subcategoryLineItems: dest.subcategoryLineItems,
+                    budgetId: dest.budgetId,
+                    apiClient: apiClient
+                )
+            }
+            .navigationDestination(for: BudgetAPI.self) { budget in
+                BudgetEditView(
+                    budget: budget,
+                    apiClient: apiClient,
+                    navigationPath: $navigationPath,
+                    onSave: { _ in reloadData() },
+                    onDelete: { _ in reloadData() }
+                )
+            }
             .toolbar {
-                if !categories.isEmpty {
+                if hasBudget {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button {
-                            showEditBudget = true
+                            if let currentBudget = allBudgets.first(where: { $0.id == budgetId }) {
+                                navigationPath.append(currentBudget)
+                            } else {
+                                navigationPath.append(AllBudgetsNavValue())
+                            }
                         } label: {
-                            Image(systemName: "plus.circle.fill")
+                            Image(systemName: "slider.horizontal.3")
                                 .foregroundColor(Theme.Colors.primary)
                         }
                     }
@@ -151,11 +169,6 @@ struct BudgetView: View {
                 // Reload data when categorization sheet is dismissed
                 if oldValue == true && newValue == false {
                     reloadData()
-                }
-            }
-            .sheet(isPresented: $showAddCategory) {
-                AddCategoryView(isPresented: $showAddCategory, apiClient: apiClient) { newCategory in
-                    categories.append(newCategory)
                 }
             }
         }
@@ -375,11 +388,6 @@ struct BudgetView: View {
                                         systemImage: showIncomeInBudget ? "eye.slash" : "eye"
                                     )
                                 }
-                                Button {
-                                    showEditBudget = true
-                                } label: {
-                                    Label("Edit Budget", systemImage: "pencil")
-                                }
                             } label: {
                                 Image(systemName: "ellipsis.circle")
                                     .font(.title3)
@@ -413,45 +421,8 @@ struct BudgetView: View {
 
                         // Category list with expandable subcategories
                         VStack(spacing: Theme.Spacing.sm) {
-                            ForEach($categories) { $category in
-                                ExpandableCategoryCard(
-                                    category: $category,
-                                    apiClient: apiClient,
-                                    onDeleteCategoryBudget: category.lineItemId != nil ? {
-                                        let c = category
-                                        await deleteCategoryBudget(category: c)
-                                    } : nil,
-                                    onDeleteCategory: {
-                                        let c = category
-                                        await deleteCategory(category: c)
-                                    }
-                                )
-                            }
-
-                            // Add Category button
-                            Button {
-                                showAddCategory = true
-                            } label: {
-                                HStack(spacing: Theme.Spacing.sm) {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.title3)
-                                        .foregroundColor(Theme.Colors.primary)
-
-                                    Text("Add Category")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(Theme.Colors.textPrimary)
-
-                                    Spacer()
-
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption)
-                                        .foregroundColor(Theme.Colors.textSecondary)
-                                }
-                                .padding(.vertical, Theme.Spacing.md)
-                                .padding(.horizontal, Theme.Spacing.sm)
-                                .background(Theme.Colors.background)
-                                .cornerRadius(Theme.CornerRadius.sm)
+                            ForEach(categories) { category in
+                                ExpandableCategoryCard(category: category, apiClient: apiClient)
                             }
                         }
                     }
@@ -531,7 +502,7 @@ struct BudgetView: View {
                         spentAmount: spent,
                         transactionCount: 0,
                         lineItemId: subLineItem?.id,
-                        budgetId: subLineItem != nil ? budgetSummary.budgetId : nil
+                        budgetId: budgetSummary.budgetId
                     )
                 }
             }
@@ -713,32 +684,6 @@ struct BudgetView: View {
         }
     }
 
-    func deleteCategoryBudget(category: BudgetCategory) async {
-        guard let lineItemId = category.lineItemId,
-              let budgetId = category.budgetId else { return }
-        do {
-            try await apiClient.deleteBudgetLineItem(budgetId: budgetId, lineItemId: lineItemId)
-            if let idx = categories.firstIndex(where: { $0.id == category.id }) {
-                categories[idx].lineItemId = nil
-                categories[idx].budgetAmount = nil
-                categories[idx].budgetId = nil
-            }
-        } catch {
-            // Budget delete failed silently — user can retry via context menu
-        }
-    }
-
-    func deleteCategory(category: BudgetCategory) async {
-        if category.lineItemId != nil {
-            await deleteCategoryBudget(category: category)
-        }
-        do {
-            try await apiClient.deleteCategory(categoryId: category.id)
-            categories.removeAll { $0.id == category.id }
-        } catch {
-            // Deletion failed silently
-        }
-    }
 }
 
 // MARK: - Budget Category Row
@@ -1124,6 +1069,15 @@ struct BudgetDonutSlice: View {
 
 private struct AllBudgetsNavValue: Hashable {}
 
+// MARK: - Category Edit Destination
+
+private struct CategoryEditDestination: Hashable {
+    let lineItem: BudgetLineItem
+    let category: CategoryWithSubcategories
+    let subcategoryLineItems: [BudgetLineItem]
+    let budgetId: String
+}
+
 // MARK: - Budget List Card (used in AllBudgetsView)
 
 private struct BudgetListCard: View {
@@ -1277,52 +1231,78 @@ struct AllBudgetsView: View {
     @State private var showCreateBudget = false
     @State private var allCategories: [CategoryWithSubcategories] = []
     @State private var budgetLineItems: [String: [BudgetLineItem]] = [:]
+    @State private var navigationPath = NavigationPath()
+
+    @ViewBuilder
+    private var contentView: some View {
+        if isLoading {
+            ProgressView("Loading...")
+        } else if let error = loadError {
+            errorView(error)
+        } else if budgets.isEmpty {
+            emptyView
+        } else {
+            budgetListView
+        }
+    }
+
+    private func errorView(_ error: String) -> some View {
+        VStack(spacing: Theme.Spacing.md) {
+            Text("Error loading budgets")
+                .font(.headline)
+                .foregroundColor(Theme.Colors.textPrimary)
+            Text(error)
+                .font(.caption)
+                .foregroundColor(Theme.Colors.textSecondary)
+            Button("Retry") { Task { await loadData() } }
+                .foregroundColor(Theme.Colors.primary)
+        }
+    }
+
+    private var emptyView: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            Image(systemName: "list.bullet.rectangle")
+                .font(.largeTitle)
+                .foregroundColor(Theme.Colors.textSecondary)
+            Text("No budgets yet")
+                .font(.headline)
+                .foregroundColor(Theme.Colors.textSecondary)
+            Button("Create Budget") { showCreateBudget = true }
+                .foregroundColor(Theme.Colors.primary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var budgetListView: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                ForEach(budgets) { budget in
+                    NavigationLink {
+                        BudgetEditView(
+                            budget: budget,
+                            apiClient: apiClient,
+                            navigationPath: $navigationPath,
+                            onSave: handleBudgetSave,
+                            onDelete: handleBudgetDelete
+                        )
+                    } label: {
+                        BudgetListCard(
+                            budget: budget,
+                            lineItems: budgetLineItems[budget.id] ?? [],
+                            allCategories: allCategories
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+        }
+    }
 
     var body: some View {
         Group {
-            if isLoading {
-                ProgressView("Loading...")
-            } else if let error = loadError {
-                VStack(spacing: Theme.Spacing.md) {
-                    Text("Error loading budgets")
-                        .font(.headline)
-                        .foregroundColor(Theme.Colors.textPrimary)
-                    Text(error)
-                        .font(.caption)
-                        .foregroundColor(Theme.Colors.textSecondary)
-                    Button("Retry") { Task { await loadData() } }
-                        .foregroundColor(Theme.Colors.primary)
-                }
-            } else if budgets.isEmpty {
-                VStack(spacing: Theme.Spacing.md) {
-                    Image(systemName: "list.bullet.rectangle")
-                        .font(.largeTitle)
-                        .foregroundColor(Theme.Colors.textSecondary)
-                    Text("No budgets yet")
-                        .font(.headline)
-                        .foregroundColor(Theme.Colors.textSecondary)
-                    Button("Create Budget") { showCreateBudget = true }
-                        .foregroundColor(Theme.Colors.primary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    VStack(spacing: 14) {
-                        ForEach(budgets) { budget in
-                            NavigationLink(value: budget) {
-                                BudgetListCard(
-                                    budget: budget,
-                                    lineItems: budgetLineItems[budget.id] ?? [],
-                                    allCategories: allCategories
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
-                }
-            }
+            contentView
         }
         .background(Theme.Colors.background.ignoresSafeArea())
         .navigationTitle("All Budgets")
@@ -1335,14 +1315,6 @@ struct AllBudgetsView: View {
                     Image(systemName: "plus")
                 }
             }
-        }
-        .navigationDestination(for: BudgetAPI.self) { budget in
-            BudgetEditView(
-                budget: budget,
-                apiClient: apiClient,
-                onSave: handleBudgetSave,
-                onDelete: handleBudgetDelete
-            )
         }
         .sheet(isPresented: $showCreateBudget) {
             CreateBudgetSheet(apiClient: apiClient) { newBudget in
@@ -1424,325 +1396,354 @@ struct AllBudgetsView: View {
     }
 }
 
-// MARK: - Subcategory Edit Row (for CategoryEditRow expanded section)
+// MARK: - Category Line Item Edit View
 
-private struct SubcategoryEditRow: View {
-    let lineItem: BudgetLineItem?
-    let subcategory: Subcategory?
-    @Binding var amountText: String
-    let onAmountCommit: (Double) -> Void
+private struct CategoryLineItemEditView: View {
+    let lineItem: BudgetLineItem
+    let category: CategoryWithSubcategories
+    let subcategoryLineItems: [BudgetLineItem]
+    let budgetId: String
+    let apiClient: APIClient
 
-    @FocusState private var isEditing: Bool
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var selectedIcon: String
+    @State private var selectedColorHex: String
+    @State private var categoryAmountText: String
+    @State private var subcatAmounts: [String: String] = [:]
+    @State private var subcatIcons: [String: String] = [:]
+    @State private var editingSubcatForEmoji: Subcategory? = nil
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    private let emojiOptions = [
+        "📁", "⭐", "❤️", "🎯", "✅", "📌", "🔔", "⚡",
+        "🍔", "🍕", "🍜", "☕", "🛒", "🛍️", "🚗", "✈️",
+        "🏠", "💡", "📱", "💻", "💊", "🏥", "🎮", "🎵",
+        "📚", "💰", "💳", "💸", "🎁", "🌳", "🎨", "⚽",
+        "🏋️", "🧘", "🌙", "☀️", "🎓", "🐾", "🧺", "🔧"
+    ]
+
+    private let colorOptions: [(name: String, hex: String)] = [
+        ("Teal", "#00A699"), ("Blue", "#3B82F6"), ("Purple", "#8B5CF6"),
+        ("Pink", "#EC4899"), ("Red", "#EF4444"), ("Orange", "#F59E0B"),
+        ("Yellow", "#FBBF24"), ("Green", "#10B981"), ("Indigo", "#6366F1"),
+        ("Cyan", "#14B8A6"), ("Rose", "#E54D8A"), ("Slate", "#64748B")
+    ]
+
+    init(lineItem: BudgetLineItem, category: CategoryWithSubcategories, subcategoryLineItems: [BudgetLineItem], budgetId: String, apiClient: APIClient) {
+        self.lineItem = lineItem
+        self.category = category
+        self.subcategoryLineItems = subcategoryLineItems
+        self.budgetId = budgetId
+        self.apiClient = apiClient
+        _selectedIcon = State(initialValue: category.icon)
+        _selectedColorHex = State(initialValue: category.color)
+        _categoryAmountText = State(initialValue: String(format: "%.0f", lineItem.amount))
+        var amounts: [String: String] = [:]
+        var icons: [String: String] = [:]
+        for subcat in category.subcategories {
+            let amount = subcategoryLineItems.first { $0.subcategoryId == subcat.id }?.amount ?? 0
+            amounts[subcat.id] = String(format: "%.0f", amount)
+            icons[subcat.id] = subcat.icon
+        }
+        _subcatAmounts = State(initialValue: amounts)
+        _subcatIcons = State(initialValue: icons)
+    }
 
     var body: some View {
-        HStack(spacing: 0) {
-            Text(subcategory?.icon ?? "•")
-                .font(.system(size: 16))
-                .frame(width: 28, alignment: .center)
-                .padding(.leading, 54)
+        ZStack {
+            Theme.Colors.background.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Category preview
+                    VStack(spacing: 10) {
+                        Text(selectedIcon)
+                            .font(.system(size: 52))
+                            .frame(width: 88, height: 88)
+                            .background(Color(hex: selectedColorHex).opacity(0.15))
+                            .clipShape(Circle())
+                            .overlay(Circle().strokeBorder(Color(hex: selectedColorHex), lineWidth: 3))
+                        Text(category.name)
+                            .font(.title3.bold())
+                            .foregroundColor(Theme.Colors.textPrimary)
+                    }
+                    .padding(.top, 8)
 
-            Text(subcategory?.name ?? "Subcategory")
-                .font(.system(size: 13))
-                .foregroundColor(Theme.Colors.textSecondary)
-                .lineLimit(1)
+                    // Emoji picker
+                    sectionCard(title: "EMOJI") {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 8), spacing: 8) {
+                            ForEach(emojiOptions, id: \.self) { ic in
+                                Button { selectedIcon = ic } label: {
+                                    Text(ic)
+                                        .font(.system(size: 22))
+                                        .frame(width: 36, height: 36)
+                                        .background(selectedIcon == ic ? Color(hex: selectedColorHex).opacity(0.2) : Color.gray.opacity(0.08))
+                                        .cornerRadius(8)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(selectedIcon == ic ? Color(hex: selectedColorHex) : Color.clear, lineWidth: 2)
+                                        )
+                                }
+                            }
+                        }
+                    }
 
-            Spacer()
+                    // Color picker
+                    sectionCard(title: "COLOR") {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 10) {
+                            ForEach(colorOptions, id: \.hex) { option in
+                                Button { selectedColorHex = option.hex } label: {
+                                    Circle()
+                                        .fill(Color(hex: option.hex))
+                                        .frame(width: 38, height: 38)
+                                        .overlay(Circle().stroke(Color.white, lineWidth: selectedColorHex == option.hex ? 3 : 0).padding(3))
+                                        .overlay(Circle().stroke(Color(hex: option.hex), lineWidth: selectedColorHex == option.hex ? 2 : 0))
+                                }
+                            }
+                        }
+                    }
 
-            if isEditing {
-                HStack(spacing: 2) {
-                    Text("$")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(Theme.Colors.primary)
-                    TextField("0", text: $amountText)
-                        .keyboardType(.numberPad)
-                        .focused($isEditing)
-                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                        .foregroundColor(Theme.Colors.textPrimary)
-                        .frame(width: 60)
-                        .multilineTextAlignment(.trailing)
-                        .onSubmit { commitEdit() }
+                    // Category-level budget amount
+                    sectionCard(title: "CATEGORY BUDGET") {
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text("$")
+                                .font(.system(size: 24, weight: .semibold))
+                                .foregroundColor(Theme.Colors.textPrimary)
+                            TextField("0", text: $categoryAmountText)
+                                .font(.system(size: 32, weight: .bold, design: .monospaced))
+                                .keyboardType(.numberPad)
+                                .foregroundColor(Theme.Colors.textPrimary)
+                        }
+                    }
+
+                    // Subcategories
+                    if !category.subcategories.isEmpty {
+                        sectionCard(title: "SUBCATEGORIES") {
+                            VStack(spacing: 0) {
+                                ForEach(Array(category.subcategories.enumerated()), id: \.element.id) { idx, subcat in
+                                    HStack(spacing: 12) {
+                                        Button { editingSubcatForEmoji = subcat } label: {
+                                            Text(subcatIcons[subcat.id] ?? subcat.icon)
+                                                .font(.system(size: 22))
+                                                .frame(width: 36, height: 36)
+                                                .background(Color(hex: selectedColorHex).opacity(0.12))
+                                                .cornerRadius(8)
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 8)
+                                                        .stroke(Color(hex: selectedColorHex).opacity(0.3), lineWidth: 1)
+                                                )
+                                        }
+                                        Text(subcat.name)
+                                            .font(.system(size: 14, weight: .medium))
+                                            .foregroundColor(Theme.Colors.textPrimary)
+                                            .lineLimit(1)
+                                        Spacer()
+                                        HStack(alignment: .firstTextBaseline, spacing: 2) {
+                                            Text("$")
+                                                .font(.system(size: 13, weight: .semibold))
+                                                .foregroundColor(Theme.Colors.textSecondary)
+                                            TextField("0", text: Binding(
+                                                get: { subcatAmounts[subcat.id] ?? "0" },
+                                                set: { subcatAmounts[subcat.id] = $0 }
+                                            ))
+                                            .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                                            .keyboardType(.numberPad)
+                                            .frame(width: 64)
+                                            .multilineTextAlignment(.trailing)
+                                        }
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(Theme.Colors.background)
+                                        .cornerRadius(8)
+                                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+                                    }
+                                    .padding(.vertical, 10)
+                                    if idx < category.subcategories.count - 1 {
+                                        Divider()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(Theme.Colors.expense)
+                            .padding(.horizontal)
+                    }
+
+                    Spacer(minLength: 32)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Theme.Colors.primaryLight.opacity(0.15))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Theme.Colors.primary.opacity(0.4), lineWidth: 1)
-                )
-                .cornerRadius(8)
-                .padding(.trailing, 16)
-            } else {
-                Button {
-                    amountText = String(format: "%.0f", lineItem?.amount ?? 0)
-                    isEditing = true
-                } label: {
-                    Text("$\(String(format: "%.0f", Double(amountText) ?? lineItem?.amount ?? 0))")
-                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                        .foregroundColor((lineItem?.amount ?? 0) == 0 ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Theme.Colors.background)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.gray.opacity(0.15), lineWidth: 1)
-                        )
-                        .cornerRadius(8)
-                }
-                .padding(.trailing, 16)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 24)
             }
         }
-        .frame(minHeight: 40)
-        .background(Color(red: 0.95, green: 0.96, blue: 0.96))
-        .onChange(of: isEditing) { _, editing in
-            if !editing { commitEdit() }
+        .navigationTitle(category.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                if isSaving {
+                    ProgressView()
+                } else {
+                    Button("Save") {
+                        Task { await save() }
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .sheet(item: $editingSubcatForEmoji) { subcat in
+            SubcategoryEmojiPickerSheet(
+                subcategory: subcat,
+                categoryColorHex: selectedColorHex,
+                currentIcon: subcatIcons[subcat.id] ?? subcat.icon,
+                onSelect: { icon in subcatIcons[subcat.id] = icon }
+            )
         }
     }
 
-    private func commitEdit() {
-        let cleaned = amountText.filter { $0.isNumber }
-        if let value = Double(cleaned), value >= 0 {
-            onAmountCommit(value)
+    @ViewBuilder
+    private func sectionCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Theme.Colors.textSecondary)
+                .kerning(1.0)
+            content()
+        }
+        .padding(16)
+        .background(Theme.Colors.cardBackground)
+        .cornerRadius(Theme.CornerRadius.md)
+    }
+
+    private func save() async {
+        isSaving = true
+        errorMessage = nil
+        do {
+            if selectedIcon != category.icon || selectedColorHex != category.color {
+                _ = try await apiClient.updateCategory(
+                    categoryId: category.id,
+                    name: category.name,
+                    icon: selectedIcon,
+                    color: selectedColorHex
+                )
+            }
+            for subcat in category.subcategories {
+                let newIcon = subcatIcons[subcat.id] ?? subcat.icon
+                if newIcon != subcat.icon {
+                    _ = try await apiClient.updateSubcategory(subcategoryId: subcat.id, icon: newIcon)
+                }
+            }
+            let catAmount = Double(categoryAmountText.filter { $0.isNumber }) ?? 0
+            if catAmount != lineItem.amount {
+                _ = try await apiClient.updateBudgetLineItem(budgetId: budgetId, lineItemId: lineItem.id, amount: catAmount)
+            }
+            for subcat in category.subcategories {
+                let amount = Double(subcatAmounts[subcat.id]?.filter { $0.isNumber } ?? "0") ?? 0
+                let existingItem = subcategoryLineItems.first { $0.subcategoryId == subcat.id }
+                if let existing = existingItem {
+                    if amount == 0 {
+                        try await apiClient.deleteBudgetLineItem(budgetId: budgetId, lineItemId: existing.id)
+                    } else if amount != existing.amount {
+                        _ = try await apiClient.updateBudgetLineItem(budgetId: budgetId, lineItemId: existing.id, amount: amount)
+                    }
+                } else if amount > 0 {
+                    _ = try await apiClient.createBudgetLineItem(
+                        budgetId: budgetId,
+                        categoryId: category.id,
+                        subcategoryId: subcat.id,
+                        amount: amount
+                    )
+                }
+            }
+            dismiss()
+        } catch {
+            errorMessage = "Failed to save changes"
+            isSaving = false
         }
     }
 }
 
-// MARK: - Category Edit Row (for BudgetEditView)
+// MARK: - Subcategory Emoji Picker Sheet
 
-private struct CategoryEditRow: View {
-    let lineItem: BudgetLineItem
-    let category: CategoryWithSubcategories?
-    let subcategoryLineItems: [BudgetLineItem]
-    let subcategories: [Subcategory]
-    let isExpanded: Bool
-    @Binding var amountText: String
-    @Binding var editingAmounts: [String: String]
-    let onToggleExpand: () -> Void
-    let onAmountCommit: (Double) -> Void
-    let onSubcategoryAmountCommit: (BudgetLineItem, Double) -> Void
-    let onSubcategoryCreate: (String, Double) -> Void
-    let onRemove: () -> Void
+private struct SubcategoryEmojiPickerSheet: View {
+    let subcategory: Subcategory
+    let categoryColorHex: String
+    let currentIcon: String
+    let onSelect: (String) -> Void
 
-    @FocusState private var isEditing: Bool
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedIcon: String
 
-    private func formattedAmount(_ text: String, fallback: Double) -> String {
-        let val = Double(text) ?? fallback
-        let fmt = NumberFormatter()
-        fmt.numberStyle = .currency
-        fmt.currencyCode = "USD"
-        fmt.maximumFractionDigits = 0
-        fmt.minimumFractionDigits = 0
-        return fmt.string(from: NSNumber(value: val)) ?? "$\(Int(val))"
-    }
+    private let emojiOptions = [
+        "📁", "⭐", "❤️", "🎯", "✅", "📌", "🔔", "⚡",
+        "🍔", "🍕", "🍜", "☕", "🛒", "🛍️", "🚗", "✈️",
+        "🏠", "💡", "📱", "💻", "💊", "🏥", "🎮", "🎵",
+        "📚", "💰", "💳", "💸", "🎁", "🌳", "🎨", "⚽",
+        "🏋️", "🧘", "🌙", "☀️", "🎓", "🐾", "🧺", "🔧"
+    ]
 
-    // If subcategory budgets are set, sum them; else fall back to category-level amount
-    private var headerDisplayAmount: Double {
-        if !subcategoryLineItems.isEmpty {
-            return subcategories.reduce(0.0) { sum, subcat in
-                if let item = subcategoryLineItems.first(where: { $0.subcategoryId == subcat.id }) {
-                    let text = editingAmounts[item.id] ?? String(format: "%.0f", item.amount)
-                    return sum + (Double(text) ?? item.amount)
-                }
-                let text = editingAmounts["new_\(subcat.id)"] ?? "0"
-                return sum + (Double(text) ?? 0)
-            }
-        }
-        return Double(amountText) ?? lineItem.amount
+    init(subcategory: Subcategory, categoryColorHex: String, currentIcon: String, onSelect: @escaping (String) -> Void) {
+        self.subcategory = subcategory
+        self.categoryColorHex = categoryColorHex
+        self.currentIcon = currentIcon
+        self.onSelect = onSelect
+        _selectedIcon = State(initialValue: currentIcon)
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Category header row — tap to expand/collapse
-            Button(action: onToggleExpand) {
-                HStack(spacing: 0) {
-                    Text(category?.icon ?? "❓")
-                        .font(.system(size: 22))
-                        .frame(width: 38, alignment: .leading)
-                        .padding(.leading, 16)
+        NavigationStack {
+            VStack(spacing: 20) {
+                Text(selectedIcon)
+                    .font(.system(size: 52))
+                    .frame(width: 80, height: 80)
+                    .background(Color(hex: categoryColorHex).opacity(0.15))
+                    .clipShape(Circle())
+                    .overlay(Circle().strokeBorder(Color(hex: categoryColorHex), lineWidth: 2.5))
+                    .padding(.top, 12)
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(category?.name ?? "Unknown")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(Theme.Colors.textPrimary)
-                            .lineLimit(1)
-                        if !subcategories.isEmpty {
-                            Text("\(subcategoryLineItems.count) of \(subcategories.count) budgeted")
-                                .font(.system(size: 11))
-                                .foregroundColor(Theme.Colors.textSecondary)
-                        }
-                    }
+                Text(subcategory.name)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Theme.Colors.textPrimary)
 
-                    Spacer()
-
-                    Text(formattedAmount(String(headerDisplayAmount), fallback: lineItem.amount))
-                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                        .foregroundColor(Theme.Colors.textSecondary)
-                        .padding(.trailing, 8)
-
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11))
-                        .foregroundColor(Theme.Colors.textSecondary)
-                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                        .animation(.easeInOut(duration: 0.2), value: isExpanded)
-                        .padding(.trailing, 16)
-                }
-                .frame(minHeight: 52)
-                .background(isExpanded ? Color(red: 0.95, green: 0.96, blue: 0.96) : Color.clear)
-            }
-            .buttonStyle(.plain)
-
-            // Expanded content
-            if isExpanded {
-                VStack(spacing: 0) {
-                    Divider()
-                        .background(Color.gray.opacity(0.15))
-
-                    // Category-level amount row (shown when no subcategories, or as "category total")
-                    HStack {
-                        Text(subcategoryLineItems.isEmpty ? "Category Budget" : "Category Total")
-                            .font(.system(size: 14))
-                            .foregroundColor(Theme.Colors.textSecondary)
-                            .padding(.leading, 54)
-
-                        Spacer()
-
-                        if subcategoryLineItems.isEmpty {
-                            // Editable when no subcategory budgets are set yet
-                            if isEditing {
-                                HStack(spacing: 2) {
-                                    Text("$")
-                                        .font(.system(size: 15, weight: .semibold))
-                                        .foregroundColor(Theme.Colors.primary)
-                                    TextField("0", text: $amountText)
-                                        .keyboardType(.numberPad)
-                                        .focused($isEditing)
-                                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                                        .foregroundColor(Theme.Colors.textPrimary)
-                                        .frame(width: 72)
-                                        .multilineTextAlignment(.trailing)
-                                        .onSubmit { commitEdit() }
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(Theme.Colors.primaryLight.opacity(0.15))
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 8), spacing: 10) {
+                    ForEach(emojiOptions, id: \.self) { ic in
+                        Button { selectedIcon = ic } label: {
+                            Text(ic)
+                                .font(.system(size: 22))
+                                .frame(width: 38, height: 38)
+                                .background(selectedIcon == ic ? Color(hex: categoryColorHex).opacity(0.2) : Color.gray.opacity(0.08))
+                                .cornerRadius(10)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 10)
-                                        .stroke(Theme.Colors.primary.opacity(0.5), lineWidth: 1)
+                                        .stroke(selectedIcon == ic ? Color(hex: categoryColorHex) : Color.clear, lineWidth: 2)
                                 )
-                                .cornerRadius(10)
-                                .padding(.trailing, 16)
-                            } else {
-                                Button {
-                                    amountText = String(format: "%.0f", lineItem.amount)
-                                    isEditing = true
-                                } label: {
-                                    Text(formattedAmount(amountText, fallback: lineItem.amount))
-                                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                                        .foregroundColor(lineItem.amount == 0 ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 8)
-                                        .background(Theme.Colors.background)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 10)
-                                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-                                        )
-                                        .cornerRadius(10)
-                                }
-                                .padding(.trailing, 16)
-                            }
-                        } else {
-                            // Display-only total when subcategories exist
-                            Text(formattedAmount(String(headerDisplayAmount), fallback: lineItem.amount))
-                                .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                                .foregroundColor(Theme.Colors.textPrimary)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(Color.gray.opacity(0.06))
-                                .cornerRadius(10)
-                                .padding(.trailing, 16)
                         }
                     }
-                    .padding(.vertical, 10)
-                    .background(Color(red: 0.95, green: 0.96, blue: 0.96))
-
-                    // Subcategory rows — rendered from category definition, matched to line items
-                    if !subcategories.isEmpty {
-                        Divider()
-                            .padding(.leading, 54)
-                            .background(Color.gray.opacity(0.1))
-
-                        ForEach(subcategories) { subcat in
-                            let subItem = subcategoryLineItems.first { $0.subcategoryId == subcat.id }
-                            SubcategoryEditRow(
-                                lineItem: subItem,
-                                subcategory: subcat,
-                                amountText: Binding(
-                                    get: {
-                                        if let item = subItem {
-                                            return editingAmounts[item.id] ?? String(format: "%.0f", item.amount)
-                                        }
-                                        return editingAmounts["new_\(subcat.id)"] ?? "0"
-                                    },
-                                    set: {
-                                        if let item = subItem {
-                                            editingAmounts[item.id] = $0
-                                        } else {
-                                            editingAmounts["new_\(subcat.id)"] = $0
-                                        }
-                                    }
-                                ),
-                                onAmountCommit: { amount in
-                                    if let item = subItem {
-                                        onSubcategoryAmountCommit(item, amount)
-                                    } else {
-                                        onSubcategoryCreate(subcat.id, amount)
-                                    }
-                                }
-                            )
-
-                            if subcat.id != subcategories.last?.id {
-                                Divider()
-                                    .padding(.leading, 82)
-                                    .background(Color.gray.opacity(0.08))
-                            }
-                        }
-                    }
-
-                    // Actions row
-                    HStack(spacing: 8) {
-                        Button(action: onRemove) {
-                            Text("Remove Category")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(Theme.Colors.expense)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Theme.Colors.expense.opacity(0.3), lineWidth: 1)
-                                )
-                                .cornerRadius(8)
-                        }
-                        Spacer()
-                    }
-                    .padding(.leading, 54)
-                    .padding(.vertical, 10)
-                    .padding(.bottom, 6)
-                    .background(Color(red: 0.95, green: 0.96, blue: 0.96))
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .padding(.horizontal, 16)
+
+                Spacer()
+            }
+            .background(Theme.Colors.background)
+            .navigationTitle("Choose Emoji")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        onSelect(selectedIcon)
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
             }
         }
-        .background(Color(red: 0.95, green: 0.96, blue: 0.96).opacity(isExpanded ? 1 : 0))
-        .cornerRadius(14)
-        .onChange(of: isEditing) { _, editing in
-            if !editing { commitEdit() }
-        }
-    }
-
-    private func commitEdit() {
-        let cleaned = amountText.filter { $0.isNumber }
-        if let value = Double(cleaned), value >= 0 {
-            onAmountCommit(value)
-        }
+        .presentationDetents([.medium])
     }
 }
 
@@ -1751,6 +1752,7 @@ private struct CategoryEditRow: View {
 private struct BudgetEditView: View {
     let budget: BudgetAPI
     let apiClient: APIClient
+    var navigationPath: Binding<NavigationPath>
     let onSave: (BudgetAPI) -> Void
     let onDelete: (String) -> Void
 
@@ -1768,8 +1770,6 @@ private struct BudgetEditView: View {
     @State private var allCategories: [CategoryWithSubcategories] = []
     @State private var isLoadingLineItems = true
     @State private var showAddLineItem = false
-    @State private var expandedCategories: Set<String> = []
-    @State private var editingAmounts: [String: String] = [:]
 
     // Month overrides
     @State private var budgetMonths: [BudgetMonth] = []
@@ -1800,9 +1800,10 @@ private struct BudgetEditView: View {
         "#6bcbd4", "#ef8f5b", "#a0a0ef", "#efcf5b"
     ]
 
-    init(budget: BudgetAPI, apiClient: APIClient, onSave: @escaping (BudgetAPI) -> Void, onDelete: @escaping (String) -> Void) {
+    init(budget: BudgetAPI, apiClient: APIClient, navigationPath: Binding<NavigationPath>, onSave: @escaping (BudgetAPI) -> Void, onDelete: @escaping (String) -> Void) {
         self.budget = budget
         self.apiClient = apiClient
+        self.navigationPath = navigationPath
         self.onSave = onSave
         self.onDelete = onDelete
         _name = State(initialValue: budget.name)
@@ -1997,7 +1998,7 @@ private struct BudgetEditView: View {
                     .padding(.horizontal, 20)
                     .padding(.bottom, 8)
 
-                    // Category rows
+                    // Category rows (tap to edit)
                     if isLoadingLineItems {
                         ProgressView()
                             .padding(.top, 40)
@@ -2024,41 +2025,49 @@ private struct BudgetEditView: View {
                         }
                         .padding(.top, 40)
                     } else {
-                        VStack(spacing: 4) {
-                            ForEach(Array(categoryLineItems.enumerated()), id: \.element.id) { idx, item in
-                                CategoryEditRow(
-                                    lineItem: item,
-                                    category: allCategories.first { $0.id == item.categoryId },
-                                    subcategoryLineItems: subcategoryLineItemsFor(categoryId: item.categoryId),
-                                    subcategories: allCategories.first { $0.id == item.categoryId }?.subcategories ?? [],
-                                    isExpanded: expandedCategories.contains(item.id),
-                                    amountText: Binding(
-                                        get: { editingAmounts[item.id] ?? String(format: "%.0f", item.amount) },
-                                        set: { editingAmounts[item.id] = $0 }
-                                    ),
-                                    editingAmounts: $editingAmounts,
-                                    onToggleExpand: {
-                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                            if expandedCategories.contains(item.id) {
-                                                expandedCategories.remove(item.id)
-                                            } else {
-                                                expandedCategories.insert(item.id)
-                                            }
-                                        }
-                                    },
-                                    onAmountCommit: { newAmount in
-                                        Task { await updateAmount(lineItem: item, newAmount: newAmount) }
-                                    },
-                                    onSubcategoryAmountCommit: { subItem, amount in
-                                        Task { await updateAmount(lineItem: subItem, newAmount: amount) }
-                                    },
-                                    onSubcategoryCreate: { subcategoryId, amount in
-                                        Task { await createSubcategoryLineItem(categoryId: item.categoryId, subcategoryId: subcategoryId, amount: amount) }
-                                    },
-                                    onRemove: {
-                                        Task { await removeLineItem(item) }
+                        VStack(spacing: 8) {
+                            ForEach(categoryLineItems) { item in
+                                let cat = allCategories.first { $0.id == item.categoryId }
+                                let subItems = subcategoryLineItemsFor(categoryId: item.categoryId)
+                                Button {
+                                    if let cat {
+                                        navigationPath.wrappedValue.append(CategoryEditDestination(
+                                            lineItem: item,
+                                            category: cat,
+                                            subcategoryLineItems: subItems,
+                                            budgetId: budget.id
+                                        ))
                                     }
-                                )
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Text(cat?.icon ?? "❓")
+                                            .font(.system(size: 22))
+                                            .frame(width: 36, alignment: .center)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(cat?.name ?? "Unknown")
+                                                .font(.system(size: 15, weight: .semibold))
+                                                .foregroundColor(Theme.Colors.textPrimary)
+                                            let budgeted = subItems.count
+                                            let total = cat?.subcategories.count ?? 0
+                                            Text(total > 0 ? "\(budgeted) of \(total) subcategories budgeted" : "Tap to edit")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(Theme.Colors.textSecondary)
+                                        }
+                                        Spacer()
+                                        Text(formatAmount(item.amount))
+                                            .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                                            .foregroundColor(Theme.Colors.textSecondary)
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(Color.gray.opacity(0.4))
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .background(Theme.Colors.cardBackground)
+                                    .cornerRadius(12)
+                                    .shadow(color: Color.black.opacity(0.04), radius: 2, y: 1)
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                         .padding(.horizontal, 6)
@@ -2194,25 +2203,9 @@ private struct BudgetEditView: View {
                     .disabled(isDeleting || isSaving)
                     .padding(.horizontal, 20)
                     .padding(.top, 24)
-                    .padding(.bottom, 100)
+                    .padding(.bottom, 40)
                 }
                 .padding(.top, 8)
-            }
-
-            // Floating tip gradient
-            VStack(spacing: 0) {
-                LinearGradient(
-                    gradient: Gradient(colors: [.clear, Theme.Colors.background]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: 36)
-                Text("Tap amounts to edit  ·  Expand categories for details")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(Theme.Colors.textSecondary)
-                    .padding(.vertical, 16)
-                    .frame(maxWidth: .infinity)
-                    .background(Theme.Colors.background)
             }
         }
         .navigationTitle(name.isEmpty ? "Edit Budget" : name)
@@ -2240,6 +2233,7 @@ private struct BudgetEditView: View {
             Text("This will delete the budget and all its line items. Transactions are not affected.")
         }
         .task { await loadLineItemsAndCategories() }
+        .onAppear { Task { await loadLineItemsAndCategories() } }
         .sheet(isPresented: $showAddLineItem, onDismiss: {
             Task { await loadLineItemsAndCategories() }
         }) {
@@ -2249,6 +2243,7 @@ private struct BudgetEditView: View {
                 existingLineItems: lineItems,
                 allCategories: allCategories
             )
+            .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showAddAccount) {
             NavigationStack {
@@ -2600,52 +2595,6 @@ private struct BudgetEditView: View {
         }
     }
 
-    private func updateAmount(lineItem: BudgetLineItem, newAmount: Double) async {
-        guard newAmount >= 0, newAmount != lineItem.amount else {
-            editingAmounts.removeValue(forKey: lineItem.id)
-            return
-        }
-        do {
-            let updated = try await apiClient.updateBudgetLineItem(
-                budgetId: budget.id,
-                lineItemId: lineItem.id,
-                amount: newAmount
-            )
-            if let idx = lineItems.firstIndex(where: { $0.id == lineItem.id }) {
-                lineItems[idx] = updated
-            }
-            editingAmounts.removeValue(forKey: lineItem.id)
-        } catch {
-            errorMessage = "Failed to update amount"
-        }
-    }
-
-    private func createSubcategoryLineItem(categoryId: String, subcategoryId: String, amount: Double) async {
-        guard amount > 0 else { return }
-        do {
-            let newItem = try await apiClient.createBudgetLineItem(
-                budgetId: budget.id,
-                categoryId: categoryId,
-                subcategoryId: subcategoryId,
-                amount: amount
-            )
-            lineItems.append(newItem)
-            editingAmounts.removeValue(forKey: "new_\(subcategoryId)")
-        } catch {
-            errorMessage = "Failed to set subcategory budget"
-        }
-    }
-
-    private func removeLineItem(_ item: BudgetLineItem) async {
-        do {
-            try await apiClient.deleteBudgetLineItem(budgetId: budget.id, lineItemId: item.id)
-            lineItems.removeAll { $0.id == item.id }
-            expandedCategories.remove(item.id)
-            editingAmounts.removeValue(forKey: item.id)
-        } catch {
-            // silently fail — user can try again
-        }
-    }
 }
 
 // MARK: - Manage Budget Categories View
@@ -3090,15 +3039,9 @@ struct CategoryTransactionsDestination: Hashable {
 }
 
 struct ExpandableCategoryCard: View {
-    @Binding var category: BudgetCategory
+    let category: BudgetCategory
     let apiClient: APIClient
-    var onDeleteCategoryBudget: (() async -> Void)? = nil
-    var onDeleteCategory: (() async -> Void)? = nil
     @State private var isExpanded: Bool = false
-    @State private var showEditCategoryBudget: Bool = false
-    @State private var showEditCategory: Bool = false
-    @State private var showAddSubcategory: Bool = false
-    @State private var showDeleteCategoryConfirmation: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -3143,36 +3086,18 @@ struct ExpandableCategoryCard: View {
 
                     Spacer()
 
-                    // Percentage or amount with edit button
-                    HStack(spacing: Theme.Spacing.xs) {
-                        if category.budgetAmount != nil {
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text("\(Int(category.percentageUsed))%")
-                                    .font(.body)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(category.isOverBudget ? Theme.Colors.expense : Theme.Colors.textPrimary)
-                                if category.isOverBudget {
-                                    Text("Over")
-                                        .font(.caption2)
-                                        .foregroundColor(Theme.Colors.expense)
-                                }
+                    // Percentage (read-only)
+                    if category.budgetAmount != nil {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("\(Int(category.percentageUsed))%")
+                                .font(.body)
+                                .fontWeight(.semibold)
+                                .foregroundColor(category.isOverBudget ? Theme.Colors.expense : Theme.Colors.textPrimary)
+                            if category.isOverBudget {
+                                Text("Over")
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Colors.expense)
                             }
-                        } else if category.id != "uncategorized" {
-                            Text("Set Budget")
-                                .font(.caption)
-                                .foregroundColor(category.color)
-                        }
-
-                        // Edit budget button (not shown for uncategorized)
-                        if category.id != "uncategorized" {
-                            Button {
-                                showEditCategoryBudget = true
-                            } label: {
-                                Image(systemName: "pencil.circle.fill")
-                                    .font(.title3)
-                                    .foregroundColor(category.color.opacity(0.7))
-                            }
-                            .buttonStyle(.plain)
                         }
                     }
 
@@ -3186,34 +3111,6 @@ struct ExpandableCategoryCard: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .contextMenu {
-                Button {
-                    showEditCategory = true
-                } label: {
-                    Label("Edit Category", systemImage: "square.and.pencil")
-                }
-                Divider()
-                Button {
-                    showEditCategoryBudget = true
-                } label: {
-                    Label("Edit Category Budget", systemImage: "pencil")
-                }
-                if let onDelete = onDeleteCategoryBudget {
-                    Button(role: .destructive) {
-                        Task { await onDelete() }
-                    } label: {
-                        Label("Remove Category Budget", systemImage: "minus.circle")
-                    }
-                }
-                Divider()
-                if onDeleteCategory != nil {
-                    Button(role: .destructive) {
-                        showDeleteCategoryConfirmation = true
-                    } label: {
-                        Label("Delete Category", systemImage: "trash")
-                    }
-                }
-            }
 
             // Progress bar
             if category.budgetAmount != nil {
@@ -3254,32 +3151,13 @@ struct ExpandableCategoryCard: View {
                         .padding(.horizontal, Theme.Spacing.xs)
 
                         // Subcategory list
-                        ForEach($category.subcategories) { $subcategory in
+                        ForEach(category.subcategories) { subcategory in
                             SubcategoryRow(
                                 category: category,
-                                subcategory: $subcategory,
+                                subcategory: subcategory,
                                 categoryColor: category.color,
-                                apiClient: apiClient,
-                                onDeleteSubcategoryBudget: subcategory.lineItemId != nil ? {
-                                    let sub = subcategory
-                                    await deleteSubcategoryBudget(subcategory: sub)
-                                } : nil
+                                apiClient: apiClient
                             )
-                        }
-
-                        // Add subcategory button
-                        Button {
-                            showAddSubcategory = true
-                        } label: {
-                            HStack(spacing: Theme.Spacing.xs) {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.caption)
-                                Text("Add Subcategory")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                            }
-                            .foregroundColor(category.color)
-                            .padding(.vertical, Theme.Spacing.xs)
                         }
                     }
 
@@ -3300,65 +3178,6 @@ struct ExpandableCategoryCard: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .sheet(isPresented: $showEditCategoryBudget) {
-            CategoryBudgetView(
-                category: $category,
-                isPresented: $showEditCategoryBudget,
-                apiClient: apiClient
-            )
-        }
-        .sheet(isPresented: $showEditCategory) {
-            EditCategoryView(
-                category: $category,
-                isPresented: $showEditCategory,
-                apiClient: apiClient
-            )
-        }
-        .sheet(isPresented: $showAddSubcategory) {
-            AddSubcategoryView(
-                parentCategory: category,
-                isPresented: $showAddSubcategory
-            ) { newSubcategory in
-                category.subcategories.append(newSubcategory)
-            }
-        }
-        .confirmationDialog(
-            "Delete \"\(category.name)\"?",
-            isPresented: $showDeleteCategoryConfirmation,
-            titleVisibility: .visible
-        ) {
-            if category.lineItemId != nil {
-                Button("Remove Budget & Delete Category", role: .destructive) {
-                    Task { await onDeleteCategory?() }
-                }
-            } else {
-                Button("Delete Category", role: .destructive) {
-                    Task { await onDeleteCategory?() }
-                }
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            if category.lineItemId != nil {
-                Text("This will remove the $\(String(format: "%.0f", category.budgetAmount ?? 0)) budget allocation and delete the category. Transactions will become uncategorized.")
-            } else {
-                Text("This category will be deleted. Transactions will become uncategorized.")
-            }
-        }
-    }
-
-    private func deleteSubcategoryBudget(subcategory: BudgetSubcategory) async {
-        guard let lineItemId = subcategory.lineItemId,
-              let budgetId = subcategory.budgetId else { return }
-        do {
-            try await apiClient.deleteBudgetLineItem(budgetId: budgetId, lineItemId: lineItemId)
-            if let idx = category.subcategories.firstIndex(where: { $0.id == subcategory.id }) {
-                category.subcategories[idx].lineItemId = nil
-                category.subcategories[idx].budgetAmount = nil
-                category.subcategories[idx].budgetId = nil
-            }
-        } catch {
-            // Delete failed silently — user can retry via context menu
-        }
     }
 }
 
@@ -3366,11 +3185,20 @@ struct ExpandableCategoryCard: View {
 
 struct SubcategoryRow: View {
     let category: BudgetCategory
-    @Binding var subcategory: BudgetSubcategory
+    let subcategory: BudgetSubcategory
     let categoryColor: Color
     let apiClient: APIClient
-    var onDeleteSubcategoryBudget: (() async -> Void)? = nil
-    @State private var showEditBudget = false
+
+    @State private var displayIcon: String
+    @State private var showEditSheet = false
+
+    init(category: BudgetCategory, subcategory: BudgetSubcategory, categoryColor: Color, apiClient: APIClient) {
+        self.category = category
+        self.subcategory = subcategory
+        self.categoryColor = categoryColor
+        self.apiClient = apiClient
+        _displayIcon = State(initialValue: subcategory.icon)
+    }
 
     var percentageUsed: Double {
         guard let budget = subcategory.budgetAmount, budget > 0 else { return 0 }
@@ -3385,18 +3213,22 @@ struct SubcategoryRow: View {
     var body: some View {
         VStack(spacing: 4) {
             HStack(spacing: Theme.Spacing.sm) {
-                NavigationLink(value: CategoryTransactionsDestination(category: category, subcategory: subcategory)) {
-                    HStack(spacing: Theme.Spacing.sm) {
-                    // Icon with parent category colored border
-                    Text(subcategory.icon)
+                // Icon — tap to edit emoji/colors
+                Button {
+                    showEditSheet = true
+                } label: {
+                    Text(displayIcon)
                         .font(.body)
                         .frame(width: 32, height: 32)
                         .overlay(
                             Circle()
                                 .strokeBorder(categoryColor, lineWidth: 1.5)
                         )
+                }
+                .buttonStyle(.plain)
 
-                    // Info
+                // Name + spending — tap to view transactions
+                NavigationLink(value: CategoryTransactionsDestination(category: category, subcategory: subcategory)) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(subcategory.name)
                             .font(.subheadline)
@@ -3422,36 +3254,25 @@ struct SubcategoryRow: View {
                                 .foregroundColor(Theme.Colors.textSecondary)
                         }
                     }
-
-                    }
                 }
                 .buttonStyle(.plain)
 
                 Spacer()
 
-                // Budget edit button
-                Button {
-                    showEditBudget = true
-                } label: {
-                    if subcategory.budgetAmount != nil {
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("\(Int(percentageUsed))%")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundColor(isOverBudget ? Theme.Colors.expense : Theme.Colors.textPrimary)
-                            if isOverBudget {
-                                Text("Over")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Colors.expense)
-                            }
-                        }
-                    } else {
-                        Text("Set Budget")
+                // Percentage
+                if subcategory.budgetAmount != nil {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("\(Int(percentageUsed))%")
                             .font(.caption)
-                            .foregroundColor(categoryColor)
+                            .fontWeight(.semibold)
+                            .foregroundColor(isOverBudget ? Theme.Colors.expense : Theme.Colors.textPrimary)
+                        if isOverBudget {
+                            Text("Over")
+                                .font(.caption2)
+                                .foregroundColor(Theme.Colors.expense)
+                        }
                     }
                 }
-                .buttonStyle(.plain)
 
                 Image(systemName: "chevron.right")
                     .font(.caption2)
@@ -3479,28 +3300,325 @@ struct SubcategoryRow: View {
         }
         .background(Theme.Colors.background.opacity(0.5))
         .cornerRadius(Theme.CornerRadius.sm)
-        .contextMenu {
-            Button {
-                showEditBudget = true
-            } label: {
-                Label("Edit Subcategory Budget", systemImage: "pencil")
+        .sheet(isPresented: $showEditSheet) {
+            SubcategoryQuickEditSheet(
+                subcategory: subcategory,
+                category: category,
+                categoryColor: categoryColor,
+                apiClient: apiClient,
+                onIconUpdated: { newIcon in displayIcon = newIcon }
+            )
+        }
+    }
+}
+
+// MARK: - Add Subcategory Sheet
+
+private struct AddSubcategorySheet: View {
+    let category: CategoryWithSubcategories
+    let apiClient: APIClient
+    let onComplete: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var name: String = ""
+    @State private var icon: String = "📁"
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    private let icons = [
+        "📁", "⭐", "❤️", "🎯", "✅", "📌", "🔔", "⚡",
+        "🍔", "🍕", "🍜", "☕", "🛒", "🛍️", "🚗", "✈️",
+        "🏠", "💡", "📱", "💻", "💊", "🏥", "🎮", "🎵",
+        "📚", "💰", "💳", "💸", "🎁", "🌳", "🎨", "⚽"
+    ]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Name row with preview
+                    HStack(spacing: 12) {
+                        Text(icon)
+                            .font(.system(size: 32))
+                            .frame(width: 52, height: 52)
+                            .background(Color(hex: category.color).opacity(0.15))
+                            .cornerRadius(12)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Adding to \(category.icon) \(category.name)")
+                                .font(.system(size: 11))
+                                .foregroundColor(Theme.Colors.textSecondary)
+                            TextField("Subcategory name", text: $name)
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(Theme.Colors.textPrimary)
+                        }
+                        Spacer()
+                    }
+                    .padding(14)
+                    .background(Color.white)
+                    .cornerRadius(14)
+                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+
+                    // Icon picker
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("ICON")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(Theme.Colors.textSecondary)
+                            .kerning(1.0)
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 8), spacing: 8) {
+                            ForEach(icons, id: \.self) { ic in
+                                Button {
+                                    icon = ic
+                                } label: {
+                                    Text(ic)
+                                        .font(.system(size: 22))
+                                        .frame(width: 40, height: 40)
+                                        .background(icon == ic ? Color(hex: category.color).opacity(0.2) : Color.gray.opacity(0.08))
+                                        .cornerRadius(10)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .stroke(icon == ic ? Color(hex: category.color) : Color.clear, lineWidth: 2)
+                                        )
+                                }
+                            }
+                        }
+                    }
+                    .padding(14)
+                    .background(Color.white)
+                    .cornerRadius(14)
+                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(Theme.Colors.expense)
+                    }
+                }
+                .padding(16)
             }
-            if let onDelete = onDeleteSubcategoryBudget {
-                Button(role: .destructive) {
-                    Task { await onDelete() }
-                } label: {
-                    Label("Remove Subcategory Budget", systemImage: "trash")
+            .background(Theme.Colors.background)
+            .navigationTitle("New Subcategory")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if isSaving {
+                        ProgressView()
+                    } else {
+                        Button("Add") {
+                            Task { await save() }
+                        }
+                        .fontWeight(.semibold)
+                        .foregroundColor(name.trimmingCharacters(in: .whitespaces).isEmpty ? Theme.Colors.textSecondary : Theme.Colors.primary)
+                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
                 }
             }
         }
-        .sheet(isPresented: $showEditBudget) {
-            SubcategoryBudgetView(
-                subcategory: $subcategory,
-                categoryId: category.id,
-                categoryColor: categoryColor,
-                isPresented: $showEditBudget,
-                apiClient: apiClient
-            )
+        .presentationDetents([.medium, .large])
+    }
+
+    private func save() async {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        isSaving = true
+        do {
+            _ = try await apiClient.createSubcategory(categoryId: category.id, name: trimmed, icon: icon)
+            dismiss()
+            onComplete()
+        } catch {
+            errorMessage = "Failed to create subcategory"
+            isSaving = false
+        }
+    }
+}
+
+// MARK: - Subcategory Quick Edit Sheet
+
+private struct SubcategoryQuickEditSheet: View {
+    let subcategory: BudgetSubcategory
+    let category: BudgetCategory
+    let categoryColor: Color
+    let apiClient: APIClient
+    let onIconUpdated: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedIcon: String
+    @State private var selectedColorHex: String
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    private let icons = [
+        "📁", "⭐", "❤️", "🎯", "✅", "📌", "🔔", "⚡",
+        "🍔", "🍕", "🍜", "☕", "🛒", "🛍️", "🚗", "✈️",
+        "🏠", "💡", "📱", "💻", "💊", "🏥", "🎮", "🎵",
+        "📚", "💰", "💳", "💸", "🎁", "🌳", "🎨", "⚽"
+    ]
+
+    private let colorOptions: [(name: String, hex: String)] = [
+        ("Teal", "#00A699"), ("Blue", "#3B82F6"), ("Purple", "#8B5CF6"),
+        ("Pink", "#EC4899"), ("Red", "#EF4444"), ("Orange", "#F59E0B"),
+        ("Yellow", "#FBBF24"), ("Green", "#10B981"), ("Indigo", "#6366F1"),
+        ("Cyan", "#14B8A6"), ("Rose", "#E54D8A"), ("Slate", "#64748B")
+    ]
+
+    init(subcategory: BudgetSubcategory, category: BudgetCategory, categoryColor: Color, apiClient: APIClient, onIconUpdated: @escaping (String) -> Void) {
+        self.subcategory = subcategory
+        self.category = category
+        self.categoryColor = categoryColor
+        self.apiClient = apiClient
+        self.onIconUpdated = onIconUpdated
+        _selectedIcon = State(initialValue: subcategory.icon)
+        _selectedColorHex = State(initialValue: category.colorHex)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Preview
+                    VStack(spacing: 8) {
+                        Text(selectedIcon)
+                            .font(.system(size: 64))
+                            .frame(width: 100, height: 100)
+                            .background(Color(hex: selectedColorHex).opacity(0.15))
+                            .clipShape(Circle())
+                            .overlay(Circle().strokeBorder(Color(hex: selectedColorHex), lineWidth: 3))
+
+                        Text(subcategory.name)
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundColor(Theme.Colors.textPrimary)
+
+                        Text(category.name)
+                            .font(.caption)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                    .padding(.top, 8)
+
+                    // Emoji picker
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Emoji")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(Theme.Colors.textPrimary)
+                            .padding(.horizontal)
+
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 8), spacing: 8) {
+                            ForEach(icons, id: \.self) { ic in
+                                Button {
+                                    selectedIcon = ic
+                                } label: {
+                                    Text(ic)
+                                        .font(.system(size: 22))
+                                        .frame(width: 38, height: 38)
+                                        .background(selectedIcon == ic ? Color(hex: selectedColorHex).opacity(0.2) : Color.gray.opacity(0.08))
+                                        .cornerRadius(10)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .stroke(selectedIcon == ic ? Color(hex: selectedColorHex) : Color.clear, lineWidth: 2)
+                                        )
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                    .padding(.vertical, 12)
+                    .background(Theme.Colors.cardBackground)
+                    .cornerRadius(Theme.CornerRadius.md)
+                    .padding(.horizontal)
+
+                    // Category color picker
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Category Color")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(Theme.Colors.textPrimary)
+                            .padding(.horizontal)
+
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 12) {
+                            ForEach(colorOptions, id: \.hex) { option in
+                                Button {
+                                    selectedColorHex = option.hex
+                                } label: {
+                                    Circle()
+                                        .fill(Color(hex: option.hex))
+                                        .frame(width: 40, height: 40)
+                                        .overlay(
+                                            Circle()
+                                                .stroke(Color.white, lineWidth: selectedColorHex == option.hex ? 3 : 0)
+                                                .padding(3)
+                                        )
+                                        .overlay(
+                                            Circle()
+                                                .stroke(Color(hex: option.hex), lineWidth: selectedColorHex == option.hex ? 2 : 0)
+                                        )
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                    .padding(.vertical, 12)
+                    .background(Theme.Colors.cardBackground)
+                    .cornerRadius(Theme.CornerRadius.md)
+                    .padding(.horizontal)
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(Theme.Colors.expense)
+                            .padding(.horizontal)
+                    }
+
+                    Spacer(minLength: 24)
+                }
+                .padding(.vertical, 8)
+            }
+            .background(Theme.Colors.background)
+            .navigationTitle("Edit Subcategory")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if isSaving {
+                        ProgressView()
+                    } else {
+                        Button("Save") {
+                            Task { await save() }
+                        }
+                        .fontWeight(.semibold)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func save() async {
+        isSaving = true
+        errorMessage = nil
+        do {
+            // Update subcategory icon if changed
+            if selectedIcon != subcategory.icon {
+                _ = try await apiClient.updateSubcategory(subcategoryId: subcategory.id, icon: selectedIcon)
+                onIconUpdated(selectedIcon)
+            }
+            // Update category color if changed
+            if selectedColorHex != category.colorHex {
+                _ = try await apiClient.updateCategory(
+                    categoryId: category.id,
+                    name: category.name,
+                    icon: category.icon,
+                    color: selectedColorHex
+                )
+            }
+            dismiss()
+        } catch {
+            errorMessage = "Failed to save: \(error.localizedDescription)"
+            isSaving = false
         }
     }
 }

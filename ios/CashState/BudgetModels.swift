@@ -76,6 +76,11 @@ struct BudgetLineItem: Identifiable, Codable {
     }
 }
 
+extension BudgetLineItem: Hashable {
+    static func == (lhs: BudgetLineItem, rhs: BudgetLineItem) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
+
 struct BudgetLineItemListResponse: Codable {
     let items: [BudgetLineItem]
     let total: Int

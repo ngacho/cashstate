@@ -337,6 +337,13 @@ actor APIClient {
         )
     }
 
+    func updateSubcategory(subcategoryId: String, name: String? = nil, icon: String? = nil) async throws -> Subcategory {
+        var args: [String: Any] = ["id": subcategoryId]
+        if let n = name { args["name"] = n }
+        if let i = icon { args["icon"] = i }
+        return try await convexMutation(function: "categories:updateSubcategory", args: args)
+    }
+
     func updateCategory(categoryId: String, name: String, icon: String, color: String) async throws -> Category {
         return try await convexMutation(
             function: "categories:update",
