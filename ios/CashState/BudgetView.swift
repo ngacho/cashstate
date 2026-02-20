@@ -2025,8 +2025,8 @@ private struct BudgetEditView: View {
                         }
                         .padding(.top, 40)
                     } else {
-                        VStack(spacing: 8) {
-                            ForEach(categoryLineItems) { item in
+                        VStack(spacing: 0) {
+                            ForEach(Array(categoryLineItems.enumerated()), id: \.element.id) { idx, item in
                                 let cat = allCategories.first { $0.id == item.categoryId }
                                 let subItems = subcategoryLineItemsFor(categoryId: item.categoryId)
                                 Button {
@@ -2049,7 +2049,7 @@ private struct BudgetEditView: View {
                                                 .foregroundColor(Theme.Colors.textPrimary)
                                             let budgeted = subItems.count
                                             let total = cat?.subcategories.count ?? 0
-                                            Text(total > 0 ? "\(budgeted) of \(total) subcategories budgeted" : "Tap to edit")
+                                            Text(total > 0 ? "\(budgeted) of \(total) budgeted" : "Tap to edit")
                                                 .font(.system(size: 11))
                                                 .foregroundColor(Theme.Colors.textSecondary)
                                         }
@@ -2061,16 +2061,17 @@ private struct BudgetEditView: View {
                                             .font(.system(size: 12))
                                             .foregroundColor(Color.gray.opacity(0.4))
                                     }
-                                    .padding(.horizontal, 16)
+                                    .padding(.horizontal, 20)
                                     .padding(.vertical, 14)
-                                    .background(Theme.Colors.cardBackground)
-                                    .cornerRadius(12)
-                                    .shadow(color: Color.black.opacity(0.04), radius: 2, y: 1)
                                 }
                                 .buttonStyle(.plain)
+
+                                if idx < categoryLineItems.count - 1 {
+                                    Divider().padding(.leading, 68)
+                                }
                             }
                         }
-                        .padding(.horizontal, 6)
+
                     }
 
                     if let error = errorMessage {
