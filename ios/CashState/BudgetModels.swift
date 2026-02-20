@@ -166,16 +166,26 @@ struct BudgetCategory: Identifiable, Codable, Hashable {
 // MARK: - Color Palette
 
 enum ColorPalette: String, CaseIterable, Identifiable {
-    case blue = "#3B82F6"
-    case purple = "#8B5CF6"
-    case pink = "#EC4899"
-    case red = "#EF4444"
-    case orange = "#F59E0B"
-    case yellow = "#FBBF24"
-    case green = "#10B981"
-    case teal = "#06B6D4"
-    case indigo = "#6366F1"
-    case cyan = "#14B8A6"
+    case espresso = "#7A5230"
+    case amber = "#E8943A"
+    case coral = "#E05474"
+    case blue = "#0072B2"
+    case magenta = "#B5338A"
+    case indigo = "#4F46E5"
+    case turquoise = "#00A6A6"
+    case purple = "#7B2CBF"
+    case lavender = "#9381CC"
+    case teal = "#009E73"
+    case steel = "#5B86B8"
+    case copper = "#B87040"
+    case red = "#C1121F"
+    case gold = "#C9A227"
+    case maroon = "#803848"
+    case rose = "#D86C9E"
+    case lime = "#7CB342"
+    case cyan = "#00B4D8"
+    case plum = "#7C3F8C"
+    case olive = "#7A9148"
 
     var id: String { rawValue }
 
@@ -185,16 +195,26 @@ enum ColorPalette: String, CaseIterable, Identifiable {
 
     var name: String {
         switch self {
+        case .espresso: return "Espresso"
+        case .amber: return "Amber"
+        case .coral: return "Coral"
         case .blue: return "Blue"
-        case .purple: return "Purple"
-        case .pink: return "Pink"
-        case .red: return "Red"
-        case .orange: return "Orange"
-        case .yellow: return "Yellow"
-        case .green: return "Green"
-        case .teal: return "Teal"
+        case .magenta: return "Magenta"
         case .indigo: return "Indigo"
+        case .turquoise: return "Turquoise"
+        case .purple: return "Purple"
+        case .lavender: return "Lavender"
+        case .teal: return "Teal"
+        case .steel: return "Steel"
+        case .copper: return "Copper"
+        case .red: return "Red"
+        case .gold: return "Gold"
+        case .maroon: return "Maroon"
+        case .rose: return "Rose"
+        case .lime: return "Lime"
         case .cyan: return "Cyan"
+        case .plum: return "Plum"
+        case .olive: return "Olive"
         }
     }
 }
@@ -297,7 +317,7 @@ extension BudgetCategory {
             id: "1",
             name: "Entertainment",
             icon: "🍿",
-            colorHex: "#3B82F6",
+            colorHex: "#7B2CBF",
             type: .expense,
             subcategories: [
                 BudgetSubcategory(id: "1-1", name: "Movies", icon: "🍿", budgetAmount: 100.00, spentAmount: 45.00, transactionCount: 3),
@@ -311,7 +331,7 @@ extension BudgetCategory {
             id: "2",
             name: "Food",
             icon: "🍔",
-            colorHex: "#F59E0B",
+            colorHex: "#E05474",
             type: .expense,
             subcategories: [
                 BudgetSubcategory(id: "2-1", name: "Groceries", icon: "🛒", budgetAmount: 500.00, spentAmount: 450.00, transactionCount: 28),

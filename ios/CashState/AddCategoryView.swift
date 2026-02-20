@@ -8,7 +8,7 @@ struct AddCategoryView: View {
     @State private var categoryName: String = ""
     @State private var selectedType: BudgetCategory.CategoryType = .expense
     @State private var selectedIcon: String = "🎨"
-    @State private var selectedColor: ColorPalette = .blue
+    @State private var selectedColor: ColorPalette = .steel
     @State private var isMainCategory: Bool = true
     @State private var subcategories: [SubcategoryItem] = []
     @State private var showAddSubcategory = false
@@ -473,7 +473,7 @@ struct EditCategoryView: View {
         self.apiClient = apiClient
         _categoryName = State(initialValue: category.wrappedValue.name)
         _selectedIcon = State(initialValue: category.wrappedValue.icon)
-        _selectedColor = State(initialValue: ColorPalette(rawValue: category.wrappedValue.colorHex) ?? .blue)
+        _selectedColor = State(initialValue: ColorPalette(rawValue: category.wrappedValue.colorHex) ?? .steel)
     }
 
     var body: some View {

@@ -130,7 +130,6 @@ struct BudgetView: View {
                 BudgetEditView(
                     budget: budget,
                     apiClient: apiClient,
-                    navigationPath: $navigationPath,
                     onSave: { _ in reloadData() },
                     onDelete: { _ in reloadData() }
                 )
@@ -1231,7 +1230,6 @@ struct AllBudgetsView: View {
     @State private var showCreateBudget = false
     @State private var allCategories: [CategoryWithSubcategories] = []
     @State private var budgetLineItems: [String: [BudgetLineItem]] = [:]
-    @State private var navigationPath = NavigationPath()
 
     @ViewBuilder
     private var contentView: some View {
@@ -1277,15 +1275,7 @@ struct AllBudgetsView: View {
         ScrollView {
             VStack(spacing: 14) {
                 ForEach(budgets) { budget in
-                    NavigationLink {
-                        BudgetEditView(
-                            budget: budget,
-                            apiClient: apiClient,
-                            navigationPath: $navigationPath,
-                            onSave: handleBudgetSave,
-                            onDelete: handleBudgetDelete
-                        )
-                    } label: {
+                    NavigationLink(value: budget) {
                         BudgetListCard(
                             budget: budget,
                             lineItems: budgetLineItems[budget.id] ?? [],
@@ -1335,37 +1325,7 @@ struct AllBudgetsView: View {
                 showCreateBudget = false
             }
         }
-        .task { await loadData() }
-    }
-
-    private func handleBudgetSave(_ updated: BudgetAPI) {
-        if let idx = budgets.firstIndex(where: { $0.id == updated.id }) {
-            budgets[idx] = updated
-        }
-        if updated.isDefault {
-            for idx in budgets.indices where budgets[idx].id != updated.id {
-                if budgets[idx].isDefault {
-                    budgets[idx] = BudgetAPI(
-                        id: budgets[idx].id,
-                        userId: budgets[idx].userId,
-                        name: budgets[idx].name,
-                        isDefault: false,
-                        emoji: budgets[idx].emoji,
-                        color: budgets[idx].color,
-                        accountIds: budgets[idx].accountIds
-                    )
-                }
-            }
-        }
-        Task {
-            let items = (try? await apiClient.fetchBudgetLineItems(budgetId: updated.id)) ?? []
-            budgetLineItems[updated.id] = items.filter { $0.subcategoryId == nil }
-        }
-    }
-
-    private func handleBudgetDelete(_ deletedId: String) {
-        budgets.removeAll { $0.id == deletedId }
-        budgetLineItems.removeValue(forKey: deletedId)
+        .onAppear { Task { await loadData() } }
     }
 
     private func loadData() async {
@@ -1752,7 +1712,6 @@ private struct SubcategoryEmojiPickerSheet: View {
 private struct BudgetEditView: View {
     let budget: BudgetAPI
     let apiClient: APIClient
-    var navigationPath: Binding<NavigationPath>
     let onSave: (BudgetAPI) -> Void
     let onDelete: (String) -> Void
 
@@ -1800,10 +1759,9 @@ private struct BudgetEditView: View {
         "#6bcbd4", "#ef8f5b", "#a0a0ef", "#efcf5b"
     ]
 
-    init(budget: BudgetAPI, apiClient: APIClient, navigationPath: Binding<NavigationPath>, onSave: @escaping (BudgetAPI) -> Void, onDelete: @escaping (String) -> Void) {
+    init(budget: BudgetAPI, apiClient: APIClient, onSave: @escaping (BudgetAPI) -> Void, onDelete: @escaping (String) -> Void) {
         self.budget = budget
         self.apiClient = apiClient
-        self.navigationPath = navigationPath
         self.onSave = onSave
         self.onDelete = onDelete
         _name = State(initialValue: budget.name)
@@ -2029,42 +1987,40 @@ private struct BudgetEditView: View {
                             ForEach(Array(categoryLineItems.enumerated()), id: \.element.id) { idx, item in
                                 let cat = allCategories.first { $0.id == item.categoryId }
                                 let subItems = subcategoryLineItemsFor(categoryId: item.categoryId)
-                                Button {
-                                    if let cat {
-                                        navigationPath.wrappedValue.append(CategoryEditDestination(
-                                            lineItem: item,
-                                            category: cat,
-                                            subcategoryLineItems: subItems,
-                                            budgetId: budget.id
-                                        ))
-                                    }
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        Text(cat?.icon ?? "❓")
-                                            .font(.system(size: 22))
-                                            .frame(width: 36, alignment: .center)
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(cat?.name ?? "Unknown")
-                                                .font(.system(size: 15, weight: .semibold))
-                                                .foregroundColor(Theme.Colors.textPrimary)
-                                            let budgeted = subItems.count
-                                            let total = cat?.subcategories.count ?? 0
-                                            Text(total > 0 ? "\(budgeted) of \(total) budgeted" : "Tap to edit")
-                                                .font(.system(size: 11))
+                                if let cat {
+                                    NavigationLink(value: CategoryEditDestination(
+                                        lineItem: item,
+                                        category: cat,
+                                        subcategoryLineItems: subItems,
+                                        budgetId: budget.id
+                                    )) {
+                                        HStack(spacing: 12) {
+                                            Text(cat.icon)
+                                                .font(.system(size: 22))
+                                                .frame(width: 36, alignment: .center)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(cat.name)
+                                                    .font(.system(size: 15, weight: .semibold))
+                                                    .foregroundColor(Theme.Colors.textPrimary)
+                                                let budgeted = subItems.count
+                                                let total = cat.subcategories.count
+                                                Text(total > 0 ? "\(budgeted) of \(total) budgeted" : "Tap to edit")
+                                                    .font(.system(size: 11))
+                                                    .foregroundColor(Theme.Colors.textSecondary)
+                                            }
+                                            Spacer()
+                                            Text(formatAmount(item.amount))
+                                                .font(.system(size: 14, weight: .semibold, design: .monospaced))
                                                 .foregroundColor(Theme.Colors.textSecondary)
+                                            Image(systemName: "chevron.right")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(Color.gray.opacity(0.4))
                                         }
-                                        Spacer()
-                                        Text(formatAmount(item.amount))
-                                            .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                                            .foregroundColor(Theme.Colors.textSecondary)
-                                        Image(systemName: "chevron.right")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(Color.gray.opacity(0.4))
+                                        .padding(.horizontal, 20)
+                                        .padding(.vertical, 14)
                                     }
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 14)
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
 
                                 if idx < categoryLineItems.count - 1 {
                                     Divider().padding(.leading, 68)
