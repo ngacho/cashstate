@@ -176,23 +176,8 @@ struct HomeView: View {
                             ProgressView()
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 200)
-                        } else if snapshots.isEmpty {
-                            VStack(spacing: Theme.Spacing.sm) {
-                                Image(systemName: "chart.line.uptrend.xyaxis")
-                                    .font(.system(size: 40))
-                                    .foregroundColor(Theme.Colors.textSecondary.opacity(0.5))
-                                Text("No data yet")
-                                    .font(.caption)
-                                    .foregroundColor(Theme.Colors.textSecondary)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 200)
-                            .background(Theme.Colors.cardBackground)
-                            .cornerRadius(Theme.CornerRadius.lg)
-                            .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
-                            .padding(.horizontal, Theme.Spacing.md)
                         } else {
-                            NetWorthChart(snapshots: snapshots)
+                            NetWorthChart(snapshots: snapshots, fallbackBalance: totalBalance, timeRange: selectedTimeRange)
                                 .frame(height: 200)
                                 .padding(Theme.Spacing.md)
                                 .background(Theme.Colors.cardBackground)
@@ -412,17 +397,45 @@ struct HomeView: View {
 
 struct NetWorthChart: View {
     let snapshots: [SnapshotData]
+    var fallbackBalance: Double = 0
+    var timeRange: TimeRange = .week
+
+    /// Data points to render: real snapshots or a synthetic flat line from fallbackBalance
+    private var effectivePoints: [(date: Date, balance: Double)] {
+        if !snapshots.isEmpty {
+            return snapshots.map { (date: $0.dateValue, balance: $0.balance) }
+        }
+        // No snapshots — generate a flat line spanning the selected time range
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let count: Int
+        let component: Calendar.Component
+        switch timeRange {
+        case .week:
+            count = 7; component = .day
+        case .month:
+            count = 30; component = .day
+        case .year:
+            count = 12; component = .month
+        default:
+            count = 7; component = .day
+        }
+        return (0..<count).reversed().map { offset in
+            let date = calendar.date(byAdding: component, value: -offset, to: today) ?? today
+            return (date: date, balance: fallbackBalance)
+        }
+    }
 
     var minBalance: Double {
-        snapshots.map { $0.balance }.min() ?? 0
+        effectivePoints.map { $0.balance }.min() ?? 0
     }
 
     var maxBalance: Double {
-        snapshots.map { $0.balance }.max() ?? 0
+        effectivePoints.map { $0.balance }.max() ?? 0
     }
 
     var currentBalance: Double {
-        snapshots.last?.balance ?? 0
+        effectivePoints.last?.balance ?? 0
     }
 
     var chartColor: Color {
@@ -431,20 +444,14 @@ struct NetWorthChart: View {
     }
 
     var chartYDomain: ClosedRange<Double> {
-        guard !snapshots.isEmpty else {
-            return 0...100 // Default range for empty data
-        }
-
-        // If all values are the same, add padding
+        // If all values are the same (flat line), center the line in the chart
         if minBalance == maxBalance {
             let value = minBalance
             if value == 0 {
                 return -10...10
-            } else if value > 0 {
-                return 0...(value * 1.2)
-            } else {
-                return (value * 1.2)...0
             }
+            let padding = abs(value) * 0.3
+            return (value - padding)...(value + padding)
         }
 
         // Calculate padding (5% of range)
@@ -454,33 +461,73 @@ struct NetWorthChart: View {
         return (minBalance - padding)...(maxBalance + padding)
     }
 
+    struct ChartPoint: Identifiable {
+        let id = UUID()
+        let date: Date
+        let balance: Double
+    }
+
+    private var isFlatLine: Bool {
+        let balances = Set(effectivePoints.map { $0.balance })
+        return balances.count <= 1
+    }
+
+    private var xDates: (start: Date, end: Date) {
+        let dates = effectivePoints.map { $0.date }
+        return (dates.first ?? Date(), dates.last ?? Date())
+    }
+
     var body: some View {
-        if snapshots.isEmpty {
-            // Empty state
-            VStack {
-                Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.largeTitle)
-                    .foregroundColor(Theme.Colors.textSecondary.opacity(0.5))
-                Text("No snapshot data")
-                    .font(.caption)
-                    .foregroundColor(Theme.Colors.textSecondary)
+        if isFlatLine {
+            // Flat line using RuleMark — LineMark doesn't render with identical Y values
+            Chart {
+                RuleMark(y: .value("Balance", currentBalance))
+                    .foregroundStyle(chartColor)
+                    .lineStyle(StrokeStyle(lineWidth: 3))
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .chartXScale(domain: xDates.start...xDates.end)
+            .chartYScale(domain: chartYDomain)
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 5)) { value in
+                    if let date = value.as(Date.self) {
+                        AxisValueLabel {
+                            Text(formatAxisDate(date))
+                                .font(.caption2)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                            .foregroundStyle(Color.gray.opacity(0.2))
+                    }
+                }
+            }
+            .chartYAxis {
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                    if let balance = value.as(Double.self) {
+                        AxisValueLabel {
+                            Text(formatCurrency(balance))
+                                .font(.caption2)
+                                .foregroundColor(balance < 0 ? Theme.Colors.expense : (balance > 0 ? Theme.Colors.income : Theme.Colors.textSecondary))
+                        }
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                            .foregroundStyle(Color.gray.opacity(0.2))
+                    }
+                }
+            }
         } else {
-            // Chart with 1+ points
-            Chart(snapshots) { snapshot in
+            // Real snapshot data with varying values
+            let points = effectivePoints.map { ChartPoint(date: $0.date, balance: $0.balance) }
+            Chart(points) { point in
                 LineMark(
-                    x: .value("Date", snapshot.dateValue),
-                    y: .value("Balance", snapshot.balance)
+                    x: .value("Date", point.date),
+                    y: .value("Balance", point.balance)
                 )
                 .foregroundStyle(chartColor)
-                .interpolationMethod(.catmullRom) // Smooth curve
+                .interpolationMethod(.catmullRom)
                 .lineStyle(StrokeStyle(lineWidth: 3))
 
-                // Area fill under the line
                 AreaMark(
-                    x: .value("Date", snapshot.dateValue),
-                    y: .value("Balance", snapshot.balance)
+                    x: .value("Date", point.date),
+                    y: .value("Balance", point.balance)
                 )
                 .foregroundStyle(
                     LinearGradient(
@@ -488,8 +535,8 @@ struct NetWorthChart: View {
                             chartColor.opacity(0.3),
                             chartColor.opacity(0.05)
                         ],
-                        startPoint: .top,
-                        endPoint: .bottom
+                        startPoint: currentBalance >= 0 ? .top : .bottom,
+                        endPoint: currentBalance >= 0 ? .bottom : .top
                     )
                 )
                 .interpolationMethod(.catmullRom)
@@ -526,7 +573,7 @@ struct NetWorthChart: View {
 
     func formatAxisDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        if snapshots.count > 30 {
+        if effectivePoints.count > 30 {
             // Monthly view - show month
             formatter.dateFormat = "MMM"
         } else {
