@@ -154,9 +154,10 @@ struct GoalDetailView: View {
     private func chartCard(detail: GoalDetail) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             HStack {
-                Text("Progress over time")
-                    .font(.headline)
-                    .foregroundColor(Theme.Colors.textPrimary)
+                Text("PROGRESS OVER TIME")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Theme.Colors.textSecondary)
                 Spacer()
                 HStack(spacing: 4) {
                     ForEach(ranges, id: \.self) { range in
@@ -307,9 +308,10 @@ struct GoalDetailView: View {
 
     private func accountsSection(detail: GoalDetail) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text("Linked Accounts")
-                .font(.headline)
-                .foregroundColor(Theme.Colors.textPrimary)
+            Text("LINKED ACCOUNTS")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundColor(Theme.Colors.textSecondary)
 
             ForEach(detail.accounts) { account in
                 HStack {

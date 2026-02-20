@@ -91,7 +91,7 @@ struct HomeView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: Theme.Spacing.md) {
                     // Mint-style Hero Card
@@ -592,7 +592,6 @@ struct MintAccountRow: View {
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.sm)
-        .background(Theme.Colors.cardBackground)
         .contentShape(Rectangle())
     }
 
@@ -994,27 +993,72 @@ struct AccountDetailView: View {
                     }
                 }
 
-                // Stats Row (Spent / Credit / Net)
-                HStack(spacing: Theme.Spacing.sm) {
-                    StatCard(
-                        title: "Spent",
-                        amount: totalSpent,
-                        color: Theme.Colors.expense,
-                        icon: "arrow.down.circle.fill"
-                    )
-                    StatCard(
-                        title: "Credit",
-                        amount: totalCredit,
-                        color: Theme.Colors.income,
-                        icon: "arrow.up.circle.fill"
-                    )
-                    StatCard(
-                        title: "Net",
-                        amount: abs(netAmount),
-                        color: netAmount >= 0 ? Theme.Colors.income : Theme.Colors.expense,
-                        icon: "equal.circle.fill"
-                    )
+                // Stats Row (Spent / Credit / Net) — unified card
+                HStack(spacing: 0) {
+                    // Spent
+                    VStack(alignment: .center, spacing: 4) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(Theme.Colors.expense)
+                            Text("Spent")
+                                .font(.caption)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                        Text("$\(String(format: "%.0f", totalSpent))")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(Theme.Colors.expense)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    Divider()
+                        .frame(height: 40)
+
+                    // Credit
+                    VStack(alignment: .center, spacing: 4) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(Theme.Colors.income)
+                            Text("Credit")
+                                .font(.caption)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                        Text("$\(String(format: "%.0f", totalCredit))")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(Theme.Colors.income)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    Divider()
+                        .frame(height: 40)
+
+                    // Net
+                    VStack(alignment: .center, spacing: 4) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "equal.circle.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(netAmount >= 0 ? Theme.Colors.income : Theme.Colors.expense)
+                            Text("Net")
+                                .font(.caption)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                        }
+                        Text("$\(String(format: "%.0f", abs(netAmount)))")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(netAmount >= 0 ? Theme.Colors.income : Theme.Colors.expense)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
+                .padding(.vertical, 14)
+                .background(Theme.Colors.cardBackground)
+                .cornerRadius(Theme.CornerRadius.md)
+                .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
                 .padding(.horizontal, Theme.Spacing.md)
 
                 // Transaction Filter Tabs + List
@@ -1031,7 +1075,7 @@ struct AccountDetailView: View {
                     Text("\(filteredTransactions.count) TRANSACTION\(filteredTransactions.count == 1 ? "" : "S")")
                         .font(.caption)
                         .fontWeight(.semibold)
-                        .foregroundColor(Theme.Colors.primary)
+                        .foregroundColor(Theme.Colors.textSecondary)
 
                     // Transaction list
                     if isLoading {
@@ -1063,9 +1107,6 @@ struct AccountDetailView: View {
                                 }
                             }
                         }
-                        .background(Theme.Colors.cardBackground)
-                        .cornerRadius(Theme.CornerRadius.xl)
-                        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -1168,39 +1209,6 @@ struct AccountDetailView: View {
     }
 }
 
-// MARK: - Stat Card (Mint style)
-
-struct StatCard: View {
-    let title: String
-    let amount: Double
-    let color: Color
-    let icon: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 14))
-                    .foregroundColor(color)
-                Text(title)
-                    .font(.caption)
-                    .foregroundColor(Theme.Colors.textSecondary)
-            }
-            Text("$\(String(format: "%.0f", amount))")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(color)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 14)
-        .background(Theme.Colors.cardBackground)
-        .cornerRadius(Theme.CornerRadius.md)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
-    }
-}
-
 // MARK: - Transaction Row
 
 struct TransactionRow: View {
@@ -1208,11 +1216,15 @@ struct TransactionRow: View {
 
     var body: some View {
         HStack(spacing: Theme.Spacing.md) {
-            // Icon
-            Image(systemName: iconName)
-                .font(.system(size: 30))
-                .foregroundColor(iconColor)
-                .frame(width: 40, height: 40)
+            // Icon with circle background (matches MintTransactionRow)
+            ZStack {
+                Circle()
+                    .fill(iconBackgroundColor)
+                    .frame(width: 44, height: 44)
+                Image(systemName: transaction.isExpense ? "arrow.up" : "arrow.down")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(iconColor)
+            }
 
             // Info
             VStack(alignment: .leading, spacing: 3) {
@@ -1220,6 +1232,7 @@ struct TransactionRow: View {
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundColor(Theme.Colors.textPrimary)
+                    .lineLimit(1)
                 Text(transaction.displayDate)
                     .font(.caption)
                     .foregroundColor(Theme.Colors.textSecondary)
@@ -1235,10 +1248,11 @@ struct TransactionRow: View {
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.sm)
+        .contentShape(Rectangle())
     }
 
-    var iconName: String {
-        transaction.isExpense ? "arrow.up.circle.fill" : "arrow.down.circle.fill"
+    var iconBackgroundColor: Color {
+        transaction.isExpense ? Theme.Colors.expense.opacity(0.15) : Theme.Colors.income.opacity(0.15)
     }
 
     var iconColor: Color {
@@ -1722,7 +1736,7 @@ struct DateRangePickerView: View {
     @Binding var customEndDate: Date
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section {
                     switch timeRange {

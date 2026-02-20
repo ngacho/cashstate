@@ -8,7 +8,7 @@ struct GoalsView: View {
     @State private var hasLoaded = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Group {
                 if !hasLoaded {
                     // Haven't gotten a response yet — stay in loading state
@@ -94,20 +94,36 @@ struct GoalsView: View {
 
     private var goalsList: some View {
         ScrollView {
-            LazyVStack(spacing: Theme.Spacing.sm) {
-                ForEach(goals) { goal in
-                    NavigationLink(destination: GoalDetailView(apiClient: apiClient, goalId: goal.id)) {
-                        GoalCard(goal: goal)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            Task { await deleteGoal(goal) }
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                Text("GOALS")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Theme.Colors.textSecondary)
+                    .padding(.horizontal, Theme.Spacing.md)
+
+                VStack(spacing: 0) {
+                    ForEach(Array(goals.enumerated()), id: \.element.id) { index, goal in
+                        NavigationLink(destination: GoalDetailView(apiClient: apiClient, goalId: goal.id)) {
+                            GoalCard(goal: goal)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                Task { await deleteGoal(goal) }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+
+                        if index < goals.count - 1 {
+                            Divider()
+                                .padding(.leading, Theme.Spacing.md)
                         }
                     }
                 }
+                .background(Theme.Colors.cardBackground)
+                .cornerRadius(Theme.CornerRadius.md)
+                .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
             }
             .padding(Theme.Spacing.md)
         }
@@ -209,20 +225,19 @@ struct GoalCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 4)
+                        RoundedRectangle(cornerRadius: 3)
                             .fill(Color.gray.opacity(0.15))
-                            .frame(height: 8)
-                        RoundedRectangle(cornerRadius: 4)
+                            .frame(height: 6)
+                        RoundedRectangle(cornerRadius: 3)
                             .fill(progressColor)
-                            .frame(width: geo.size.width * CGFloat(min(goal.progressPercent, 100) / 100), height: 8)
+                            .frame(width: geo.size.width * CGFloat(min(goal.progressPercent, 100) / 100), height: 6)
                             .animation(.easeInOut(duration: 0.3), value: goal.progressPercent)
                     }
                 }
-                .frame(height: 8)
+                .frame(height: 6)
 
                 HStack {
                     if goal.goalType == .debtPayment {
-                        // Show "Paid off $X of $Y"
                         Text(String(format: "Paid off $%.2f", max(0, goal.currentAmount)))
                             .font(.subheadline)
                             .fontWeight(.semibold)
@@ -268,8 +283,7 @@ struct GoalCard: View {
         }
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.cardBackground)
-        .cornerRadius(Theme.CornerRadius.md)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+        .contentShape(Rectangle())
     }
 
     private var progressColor: Color {

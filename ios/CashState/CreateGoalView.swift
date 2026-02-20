@@ -44,9 +44,10 @@ struct CreateGoalView: View {
             VStack(spacing: Theme.Spacing.lg) {
                 // Basic info section
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Goal Details")
-                        .font(.headline)
-                        .foregroundColor(Theme.Colors.textPrimary)
+                    Text("GOAL DETAILS")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.textSecondary)
 
                     VStack(spacing: 0) {
                         TextField("Goal name (e.g. Emergency Fund)", text: $name)
@@ -65,9 +66,10 @@ struct CreateGoalView: View {
 
                 // Goal type picker
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Goal Type")
-                        .font(.headline)
-                        .foregroundColor(Theme.Colors.textPrimary)
+                    Text("GOAL TYPE")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.textSecondary)
 
                     Picker("Goal Type", selection: $goalType) {
                         ForEach(GoalType.allCases, id: \.self) { type in
@@ -89,9 +91,10 @@ struct CreateGoalView: View {
 
                 // Target amount
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text(goalType == .debtPayment ? "Amount to Pay Off" : "Target Amount")
-                        .font(.headline)
-                        .foregroundColor(Theme.Colors.textPrimary)
+                    Text(goalType == .debtPayment ? "AMOUNT TO PAY OFF" : "TARGET AMOUNT")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.textSecondary)
 
                     HStack {
                         Text("$")
@@ -108,9 +111,10 @@ struct CreateGoalView: View {
                 // Target date
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                     HStack {
-                        Text("Target Date")
-                            .font(.headline)
-                            .foregroundColor(Theme.Colors.textPrimary)
+                        Text("TARGET DATE")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(Theme.Colors.textSecondary)
                         Spacer()
                         if targetDate != nil {
                             Button("Clear") {
@@ -155,9 +159,10 @@ struct CreateGoalView: View {
 
                 // Account selection
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Linked Accounts")
-                        .font(.headline)
-                        .foregroundColor(Theme.Colors.textPrimary)
+                    Text("LINKED ACCOUNTS")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.textSecondary)
 
                     if isLoading {
                         ProgressView()

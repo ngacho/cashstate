@@ -69,9 +69,10 @@ struct EditGoalView: View {
             VStack(spacing: Theme.Spacing.lg) {
                 // Basic info
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Goal Details")
-                        .font(.headline)
-                        .foregroundColor(Theme.Colors.textPrimary)
+                    Text("GOAL DETAILS")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.textSecondary)
 
                     VStack(spacing: 0) {
                         TextField("Goal name", text: $name)
@@ -90,9 +91,10 @@ struct EditGoalView: View {
 
                 // Goal type (read-only)
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text("Goal Type")
-                        .font(.headline)
-                        .foregroundColor(Theme.Colors.textPrimary)
+                    Text("GOAL TYPE")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.textSecondary)
                     HStack {
                         GoalTypeBadge(goalType: goal.goalType)
                         Text("(cannot be changed)")
@@ -103,9 +105,10 @@ struct EditGoalView: View {
 
                 // Target amount
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text(goal.goalType == .debtPayment ? "Amount to Pay Off" : "Target Amount")
-                        .font(.headline)
-                        .foregroundColor(Theme.Colors.textPrimary)
+                    Text(goal.goalType == .debtPayment ? "AMOUNT TO PAY OFF" : "TARGET AMOUNT")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.textSecondary)
 
                     HStack {
                         Text("$")
@@ -122,9 +125,10 @@ struct EditGoalView: View {
                 // Target date
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                     HStack {
-                        Text("Target Date")
-                            .font(.headline)
-                            .foregroundColor(Theme.Colors.textPrimary)
+                        Text("TARGET DATE")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(Theme.Colors.textSecondary)
                         Spacer()
                         if targetDate != nil {
                             Button("Clear") { targetDate = nil }
@@ -186,9 +190,10 @@ struct EditGoalView: View {
 
                 // Account allocations
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Linked Accounts")
-                        .font(.headline)
-                        .foregroundColor(Theme.Colors.textPrimary)
+                    Text("LINKED ACCOUNTS")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.textSecondary)
 
                     if isLoading {
                         ProgressView()

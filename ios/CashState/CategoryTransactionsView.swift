@@ -201,9 +201,10 @@ private struct CategoryTransactionsContentView: View {
                         .padding(.top, Theme.Spacing.xl)
                     } else {
                         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                            Text("Recent Transactions")
-                                .font(.headline)
-                                .foregroundColor(Theme.Colors.textPrimary)
+                            Text("RECENT TRANSACTIONS")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(Theme.Colors.textSecondary)
                                 .padding(.horizontal)
 
                             LazyVStack(spacing: 0) {
@@ -223,9 +224,6 @@ private struct CategoryTransactionsContentView: View {
                                     }
                                 }
                             }
-                            .background(Theme.Colors.cardBackground)
-                            .cornerRadius(Theme.CornerRadius.md)
-                            .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
                             .padding(.horizontal)
                         }
                     }
@@ -401,7 +399,6 @@ struct TransactionRowView: View {
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.sm)
-        .background(Theme.Colors.cardBackground)
         .contentShape(Rectangle())
     }
 }

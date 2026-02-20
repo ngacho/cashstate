@@ -36,7 +36,7 @@ struct TransactionsView: View {
     @State private var isLoading = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Group {
                 if isLoading && transactions.isEmpty {
                     VStack {
@@ -72,9 +72,6 @@ struct TransactionsView: View {
                                 }
                             }
                         }
-                        .background(Theme.Colors.cardBackground)
-                        .cornerRadius(Theme.CornerRadius.md)
-                        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
                         .padding(Theme.Spacing.md)
                     }
                     .background(Theme.Colors.background)
@@ -151,7 +148,6 @@ struct MintTransactionRow: View {
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.sm)
-        .background(Theme.Colors.cardBackground)
         .contentShape(Rectangle())
     }
 
@@ -169,7 +165,7 @@ struct InsightsView: View {
     @State private var selectedRange: TimeRange = .month
     @State private var transactions: [Transaction] = []
     @State private var isLoading = false
-    @State private var showChart = true // true = donut chart, false = bar graph
+    @State private var showChart = true
 
     var filteredTransactions: [Transaction] {
         let calendar = Calendar.current
@@ -257,7 +253,7 @@ struct InsightsView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: Theme.Spacing.lg) {
                     if isLoading {
@@ -314,7 +310,6 @@ struct InsightsView: View {
                 barGraphSection
             }
             summaryCards
-            netAmountCard
             transactionsPreview
         }
     }
@@ -382,9 +377,10 @@ struct InsightsView: View {
         Group {
             if !dailySpending.isEmpty {
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Daily Activity")
-                        .font(.headline)
-                        .foregroundColor(Theme.Colors.textPrimary)
+                    Text("DAILY ACTIVITY")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.textSecondary)
                         .padding(.horizontal, Theme.Spacing.md)
 
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -413,55 +409,86 @@ struct InsightsView: View {
     }
 
     private var summaryCards: some View {
-        HStack(spacing: Theme.Spacing.sm) {
-            SummaryCard(
-                title: "Income",
-                amount: totalIncome,
-                color: Theme.Colors.income,
-                icon: "arrow.down.circle.fill"
-            )
-            SummaryCard(
-                title: "Spent",
-                amount: totalSpent,
-                color: Theme.Colors.expense,
-                icon: "arrow.up.circle.fill"
-            )
-        }
-        .padding(.horizontal, Theme.Spacing.md)
-    }
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text("SUMMARY")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundColor(Theme.Colors.textSecondary)
+                .padding(.horizontal, Theme.Spacing.md)
 
-    private var netAmountCard: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            ZStack {
-                Circle()
-                    .fill((netAmount >= 0 ? Theme.Colors.income : Theme.Colors.expense).opacity(0.15))
-                    .frame(width: 48, height: 48)
-                Image(systemName: "equal.circle.fill")
-                    .font(.title3)
-                    .foregroundColor(netAmount >= 0 ? Theme.Colors.income : Theme.Colors.expense)
+            HStack(spacing: 0) {
+                // Income
+                VStack(alignment: .center, spacing: 4) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(Theme.Colors.income)
+                        Text("Income")
+                            .font(.caption)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                    Text(String(format: "$%.0f", totalIncome))
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(Theme.Colors.income)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
+                .frame(maxWidth: .infinity)
+
+                Divider()
+                    .frame(height: 40)
+
+                // Spent
+                VStack(alignment: .center, spacing: 4) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(Theme.Colors.expense)
+                        Text("Spent")
+                            .font(.caption)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                    Text(String(format: "$%.0f", totalSpent))
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(Theme.Colors.expense)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
+                .frame(maxWidth: .infinity)
+
+                Divider()
+                    .frame(height: 40)
+
+                // Net
+                VStack(alignment: .center, spacing: 4) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "equal.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(netAmount >= 0 ? Theme.Colors.income : Theme.Colors.expense)
+                        Text("Net")
+                            .font(.caption)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                    Text(String(format: "$%.0f", abs(netAmount)))
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(netAmount >= 0 ? Theme.Colors.income : Theme.Colors.expense)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
+                .frame(maxWidth: .infinity)
             }
+            .padding(.vertical, 14)
+            .background(Theme.Colors.cardBackground)
+            .cornerRadius(Theme.CornerRadius.md)
+            .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+            .padding(.horizontal, Theme.Spacing.md)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Net")
-                    .font(.subheadline)
-                    .foregroundColor(Theme.Colors.textSecondary)
-                Text(String(format: "$%.2f", abs(netAmount)))
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .foregroundColor(Theme.Colors.textPrimary)
-            }
-
-            Spacer()
-
+            // Transaction count
             Text("\(filteredTransactions.count) transactions")
                 .font(.caption)
                 .foregroundColor(Theme.Colors.textSecondary)
+                .padding(.horizontal, Theme.Spacing.md)
         }
-        .padding(Theme.Spacing.md)
-        .background(Theme.Colors.cardBackground)
-        .cornerRadius(Theme.CornerRadius.md)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
-        .padding(.horizontal, Theme.Spacing.md)
     }
 
     @ViewBuilder
@@ -469,9 +496,10 @@ struct InsightsView: View {
         if !filteredTransactions.isEmpty {
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                 HStack {
-                    Text("Transactions")
-                        .font(.headline)
-                        .foregroundColor(Theme.Colors.textPrimary)
+                    Text("TRANSACTIONS")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.textSecondary)
                     Spacer()
                     Text("\(filteredTransactions.count) total")
                         .font(.caption)
@@ -611,43 +639,6 @@ struct DonutSlice: View {
     }
 }
 
-struct SummaryCard: View {
-    let title: String
-    let amount: Double
-    let color: Color
-    let icon: String
-
-    var body: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            // Icon circle
-            ZStack {
-                Circle()
-                    .fill(color.opacity(0.15))
-                    .frame(width: 48, height: 48)
-                Image(systemName: icon)
-                    .font(.title3)
-                    .foregroundColor(color)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.subheadline)
-                    .foregroundColor(Theme.Colors.textSecondary)
-                Text(String(format: "$%.2f", amount))
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .foregroundColor(Theme.Colors.textPrimary)
-            }
-
-            Spacer()
-        }
-        .padding(Theme.Spacing.md)
-        .background(Theme.Colors.cardBackground)
-        .cornerRadius(Theme.CornerRadius.md)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
-    }
-}
-
 struct CategoryRow: View {
     let category: String
     let amount: Double
@@ -692,7 +683,7 @@ struct BudgetsView: View {
     let apiClient: APIClient
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: Theme.Spacing.lg) {
                     Text("Budget Management")
@@ -725,7 +716,7 @@ struct AccountsView: View {
     @State private var showSyncError = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: Theme.Spacing.lg) {
                     connectionSection
@@ -760,7 +751,13 @@ struct AccountsView: View {
     }
 
     private var connectionSection: some View {
-        VStack(spacing: Theme.Spacing.md) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text("CONNECTION")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundColor(Theme.Colors.textSecondary)
+                .padding(.horizontal, Theme.Spacing.md)
+
             if simplefinItems.isEmpty {
                 connectBanksCard
             } else {
@@ -869,7 +866,12 @@ struct AccountsView: View {
     }
 
     private var signOutSection: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text("ACCOUNT")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundColor(Theme.Colors.textSecondary)
+
             Button {
                 Task {
                     await apiClient.logout()
@@ -885,11 +887,11 @@ struct AccountsView: View {
                 }
                 .padding(Theme.Spacing.md)
                 .background(Theme.Colors.cardBackground)
+                .cornerRadius(Theme.CornerRadius.md)
+                .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
                 .contentShape(Rectangle())
             }
         }
-        .cornerRadius(Theme.CornerRadius.md)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
         .padding(.horizontal, Theme.Spacing.md)
     }
 
