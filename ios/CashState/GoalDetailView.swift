@@ -187,17 +187,26 @@ struct GoalDetailView: View {
                     ? Theme.Colors.income
                     : (detail.goalType == .debtPayment ? Theme.Colors.expense : Theme.Colors.income)
 
+                // Calculate Y domain that includes all data + goal line + padding
+                let allValues = points.map { $0.balance } + [goalBalance]
+                let dataMin = allValues.min() ?? 0
+                let dataMax = allValues.max() ?? 0
+                let yRange = dataMin == dataMax ? abs(dataMin) * 0.3 : (dataMax - dataMin) * 0.15
+                let yDomainLower = dataMin - yRange
+                let yDomainUpper = dataMax + yRange
+
                 Chart {
                     ForEach(points) { point in
                         AreaMark(
                             x: .value("Date", point.date),
-                            y: .value("Balance", point.balance)
+                            yStart: .value("Balance", point.balance),
+                            yEnd: .value("Baseline", currentBalance >= goalBalance ? yDomainLower : yDomainUpper)
                         )
                         .foregroundStyle(
                             LinearGradient(
                                 colors: [lineColor.opacity(0.25), lineColor.opacity(0.03)],
-                                startPoint: .top,
-                                endPoint: .bottom
+                                startPoint: currentBalance >= goalBalance ? .top : .bottom,
+                                endPoint: currentBalance >= goalBalance ? .bottom : .top
                             )
                         )
                         LineMark(
@@ -218,6 +227,7 @@ struct GoalDetailView: View {
                         }
                 }
                 .frame(height: 180)
+                .chartYScale(domain: yDomainLower...yDomainUpper)
                 .chartXAxis {
                     AxisMarks(values: .automatic(desiredCount: 4)) { _ in
                         AxisGridLine()

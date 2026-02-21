@@ -454,9 +454,9 @@ struct NetWorthChart: View {
             return (value - padding)...(value + padding)
         }
 
-        // Calculate padding (5% of range)
+        // Calculate padding (20% of range to accommodate catmullRom overshoot)
         let range = maxBalance - minBalance
-        let padding = range * 0.05
+        let padding = range * 0.2
 
         return (minBalance - padding)...(maxBalance + padding)
     }
@@ -479,13 +479,25 @@ struct NetWorthChart: View {
 
     var body: some View {
         if isFlatLine {
-            // Flat line using RuleMark — LineMark doesn't render with identical Y values
+            // Flat line using RuleMark + AreaMark for shading
+            let points = effectivePoints.map { ChartPoint(date: $0.date, balance: $0.balance) }
+            // yStart must be the higher value, yEnd the lower
+            let shadeTop = currentBalance < 0 ? chartYDomain.upperBound : currentBalance
+            let shadeBottom = currentBalance < 0 ? currentBalance : chartYDomain.lowerBound
             Chart {
+                ForEach(points) { point in
+                    AreaMark(
+                        x: .value("Date", point.date),
+                        yStart: .value("Top", shadeTop),
+                        yEnd: .value("Bottom", shadeBottom)
+                    )
+                    .foregroundStyle(chartColor.opacity(0.2))
+                }
+
                 RuleMark(y: .value("Balance", currentBalance))
                     .foregroundStyle(chartColor)
                     .lineStyle(StrokeStyle(lineWidth: 3))
             }
-            .chartXScale(domain: xDates.start...xDates.end)
             .chartYScale(domain: chartYDomain)
             .chartXAxis {
                 AxisMarks(values: .automatic(desiredCount: 5)) { value in
@@ -527,7 +539,8 @@ struct NetWorthChart: View {
 
                 AreaMark(
                     x: .value("Date", point.date),
-                    y: .value("Balance", point.balance)
+                    yStart: .value("Balance", point.balance),
+                    yEnd: .value("Baseline", currentBalance >= 0 ? chartYDomain.lowerBound : chartYDomain.upperBound)
                 )
                 .foregroundStyle(
                     LinearGradient(
@@ -1465,20 +1478,11 @@ struct AccountBalanceChart: View {
             }
         }
 
-        // Calculate padding based on the range
+        // Calculate padding (20% of range to accommodate catmullRom overshoot)
         let range = max - min
-        let padding = range * 0.1
+        let padding = range * 0.2
 
-        // Extend the domain in both directions
-        let lowerBound = min < 0 ? min - padding : min * 0.95
-        let upperBound = max > 0 ? max + padding : max * 1.05
-
-        // Ensure we include zero if balances cross it
-        if min < 0 && max > 0 {
-            return lowerBound...upperBound
-        }
-
-        return lowerBound...upperBound
+        return (min - padding)...(max + padding)
     }
 
     var body: some View {
@@ -1507,10 +1511,11 @@ struct AccountBalanceChart: View {
                 .interpolationMethod(.catmullRom) // Smooth curve like NetWorthChart
                 .lineStyle(StrokeStyle(lineWidth: 3))
 
-                // Area fill under the line
+                // Area fill between line and domain edge
                 AreaMark(
                     x: .value("Date", point.date),
-                    y: .value("Balance", point.balance)
+                    yStart: .value("Balance", point.balance),
+                    yEnd: .value("Baseline", currentBalance >= 0 ? chartYDomain.lowerBound : chartYDomain.upperBound)
                 )
                 .foregroundStyle(
                     LinearGradient(
@@ -1518,8 +1523,8 @@ struct AccountBalanceChart: View {
                             chartColor.opacity(0.3),
                             chartColor.opacity(0.05)
                         ],
-                        startPoint: .top,
-                        endPoint: .bottom
+                        startPoint: currentBalance >= 0 ? .top : .bottom,
+                        endPoint: currentBalance >= 0 ? .bottom : .top
                     )
                 )
                 .interpolationMethod(.catmullRom)
