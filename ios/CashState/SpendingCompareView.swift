@@ -159,8 +159,14 @@ struct SpendingCompareView: View {
         }
         .background(Theme.Colors.background)
         .task { await loadData() }
-        .onChange(of: thisMonth) { _, _ in Task { await loadData() } }
-        .onChange(of: lastMonth) { _, _ in Task { await loadData() } }
+        .onChange(of: thisMonth) { _, newValue in
+            Analytics.shared.track(.spendingCompareMonthChanged, properties: ["month": monthLabel(for: newValue), "picker": "this_month"])
+            Task { await loadData() }
+        }
+        .onChange(of: lastMonth) { _, newValue in
+            Analytics.shared.track(.spendingCompareMonthChanged, properties: ["month": monthLabel(for: newValue), "picker": "compare_month"])
+            Task { await loadData() }
+        }
         .sheet(isPresented: $showThisMonthPicker) {
             MonthYearPickerSheet(selectedMonth: $thisMonth, isPresented: $showThisMonthPicker)
         }

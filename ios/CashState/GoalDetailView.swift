@@ -167,6 +167,7 @@ struct GoalDetailView: View {
                         Button(range) {
                             selectedRange = range
                             selectedGranularity = granularityMap[range] ?? "day"
+                            Analytics.shared.track(.goalTimeRangeChanged, properties: ["range": range])
                             Task { await loadDetail() }
                         }
                         .font(.caption)

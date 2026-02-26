@@ -65,6 +65,7 @@ struct SimplefinSetupView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
+                        Analytics.shared.track(.simplefinSetupCancelled)
                         dismiss()
                     }
                 }

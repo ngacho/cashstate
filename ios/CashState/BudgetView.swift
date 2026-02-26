@@ -138,6 +138,7 @@ struct BudgetView: View {
                 if hasBudget {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button {
+                            Analytics.shared.screen(.budgetSettings)
                             if let currentBudget = allBudgets.first(where: { $0.id == budgetId }) {
                                 navigationPath.append(currentBudget)
                             } else {
@@ -389,6 +390,7 @@ struct BudgetView: View {
                             Menu {
                                 Button(action: {
                                     showIncomeInBudget.toggle()
+                                    Analytics.shared.track(.incomeFilterToggled, properties: ["show_income": showIncomeInBudget])
                                     reloadData()
                                 }) {
                                     Label(
@@ -1633,6 +1635,10 @@ private struct CategoryLineItemEditView: View {
                     )
                 }
             }
+            Analytics.shared.track(.budgetLineItemSaved, properties: [
+                "category_name": category.name,
+                "amount": catAmount
+            ])
             dismiss()
         } catch {
             errorMessage = "Failed to save changes"
@@ -2452,6 +2458,7 @@ private struct BudgetEditView: View {
                 emoji: emoji != (budget.emoji ?? "💰") ? emoji : nil,
                 color: selectedColor != (budget.color ?? "#00A699") ? selectedColor : nil
             )
+            Analytics.shared.track(.budgetLineItemSaved, properties: ["budget_name": trimmed])
             onSave(updated)
             dismiss()
         } catch {
@@ -2465,6 +2472,7 @@ private struct BudgetEditView: View {
         errorMessage = nil
         do {
             try await apiClient.deleteBudget(budgetId: budget.id)
+            Analytics.shared.track(.budgetDeleted, properties: ["budget_name": budget.name])
             onDelete(budget.id)
             dismiss()
         } catch {
@@ -2529,6 +2537,7 @@ private struct BudgetEditView: View {
         do {
             let newMonth = try await apiClient.assignBudgetMonth(budgetId: budget.id, month: monthStr)
             budgetMonths.append(newMonth)
+            Analytics.shared.track(.budgetMonthOverrideAdded, properties: ["month": monthStr])
         } catch {
             errorMessage = "Failed to add month override: \(error.localizedDescription)"
         }
@@ -2538,6 +2547,7 @@ private struct BudgetEditView: View {
         do {
             try await apiClient.deleteBudgetMonth(monthId: month.id)
             budgetMonths.removeAll { $0.id == month.id }
+            Analytics.shared.track(.budgetMonthOverrideDeleted)
         } catch {
             errorMessage = "Failed to remove month override"
         }
@@ -2551,6 +2561,7 @@ private struct BudgetEditView: View {
             linkedAccountIds.remove(account.id)
             do {
                 try await apiClient.removeBudgetAccount(budgetId: budget.id, accountId: account.id)
+                Analytics.shared.track(.budgetAccountRemoved, properties: ["account_name": account.name])
             } catch {
                 linkedAccountIds.insert(account.id)
                 accountErrorMessage = "Failed to remove account"
@@ -2559,6 +2570,7 @@ private struct BudgetEditView: View {
             linkedAccountIds.insert(account.id)
             do {
                 _ = try await apiClient.addBudgetAccount(budgetId: budget.id, accountId: account.id)
+                Analytics.shared.track(.budgetAccountAdded, properties: ["account_name": account.name])
             } catch {
                 linkedAccountIds.remove(account.id)
                 let desc = error.localizedDescription
@@ -2899,6 +2911,7 @@ private struct CreateBudgetSheet: View {
         errorMessage = nil
         do {
             let created = try await apiClient.createBudget(name: trimmed, isDefault: isDefault)
+            Analytics.shared.track(.budgetCreated, properties: ["budget_name": trimmed])
             onCreate(created)
         } catch {
             errorMessage = "Failed to create: \(error.localizedDescription)"
@@ -3397,6 +3410,10 @@ private struct AddSubcategorySheet: View {
         isSaving = true
         do {
             _ = try await apiClient.createSubcategory(categoryId: category.id, name: trimmed, icon: icon)
+            Analytics.shared.track(.subcategoryCreated, properties: [
+                "subcategory_name": trimmed,
+                "parent_category": category.name
+            ])
             dismiss()
             onComplete()
         } catch {

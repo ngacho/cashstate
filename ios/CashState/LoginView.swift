@@ -68,6 +68,9 @@ struct LoginView: View {
                 Spacer()
             }
         }
+        .onAppear {
+            Analytics.shared.screen(.login)
+        }
         .alert("Error", isPresented: $showError) {
             Button("OK") { }
         } message: {

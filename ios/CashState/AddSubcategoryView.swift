@@ -197,6 +197,9 @@ struct AddSubcategoryView: View {
             .background(Theme.Colors.background)
             .navigationTitle("New Subcategory")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                Analytics.shared.screen(.addSubcategory)
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
@@ -221,6 +224,10 @@ struct AddSubcategoryView: View {
             transactionCount: 0
         )
 
+        Analytics.shared.track(.subcategoryCreated, properties: [
+            "subcategory_name": subcategoryName,
+            "parent_category": parentCategory.name
+        ])
         onSave?(newSubcategory)
         isPresented = false
     }

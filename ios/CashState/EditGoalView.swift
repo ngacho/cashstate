@@ -177,6 +177,9 @@ struct EditGoalView: View {
                                 .foregroundColor(Theme.Colors.textSecondary)
                         }
                     }
+                    .onChange(of: isCompleted) { _, newValue in
+                        Analytics.shared.track(.goalCompletionToggled, properties: ["completed": newValue])
+                    }
                     .padding(Theme.Spacing.md)
                     .background(Theme.Colors.cardBackground)
                     .cornerRadius(Theme.CornerRadius.md)

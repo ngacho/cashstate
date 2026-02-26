@@ -55,6 +55,7 @@ struct UncategorizedTransactionsCard: View {
             HStack(spacing: Theme.Spacing.sm) {
                 // Manual categorization button
                 Button {
+                    Analytics.shared.track(.manualCategorizationStarted, properties: ["transaction_count": uncategorizedCount])
                     showManualCategorization = true
                 } label: {
                     HStack {
@@ -438,6 +439,9 @@ struct SwipeableCategorization: View {
             }
             .navigationTitle("Categorize Transactions")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                Analytics.shared.screen(.manualCategorization)
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
@@ -573,6 +577,7 @@ struct SwipeableCategorization: View {
     }
 
     private func skipTransaction() {
+        Analytics.shared.track(.transactionSkipped)
         withAnimation(.spring()) {
             offset = CGSize(width: -500, height: 0)
         }
@@ -1163,6 +1168,9 @@ struct AICategorization: View {
                             transactions[index].subcategoryId = item.subcategory?.id
                         }
                     }
+                    Analytics.shared.track(.manualCategorizationCompleted, properties: [
+                        "transactions_categorized": categorizedTransactions.count
+                    ])
                     isPresented = false
                 }
             } catch {

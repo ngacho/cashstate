@@ -115,6 +115,7 @@ struct HomeView: View {
                                     .clipShape(Circle())
                             } else {
                                 Button(action: {
+                                    Analytics.shared.track(.accountSyncStarted, properties: ["source": "home_header"])
                                     Task { await resyncAllAccounts() }
                                 }) {
                                     Image(systemName: "arrow.triangle.2.circlepath")
@@ -254,6 +255,7 @@ struct HomeView: View {
             .background(Theme.Colors.background)
             .navigationBarHidden(true)
             .refreshable {
+                Analytics.shared.track(.pullToRefresh, properties: ["screen": "home"])
                 await loadAccounts()
                 await loadSnapshots()
             }

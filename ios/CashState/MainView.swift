@@ -93,6 +93,7 @@ struct TransactionsView: View {
             .navigationTitle("Transactions")
             .navigationBarTitleDisplayMode(.inline)
             .refreshable {
+                Analytics.shared.track(.pullToRefresh, properties: ["screen": "transactions"])
                 await loadTransactions()
             }
             .task {
@@ -290,6 +291,7 @@ struct InsightsView: View {
                 }
             }
             .refreshable {
+                Analytics.shared.track(.pullToRefresh, properties: ["screen": "insights"])
                 await loadTransactions()
             }
             .task {
@@ -748,6 +750,7 @@ struct AccountsView: View {
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .refreshable {
+                Analytics.shared.track(.pullToRefresh, properties: ["screen": "accounts"])
                 await loadSimplefinItems()
             }
             .task {
@@ -857,6 +860,7 @@ struct AccountsView: View {
                 ProgressView()
             } else {
                 Button {
+                    Analytics.shared.track(.accountSyncStarted, properties: ["source": "accounts_tab"])
                     if let item = simplefinItems.first {
                         Task {
                             await syncItem(item.id)

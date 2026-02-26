@@ -299,6 +299,10 @@ struct CategoryBudgetView: View {
                 category.budgetId = created.budgetId
             }
 
+            Analytics.shared.track(.budgetLineItemSaved, properties: [
+                "category_name": category.name,
+                "amount": amount
+            ])
             isSaving = false
             isPresented = false
         } catch {

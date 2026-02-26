@@ -38,6 +38,7 @@ struct GoalsView: View {
                 }
             }
             .refreshable {
+                Analytics.shared.track(.pullToRefresh, properties: ["screen": "goals"])
                 await loadGoals()
             }
             .task {

@@ -29,6 +29,7 @@ struct AddCategoryView: View {
                 VStack(spacing: Theme.Spacing.lg) {
                     // Category Type Toggle
                     HStack(spacing: 0) {
+
                         ForEach(BudgetCategory.CategoryType.allCases, id: \.self) { type in
                             Button {
                                 selectedType = type
@@ -264,6 +265,9 @@ struct AddCategoryView: View {
             .background(Theme.Colors.background)
             .navigationTitle("Add Category")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                Analytics.shared.screen(.addCategory)
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
@@ -319,6 +323,11 @@ struct AddCategoryView: View {
                 spentAmount: 0.0
             )
 
+            Analytics.shared.track(.categoryCreated, properties: [
+                "category_name": created.name,
+                "category_type": selectedType.rawValue,
+                "subcategory_count": subcategories.count
+            ])
             onSave?(newCategory)
             isPresented = false
         } catch {
@@ -600,6 +609,9 @@ struct EditCategoryView: View {
             .background(Theme.Colors.background)
             .navigationTitle("Edit Category")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                Analytics.shared.screen(.editCategory)
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
@@ -625,6 +637,9 @@ struct EditCategoryView: View {
             category.name = updated.name
             category.icon = updated.icon
             category.colorHex = updated.color
+            Analytics.shared.track(.categoryUpdated, properties: [
+                "category_name": updated.name
+            ])
             isPresented = false
         } catch {
             errorMessage = error.localizedDescription

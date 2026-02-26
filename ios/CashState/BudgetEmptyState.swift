@@ -34,7 +34,10 @@ struct BudgetEmptyStateView: View {
             // Action Buttons
             VStack(spacing: 12) {
                 // Use Defaults Button
-                Button(action: { showOnboarding = true }) {
+                Button(action: {
+                    Analytics.shared.track(.onboardingStarted)
+                    showOnboarding = true
+                }) {
                     HStack {
                         Image(systemName: "sparkles")
                         Text("Use Default Categories")
@@ -48,7 +51,10 @@ struct BudgetEmptyStateView: View {
                 .disabled(isLoading)
 
                 // Create Custom Button
-                Button(action: { showAddCategory = true }) {
+                Button(action: {
+                    Analytics.shared.screen(.addCategory, properties: ["source": "empty_state"])
+                    showAddCategory = true
+                }) {
                     HStack {
                         Image(systemName: "plus.circle")
                         Text("Create Custom Category")
@@ -123,6 +129,11 @@ struct BudgetEmptyStateView: View {
                 await MainActor.run {
                     isLoading = false
                     seedResult = result
+                    Analytics.shared.track(.defaultCategoriesSeeded, properties: [
+                        "categories_created": result.categoriesCreated,
+                        "subcategories_created": result.subcategoriesCreated,
+                        "monthly_budget": monthlyBudget
+                    ])
                 }
             } catch {
                 await MainActor.run {
@@ -274,6 +285,10 @@ struct OnboardingFlow: View {
                     // Complete Button
                     Button(action: {
                         if let budget = budgetValue {
+                            Analytics.shared.track(.onboardingCompleted, properties: [
+                                "monthly_budget": budget,
+                                "accounts_selected": selectedAccountIds.count
+                            ])
                             isPresented = false
                             onComplete(budget, Array(selectedAccountIds))
                         }
@@ -303,6 +318,7 @@ struct OnboardingFlow: View {
         }
         .onAppear {
             isInputFocused = true
+            Analytics.shared.screen(.onboarding)
         }
         .task {
             await loadAccounts()
