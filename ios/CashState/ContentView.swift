@@ -21,6 +21,9 @@ struct ContentView: View {
         let hasSession = await apiClient.loadStoredSession()
         if hasSession {
             isAuthenticated = true
+            if let userId = UserDefaults.standard.string(forKey: "dev_user_id") {
+                Analytics.shared.identify(userId: userId)
+            }
             print("Auto-logged in with stored userId")
         }
     }

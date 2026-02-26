@@ -58,6 +58,10 @@ struct GoalDetailView: View {
         .task {
             await loadDetail()
         }
+        .onAppear {
+            Analytics.shared.screen(.goalDetail)
+            Analytics.shared.track(.goalDetailViewed)
+        }
     }
 
     private func headerCard(detail: GoalDetail) -> some View {

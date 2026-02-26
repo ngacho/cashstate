@@ -75,6 +75,7 @@ struct SimplefinSetupView: View {
     private func setupSimplefin() {
         isLoading = true
         errorMessage = nil
+        Analytics.shared.track(.simplefinSetupStarted)
 
         Task {
             do {
@@ -85,6 +86,7 @@ struct SimplefinSetupView: View {
 
                 await MainActor.run {
                     isLoading = false
+                    Analytics.shared.track(.simplefinConnected)
                     if Config.debugMode {
                         print("✅ Account connected: \(response.itemId)")
                     }

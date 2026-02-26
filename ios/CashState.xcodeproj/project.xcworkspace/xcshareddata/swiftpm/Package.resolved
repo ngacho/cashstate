@@ -1,0 +1,42 @@
+{
+  "originHash" : "861807a076a5e2b1f4936c2c9256113b3045922bdf4bb412ca7844beb403f363",
+  "pins" : [
+    {
+      "identity" : "clerk-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/clerk/clerk-ios",
+      "state" : {
+        "revision" : "53b7ba1a98f196aaa67f8b66b92280fc873faa3d",
+        "version" : "1.0.3"
+      }
+    },
+    {
+      "identity" : "nuke",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/kean/Nuke.git",
+      "state" : {
+        "revision" : "83e19143355b02e9261edb2323b3e1e93287ebb9",
+        "version" : "12.9.0"
+      }
+    },
+    {
+      "identity" : "phonenumberkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/marmelroy/PhoneNumberKit",
+      "state" : {
+        "revision" : "e0f91a22bbc96a67430e1cff502f943a67a97ed3",
+        "version" : "4.2.5"
+      }
+    },
+    {
+      "identity" : "posthog-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/PostHog/posthog-ios.git",
+      "state" : {
+        "revision" : "38dc32a8b80da53ed6736a7ea696b324881c3d40",
+        "version" : "3.41.2"
+      }
+    }
+  ],
+  "version" : 3
+}

@@ -81,9 +81,13 @@ struct LoginView: View {
         Task {
             do {
                 if isRegistering {
-                    let _ = try await apiClient.register(username: username, password: password)
+                    let response = try await apiClient.register(username: username, password: password)
+                    Analytics.shared.identify(userId: response.userId)
+                    Analytics.shared.track(.userRegistered)
                 } else {
-                    let _ = try await apiClient.login(username: username, password: password)
+                    let response = try await apiClient.login(username: username, password: password)
+                    Analytics.shared.identify(userId: response.userId)
+                    Analytics.shared.track(.userLoggedIn)
                 }
                 isAuthenticated = true
             } catch {

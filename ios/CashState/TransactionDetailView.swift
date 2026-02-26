@@ -344,6 +344,9 @@ private struct TransactionDetailContentView: View {
         .task {
             await loadCategoriesIfNeeded()
         }
+        .onAppear {
+            Analytics.shared.screen(.transactionDetail)
+        }
     }
 
     private func loadCategoriesIfNeeded() async {
@@ -417,6 +420,10 @@ private struct TransactionDetailContentView: View {
             )]
 
             let _ = try await apiClient.batchUpdateTransactions(updates)
+            Analytics.shared.track(.transactionCategorized, properties: [
+                "category": selectedCategory?.name ?? "",
+                "subcategory": selectedSubcategory?.name ?? ""
+            ])
 
             // Success! Show animation and notify parent
             await MainActor.run {

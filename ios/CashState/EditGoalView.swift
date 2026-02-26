@@ -260,6 +260,9 @@ struct EditGoalView: View {
         .task {
             await loadAccounts()
         }
+        .onAppear {
+            Analytics.shared.screen(.editGoal)
+        }
     }
 
     private func loadAccounts() async {
@@ -302,6 +305,7 @@ struct EditGoalView: View {
                 isCompleted: isCompleted,
                 accounts: accountRequests.isEmpty ? nil : accountRequests
             )
+            Analytics.shared.track(.goalEdited, properties: ["goal_type": goal.goalType.rawValue])
             onUpdated(updated)
             dismiss()
         } catch let err as APIError {
