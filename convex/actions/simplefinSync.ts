@@ -94,6 +94,8 @@ export const sync = action({
     forceSync: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    console.log(`[SYNC] Starting sync for userId=${args.userId}, itemId=${args.itemId}, forceSync=${args.forceSync}, startDate=${args.startDate}`);
+
     const encryptionKey = process.env.ENCRYPTION_KEY;
     if (!encryptionKey) throw new Error("ENCRYPTION_KEY not configured");
 
@@ -102,6 +104,7 @@ export const sync = action({
       internal.simplefinSyncHelpers._getItem,
       { itemId: args.itemId }
     );
+    console.log(`[SYNC] Item lookup: found=${!!item}, status=${item?.status}, lastSyncedAt=${item?.lastSyncedAt}`);
     if (!item || item.userId !== args.userId) {
       throw new Error("Item not found or access denied");
     }
@@ -110,6 +113,7 @@ export const sync = action({
     if (!args.forceSync && item.lastSyncedAt) {
       const hoursSinceSync =
         (Date.now() - item.lastSyncedAt) / (1000 * 60 * 60);
+      console.log(`[SYNC] Rate limit check: hoursSinceSync=${hoursSinceSync.toFixed(2)}, forceSync=${args.forceSync}`);
       if (hoursSinceSync < 24) {
         throw new Error(
           `Rate limited: last synced ${Math.round(hoursSinceSync)}h ago. Use forceSync to override.`
@@ -126,10 +130,12 @@ export const sync = action({
         status: "running",
       }
     );
+    console.log(`[SYNC] Created sync job: ${syncJobId}`);
 
     try {
       // Decrypt access URL
       const accessUrl = await decrypt(item.accessUrl, encryptionKey);
+      console.log(`[SYNC] Decrypted access URL successfully`);
 
       // Parse access URL to get base URL and credentials
       const urlObj = new URL(accessUrl);
@@ -146,11 +152,13 @@ export const sync = action({
       }
       const qs = params.toString();
       if (qs) apiUrl += `?${qs}`;
+      console.log(`[SYNC] Fetching SimpleFin API: ${baseUrl}/accounts${qs ? '?' + qs : ''}`);
 
       // Fetch from SimpleFin
       const response = await fetch(apiUrl, {
         headers: { Authorization: authHeader },
       });
+      console.log(`[SYNC] SimpleFin API response: status=${response.status} ${response.statusText}`);
       if (!response.ok) {
         throw new Error(
           `SimpleFin API error: ${response.status} ${response.statusText}`
@@ -165,6 +173,11 @@ export const sync = action({
 
       // Process accounts
       const sfAccounts = data.accounts || [];
+      console.log(`[SYNC] SimpleFin returned ${sfAccounts.length} accounts`);
+      for (const acc of sfAccounts) {
+        console.log(`[SYNC]   Account: name="${acc.name}", id="${acc.id}", balance=${acc.balance}, txCount=${(acc.transactions || []).length}`);
+      }
+
       const accountData = sfAccounts.map((acc: any) => ({
         simplefinAccountId: acc.id,
         name: acc.name || "Unknown Account",
@@ -188,6 +201,7 @@ export const sync = action({
         }
       );
       totalAccountsSynced = accountIds.length;
+      console.log(`[SYNC] Upserted ${accountIds.length} accounts, IDs: ${accountIds.join(', ')}`);
 
       // Process transactions per account
       for (let i = 0; i < sfAccounts.length; i++) {
@@ -196,7 +210,21 @@ export const sync = action({
         const accountName = sfAccount.name || "Unknown Account";
         const sfTransactions = sfAccount.transactions || [];
 
-        if (sfTransactions.length === 0) continue;
+        console.log(`[SYNC] Processing account "${accountName}" (${accountId}): ${sfTransactions.length} transactions`);
+
+        if (sfTransactions.length === 0) {
+          console.log(`[SYNC]   Skipping - no transactions`);
+          continue;
+        }
+
+        // Log a few sample transactions
+        const sampleTxs = sfTransactions.slice(0, 3);
+        for (const tx of sampleTxs) {
+          console.log(`[SYNC]   Sample tx: id="${tx.id}", amount=${tx.amount}, posted=${tx.posted}, desc="${tx.description}", payee="${tx.payee}", pending=${tx.pending}`);
+        }
+        if (sfTransactions.length > 3) {
+          console.log(`[SYNC]   ... and ${sfTransactions.length - 3} more transactions`);
+        }
 
         const txData = sfTransactions.map((tx: any) => ({
           simplefinTxId: tx.id,
@@ -221,9 +249,11 @@ export const sync = action({
               transactions: txData,
             }
           );
+          console.log(`[SYNC]   Upsert result for "${accountName}": added=${result.added}, updated=${result.updated}`);
           totalTxAdded += result.added;
           totalTxUpdated += result.updated;
         } catch (e: any) {
+          console.error(`[SYNC]   ERROR upserting transactions for "${accountName}": ${e.message}`);
           errors.push(`Account ${accountName}: ${e.message}`);
         }
       }
@@ -247,6 +277,11 @@ export const sync = action({
         }
       );
 
+      console.log(`[SYNC] COMPLETED: accounts=${totalAccountsSynced}, txAdded=${totalTxAdded}, txUpdated=${totalTxUpdated}, errors=${errors.length}`);
+      if (errors.length > 0) {
+        console.log(`[SYNC] Errors: ${JSON.stringify(errors)}`);
+      }
+
       return {
         success: true,
         syncJobId: syncJobId.toString(),
@@ -256,6 +291,8 @@ export const sync = action({
         errors,
       };
     } catch (e: any) {
+      console.error(`[SYNC] FAILED for itemId=${args.itemId}: ${e.message}`);
+      console.error(`[SYNC] Stack: ${e.stack}`);
       await ctx.runMutation(internal.simplefinSyncHelpers._updateSyncJob, {
         id: syncJobId,
         status: "failed",
