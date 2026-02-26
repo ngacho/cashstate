@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A0D709C22F50260C0092E027 /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = A0D709C12F50260C0092E027 /* PostHog */; };
+		A0D709C52F50264B0092E027 /* ClerkKit in Frameworks */ = {isa = PBXBuildFile; productRef = A0D709C42F50264B0092E027 /* ClerkKit */; };
+		A0D709C72F50264B0092E027 /* ClerkKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = A0D709C62F50264B0092E027 /* ClerkKitUI */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		A0DDB7B52F3AE26600532C20 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +58,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A0D709C22F50260C0092E027 /* PostHog in Frameworks */,
+				A0D709C52F50264B0092E027 /* ClerkKit in Frameworks */,
+				A0D709C72F50264B0092E027 /* ClerkKitUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -72,12 +81,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		A0D709C02F50260C0092E027 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		A0DDB79B2F3AE26300532C20 = {
 			isa = PBXGroup;
 			children = (
 				A0DDB7A62F3AE26300532C20 /* CashState */,
 				A0DDB7B72F3AE26600532C20 /* CashStateTests */,
 				A0DDB7C12F3AE26600532C20 /* CashStateUITests */,
+				A0D709C02F50260C0092E027 /* Frameworks */,
 				A0DDB7A52F3AE26300532C20 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -112,6 +129,9 @@
 			);
 			name = CashState;
 			packageProductDependencies = (
+				A0D709C12F50260C0092E027 /* PostHog */,
+				A0D709C42F50264B0092E027 /* ClerkKit */,
+				A0D709C62F50264B0092E027 /* ClerkKitUI */,
 			);
 			productName = CashState;
 			productReference = A0DDB7A42F3AE26300532C20 /* CashState.app */;
@@ -196,6 +216,8 @@
 			mainGroup = A0DDB79B2F3AE26300532C20;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				A0D709BF2F5025B70092E027 /* XCRemoteSwiftPackageReference "posthog-ios" */,
+				A0D709C32F50264B0092E027 /* XCRemoteSwiftPackageReference "clerk-ios" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A0DDB7A52F3AE26300532C20 /* Products */;
@@ -560,6 +582,43 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A0D709BF2F5025B70092E027 /* XCRemoteSwiftPackageReference "posthog-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/PostHog/posthog-ios.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.41.2;
+			};
+		};
+		A0D709C32F50264B0092E027 /* XCRemoteSwiftPackageReference "clerk-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/clerk/clerk-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.3;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A0D709C12F50260C0092E027 /* PostHog */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A0D709BF2F5025B70092E027 /* XCRemoteSwiftPackageReference "posthog-ios" */;
+			productName = PostHog;
+		};
+		A0D709C42F50264B0092E027 /* ClerkKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A0D709C32F50264B0092E027 /* XCRemoteSwiftPackageReference "clerk-ios" */;
+			productName = ClerkKit;
+		};
+		A0D709C62F50264B0092E027 /* ClerkKitUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A0D709C32F50264B0092E027 /* XCRemoteSwiftPackageReference "clerk-ios" */;
+			productName = ClerkKitUI;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A0DDB79C2F3AE26300532C20 /* Project object */;
 }

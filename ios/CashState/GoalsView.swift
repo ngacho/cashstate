@@ -43,6 +43,9 @@ struct GoalsView: View {
             .task {
                 await loadGoals()
             }
+            .onAppear {
+                Analytics.shared.screen(.goals)
+            }
             .alert("Error", isPresented: Binding(
                 get: { error != nil && !goals.isEmpty },
                 set: { if !$0 { error = nil } }
@@ -174,6 +177,7 @@ struct GoalsView: View {
         do {
             try await apiClient.deleteGoal(goalId: goal.id)
             goals.removeAll { $0.id == goal.id }
+            Analytics.shared.track(.goalDeleted, properties: ["goal_type": goal.goalType.rawValue])
         } catch {
             self.error = error.localizedDescription
         }

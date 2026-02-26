@@ -3,30 +3,40 @@ import SwiftUI
 struct MainView: View {
     @Binding var isAuthenticated: Bool
     let apiClient: APIClient
+    @State private var selectedTab = 0
+
+    private let tabNames = ["Overview", "Budget", "Goals", "Accounts"]
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             HomeView(apiClient: apiClient)
                 .tabItem {
                     Label("Overview", systemImage: "house.fill")
                 }
+                .tag(0)
 
             BudgetView(apiClient: apiClient)
                 .tabItem {
                     Label("Budget", systemImage: "chart.pie.fill")
                 }
+                .tag(1)
 
             GoalsView(apiClient: apiClient)
                 .tabItem {
                     Label("Goals", systemImage: "target")
                 }
+                .tag(2)
 
             AccountsView(isAuthenticated: $isAuthenticated, apiClient: apiClient)
                 .tabItem {
                     Label("Accounts", systemImage: "person.crop.circle")
                 }
+                .tag(3)
         }
         .tint(Theme.Colors.primary)
+        .onChange(of: selectedTab) { _, newValue in
+            Analytics.shared.track(.tabSwitched, properties: ["tab": tabNames[newValue]])
+        }
     }
 }
 
@@ -872,6 +882,8 @@ struct AccountsView: View {
         VStack(spacing: 0) {
             Button {
                 Task {
+                    Analytics.shared.track(.userLoggedOut)
+                    Analytics.shared.reset()
                     await apiClient.logout()
                     isAuthenticated = false
                 }
@@ -921,6 +933,10 @@ struct AccountsView: View {
                 forceSync: forceSync
             )
             print("✅ Synced \(response.accountsSynced) accounts, \(response.transactionsAdded) transactions")
+            Analytics.shared.track(.accountsSynced, properties: [
+                "accounts_synced": response.accountsSynced,
+                "transactions_added": response.transactionsAdded
+            ])
 
             // Reload items to update last synced time
             await loadSimplefinItems()

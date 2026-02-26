@@ -243,6 +243,9 @@ struct CreateGoalView: View {
         .task {
             await loadAccounts()
         }
+        .onAppear {
+            Analytics.shared.screen(.createGoal)
+        }
     }
 
     private func loadAccounts() async {
@@ -286,6 +289,7 @@ struct CreateGoalView: View {
                 targetDate: dateStr,
                 accounts: accountRequests
             )
+            Analytics.shared.track(.goalCreated, properties: ["goal_type": goalType.rawValue])
             onCreated(goal)
             dismiss()
         } catch let err as APIError {

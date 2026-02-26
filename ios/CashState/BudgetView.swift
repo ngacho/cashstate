@@ -174,11 +174,20 @@ struct BudgetView: View {
         .task {
             reloadData()
         }
+        .onAppear {
+            Analytics.shared.screen(.budget)
+        }
         .onChange(of: selectedMonth) { oldValue, newValue in
             // Reload data when the selected month changes (skip initial load)
             if oldValue != newValue {
+                Analytics.shared.track(.budgetMonthNavigated)
                 isLoading = true  // Show loading state immediately
                 reloadData()
+            }
+        }
+        .onChange(of: budgetTab) { _, newValue in
+            if newValue == 1 {
+                Analytics.shared.track(.spendingCompareViewed)
             }
         }
     }
@@ -641,6 +650,9 @@ struct BudgetView: View {
         isAICategorizationRunning = true
         aiCategorizationProgress = 0
         aiCategorizationError = nil
+        Analytics.shared.track(.aiCategorizationStarted, properties: [
+            "transaction_count": uncategorizedTransactions.count
+        ])
 
         do {
             // Start background categorization job
@@ -664,6 +676,9 @@ struct BudgetView: View {
 
                 if job.status == "completed" {
                     aiCategorizationProgress = 1.0
+                    Analytics.shared.track(.aiCategorizationCompleted, properties: [
+                        "categorized_count": job.categorizedCount
+                    ])
                     try await Task.sleep(nanoseconds: 500_000_000)
                     await loadData()
                     isAICategorizationRunning = false

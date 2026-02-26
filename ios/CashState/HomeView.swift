@@ -261,7 +261,11 @@ struct HomeView: View {
                 await loadAccounts()
                 await loadSnapshots()
             }
-            .onChange(of: selectedTimeRange) { _, _ in
+            .onAppear {
+                Analytics.shared.screen(.home)
+            }
+            .onChange(of: selectedTimeRange) { _, newValue in
+                Analytics.shared.track(.timeRangeChanged, properties: ["range": newValue.rawValue])
                 Task {
                     await loadSnapshots()
                 }
@@ -381,6 +385,8 @@ struct HomeView: View {
 
             // Reload snapshots to show the chart
             await loadSnapshots()
+
+            Analytics.shared.track(.accountsSynced)
 
             // Show success message
             await MainActor.run {
@@ -1141,6 +1147,10 @@ struct AccountDetailView: View {
         .task {
             await loadTransactions()
             await loadCategories()
+        }
+        .onAppear {
+            Analytics.shared.screen(.accountDetail, properties: ["account_name": account.name])
+            Analytics.shared.track(.accountDetailViewed, properties: ["account_name": account.name])
         }
         .sheet(isPresented: $showTransactionDetail) {
             if let transaction = selectedTransaction {

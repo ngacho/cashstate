@@ -129,6 +129,13 @@ private struct CategoryTransactionsContentView: View {
             await loadTransactions()
             await loadCategories()
         }
+        .onAppear {
+            Analytics.shared.screen(.categoryTransactions, properties: ["category": category.name])
+            Analytics.shared.track(.categoryDrillDown, properties: [
+                "category": category.name,
+                "subcategory": subcategory?.name ?? ""
+            ])
+        }
     }
 
     private var contentView: some View {

@@ -9,6 +9,11 @@ enum Config {
     /// Example: "https://your-deployment.convex.cloud"
     static let convexURL = "https://flexible-bison-651.convex.cloud"
 
+    // MARK: - PostHog
+
+    static let posthogAPIKey = "phc_Nd1mVhgoAgBogCRgMQ6uU1KjywjKvaWOSX9F4lJVM5y"
+    static let posthogHost = "https://us.i.posthog.com"
+
     // MARK: - App
 
     static let debugMode = true
