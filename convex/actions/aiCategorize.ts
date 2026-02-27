@@ -4,31 +4,41 @@ import { action, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 
+async function getUserFromAuth(ctx: any): Promise<{ userId: string }> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) throw new Error("Not authenticated");
+  const user = await ctx.runQuery(internal.usersHelpers._getByClerkId, {
+    clerkId: identity.subject,
+  });
+  if (!user) throw new Error("User not found in DB");
+  return { userId: user._id };
+}
+
 export const categorize = action({
   args: {
-    userId: v.id("users"),
     transactionIds: v.optional(v.array(v.id("simplefinTransactions"))),
     force: v.optional(v.boolean()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ categorizedCount: number; failedCount: number; results: any[] }> => {
+    const { userId } = await getUserFromAuth(ctx);
     const openRouterKey = process.env.OPENROUTER_API_KEY;
     if (!openRouterKey) throw new Error("OPENROUTER_API_KEY not configured");
 
     // 1. Get rules and uncategorized transactions
     const [rules, transactions, categories] = await Promise.all([
       ctx.runQuery(internal.aiCategorizeHelpers._getRules, {
-        userId: args.userId,
+        userId: userId as any,
       }),
       ctx.runQuery(
         internal.aiCategorizeHelpers._getUncategorizedTransactions,
         {
-          userId: args.userId,
+          userId: userId as any,
           transactionIds: args.transactionIds,
           force: args.force,
         }
       ),
       ctx.runQuery(internal.aiCategorizeHelpers._getCategories, {
-        userId: args.userId,
+        userId: userId as any,
       }),
     ]);
 

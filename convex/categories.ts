@@ -1,25 +1,22 @@
-import { query, mutation } from "./_generated/server";
+import { userQuery, userMutation } from "./functions";
 import { v } from "convex/values";
-import { validateUser } from "./helpers";
 
-export const list = query({
-  args: { userId: v.id("users") },
-  handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
+export const list = userQuery({
+  args: {},
+  handler: async (ctx) => {
     return await ctx.db
       .query("categories")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId", (q) => q.eq("userId", ctx.user._id))
       .collect();
   },
 });
 
-export const tree = query({
-  args: { userId: v.id("users") },
-  handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
+export const tree = userQuery({
+  args: {},
+  handler: async (ctx) => {
     const categories = await ctx.db
       .query("categories")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId", (q) => q.eq("userId", ctx.user._id))
       .collect();
 
     const result = await Promise.all(
@@ -43,19 +40,17 @@ export const tree = query({
   },
 });
 
-export const create = mutation({
+export const create = userMutation({
   args: {
-    userId: v.id("users"),
     name: v.string(),
     icon: v.string(),
     color: v.string(),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     // Get max display order
     const existing = await ctx.db
       .query("categories")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId", (q) => q.eq("userId", ctx.user._id))
       .collect();
     const maxOrder = existing.reduce(
       (max, c) => Math.max(max, c.displayOrder),
@@ -63,7 +58,7 @@ export const create = mutation({
     );
 
     const id = await ctx.db.insert("categories", {
-      userId: args.userId,
+      userId: ctx.user._id,
       name: args.name,
       icon: args.icon,
       color: args.color,
@@ -74,18 +69,16 @@ export const create = mutation({
   },
 });
 
-export const update = mutation({
+export const update = userMutation({
   args: {
-    userId: v.id("users"),
     id: v.id("categories"),
     name: v.optional(v.string()),
     icon: v.optional(v.string()),
     color: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const cat = await ctx.db.get(args.id);
-    if (!cat || cat.userId !== args.userId) {
+    if (!cat || cat.userId !== ctx.user._id) {
       throw new Error("Category not found or access denied");
     }
     const patch: Record<string, string> = {};
@@ -97,29 +90,27 @@ export const update = mutation({
   },
 });
 
-export const deleteCategory = mutation({
+export const deleteCategory = userMutation({
   args: {
-    userId: v.id("users"),
     id: v.id("categories"),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const cat = await ctx.db.get(args.id);
-    if (!cat || cat.userId !== args.userId) {
+    if (!cat || cat.userId !== ctx.user._id) {
       throw new Error("Category not found or access denied");
     }
 
     // Find Uncategorized category for this user
     const uncategorized = await ctx.db
       .query("categories")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId", (q) => q.eq("userId", ctx.user._id))
       .filter((q) => q.eq(q.field("name"), "Uncategorized"))
       .first();
 
     // Reassign transactions to Uncategorized
     const transactions = await ctx.db
       .query("simplefinTransactions")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId", (q) => q.eq("userId", ctx.user._id))
       .filter((q) => q.eq(q.field("categoryId"), args.id))
       .collect();
 
@@ -151,7 +142,7 @@ export const deleteCategory = mutation({
     // Delete categorization rules referencing this category
     const rules = await ctx.db
       .query("categorizationRules")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId", (q) => q.eq("userId", ctx.user._id))
       .filter((q) => q.eq(q.field("categoryId"), args.id))
       .collect();
     for (const rule of rules) {
@@ -163,17 +154,15 @@ export const deleteCategory = mutation({
   },
 });
 
-export const updateSubcategory = mutation({
+export const updateSubcategory = userMutation({
   args: {
-    userId: v.id("users"),
     id: v.id("subcategories"),
     name: v.optional(v.string()),
     icon: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const sub = await ctx.db.get(args.id);
-    if (!sub || sub.userId !== args.userId) {
+    if (!sub || sub.userId !== ctx.user._id) {
       throw new Error("Subcategory not found or access denied");
     }
     const patch: Record<string, string> = {};
@@ -184,17 +173,15 @@ export const updateSubcategory = mutation({
   },
 });
 
-export const createSubcategory = mutation({
+export const createSubcategory = userMutation({
   args: {
-    userId: v.id("users"),
     categoryId: v.id("categories"),
     name: v.string(),
     icon: v.string(),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const cat = await ctx.db.get(args.categoryId);
-    if (!cat || cat.userId !== args.userId) {
+    if (!cat || cat.userId !== ctx.user._id) {
       throw new Error("Category not found or access denied");
     }
 
@@ -210,7 +197,7 @@ export const createSubcategory = mutation({
 
     const id = await ctx.db.insert("subcategories", {
       categoryId: args.categoryId,
-      userId: args.userId,
+      userId: ctx.user._id,
       name: args.name,
       icon: args.icon,
       isDefault: false,
@@ -222,29 +209,26 @@ export const createSubcategory = mutation({
 
 // Categorization Rules
 
-export const listRules = query({
-  args: { userId: v.id("users") },
-  handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
+export const listRules = userQuery({
+  args: {},
+  handler: async (ctx) => {
     return await ctx.db
       .query("categorizationRules")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId", (q) => q.eq("userId", ctx.user._id))
       .collect();
   },
 });
 
-export const createRule = mutation({
+export const createRule = userMutation({
   args: {
-    userId: v.id("users"),
     matchField: v.string(),
     matchValue: v.string(),
     categoryId: v.id("categories"),
     subcategoryId: v.optional(v.id("subcategories")),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const id = await ctx.db.insert("categorizationRules", {
-      userId: args.userId,
+      userId: ctx.user._id,
       matchField: args.matchField,
       matchValue: args.matchValue,
       categoryId: args.categoryId,
@@ -254,15 +238,13 @@ export const createRule = mutation({
   },
 });
 
-export const deleteRule = mutation({
+export const deleteRule = userMutation({
   args: {
-    userId: v.id("users"),
     id: v.id("categorizationRules"),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const rule = await ctx.db.get(args.id);
-    if (!rule || rule.userId !== args.userId) {
+    if (!rule || rule.userId !== ctx.user._id) {
       throw new Error("Rule not found or access denied");
     }
     await ctx.db.delete(args.id);
@@ -526,15 +508,12 @@ const DEFAULT_CATEGORIES = [
   },
 ];
 
-export const seedDefaults = mutation({
+export const seedDefaults = userMutation({
   args: {
-    userId: v.id("users"),
     monthlyBudget: v.number(),
     accountIds: v.optional(v.array(v.id("simplefinAccounts"))),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
-
     let categoriesCreated = 0;
     let subcategoriesCreated = 0;
     let budgetsCreated = 0;
@@ -547,13 +526,13 @@ export const seedDefaults = mutation({
     ]);
 
     const createdCategories: {
-      categoryId: typeof import("./_generated/dataModel").default;
+      categoryId: any;
       isExpense: boolean;
     }[] = [];
 
     for (const catData of DEFAULT_CATEGORIES) {
       const categoryId = await ctx.db.insert("categories", {
-        userId: args.userId,
+        userId: ctx.user._id,
         name: catData.name,
         icon: catData.icon,
         color: catData.color,
@@ -570,7 +549,7 @@ export const seedDefaults = mutation({
       for (const subData of catData.subcategories) {
         await ctx.db.insert("subcategories", {
           categoryId,
-          userId: args.userId,
+          userId: ctx.user._id,
           name: subData.name,
           icon: subData.icon,
           isDefault: true,
@@ -590,7 +569,7 @@ export const seedDefaults = mutation({
 
     if (args.monthlyBudget > 0) {
       const budgetId = await ctx.db.insert("budgets", {
-        userId: args.userId,
+        userId: ctx.user._id,
         name: "My Budget",
         isDefault: true,
         emoji: "\u{1F4B0}",

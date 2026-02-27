@@ -1,6 +1,5 @@
-import { query, mutation } from "./_generated/server";
+import { userQuery, userMutation } from "./functions";
 import { v } from "convex/values";
-import { validateUser } from "./helpers";
 
 function computeProgress(
   goalType: string,
@@ -8,7 +7,7 @@ function computeProgress(
   accounts: {
     accountId: string;
     allocationPercentage: number;
-    startingBalance?: number;
+    startingBalance?: number | null;
     currentBalance: number;
   }[]
 ): { currentAmount: number; progressPercent: number } {
@@ -40,13 +39,12 @@ function computeProgress(
   };
 }
 
-export const list = query({
-  args: { userId: v.id("users") },
-  handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
+export const list = userQuery({
+  args: {},
+  handler: async (ctx) => {
     const goals = await ctx.db
       .query("goals")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId", (q) => q.eq("userId", ctx.user._id))
       .collect();
 
     return await Promise.all(
@@ -55,6 +53,7 @@ export const list = query({
           goal.accounts.map(async (a) => {
             const account = await ctx.db.get(a.accountId);
             return {
+              accountId: a.accountId.toString(),
               id: a.accountId,
               simplefinAccountId: a.accountId,
               accountName: account?.name ?? "Unknown",
@@ -90,9 +89,8 @@ export const list = query({
   },
 });
 
-export const create = mutation({
+export const create = userMutation({
   args: {
-    userId: v.id("users"),
     name: v.string(),
     description: v.optional(v.string()),
     goalType: v.string(),
@@ -106,14 +104,13 @@ export const create = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const now = new Date().toISOString();
 
     // Validate accounts belong to user, capture starting balances for debt goals
     const accountsWithBalance = await Promise.all(
       args.accounts.map(async (a) => {
         const account = await ctx.db.get(a.accountId);
-        if (!account || account.userId !== args.userId) {
+        if (!account || account.userId !== ctx.user._id) {
           throw new Error(`Account ${a.accountId} not found or access denied`);
         }
         return {
@@ -128,7 +125,7 @@ export const create = mutation({
     );
 
     const goalId = await ctx.db.insert("goals", {
-      userId: args.userId,
+      userId: ctx.user._id,
       name: args.name,
       description: args.description,
       goalType: args.goalType,
@@ -148,6 +145,7 @@ export const create = mutation({
       goal.accounts.map(async (a) => {
         const account = await ctx.db.get(a.accountId);
         return {
+          accountId: a.accountId.toString(),
           id: a.accountId,
           simplefinAccountId: a.accountId,
           accountName: account?.name ?? "Unknown",
@@ -181,18 +179,16 @@ export const create = mutation({
   },
 });
 
-export const get = query({
+export const get = userQuery({
   args: {
-    userId: v.id("users"),
     id: v.id("goals"),
     startDate: v.optional(v.string()),
     endDate: v.optional(v.string()),
     granularity: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const goal = await ctx.db.get(args.id);
-    if (!goal || goal.userId !== args.userId) {
+    if (!goal || goal.userId !== ctx.user._id) {
       throw new Error("Goal not found or access denied");
     }
 
@@ -200,6 +196,7 @@ export const get = query({
       goal.accounts.map(async (a) => {
         const account = await ctx.db.get(a.accountId);
         return {
+          accountId: a.accountId.toString(),
           id: a.accountId,
           simplefinAccountId: a.accountId,
           accountName: account?.name ?? "Unknown",
@@ -297,9 +294,8 @@ export const get = query({
   },
 });
 
-export const update = mutation({
+export const update = userMutation({
   args: {
-    userId: v.id("users"),
     id: v.id("goals"),
     name: v.optional(v.string()),
     description: v.optional(v.string()),
@@ -316,9 +312,8 @@ export const update = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const goal = await ctx.db.get(args.id);
-    if (!goal || goal.userId !== args.userId) {
+    if (!goal || goal.userId !== ctx.user._id) {
       throw new Error("Goal not found or access denied");
     }
 
@@ -334,7 +329,7 @@ export const update = mutation({
       const accountsWithBalance = await Promise.all(
         args.accounts.map(async (a) => {
           const account = await ctx.db.get(a.accountId);
-          if (!account || account.userId !== args.userId) {
+          if (!account || account.userId !== ctx.user._id) {
             throw new Error(
               `Account ${a.accountId} not found or access denied`
             );
@@ -362,6 +357,7 @@ export const update = mutation({
       updated.accounts.map(async (a) => {
         const account = await ctx.db.get(a.accountId);
         return {
+          accountId: a.accountId.toString(),
           id: a.accountId,
           simplefinAccountId: a.accountId,
           accountName: account?.name ?? "Unknown",
@@ -395,15 +391,13 @@ export const update = mutation({
   },
 });
 
-export const deleteGoal = mutation({
+export const deleteGoal = userMutation({
   args: {
-    userId: v.id("users"),
     id: v.id("goals"),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const goal = await ctx.db.get(args.id);
-    if (!goal || goal.userId !== args.userId) {
+    if (!goal || goal.userId !== ctx.user._id) {
       throw new Error("Goal not found or access denied");
     }
     await ctx.db.delete(args.id);

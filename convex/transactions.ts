@@ -1,23 +1,19 @@
-import { query, mutation } from "./_generated/server";
+import { userQuery, userMutation } from "./functions";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
-import { validateUser } from "./helpers";
 
-export const list = query({
+export const list = userQuery({
   args: {
-    userId: v.id("users"),
     paginationOpts: paginationOptsValidator,
     dateFrom: v.optional(v.number()),
     dateTo: v.optional(v.number()),
     accountIds: v.optional(v.array(v.id("simplefinAccounts"))),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
-
     let q = ctx.db
       .query("simplefinTransactions")
       .withIndex("by_userId_date", (q) => {
-        let idx = q.eq("userId", args.userId);
+        let idx = q.eq("userId", ctx.user._id);
         if (args.dateFrom !== undefined && args.dateTo !== undefined) {
           return idx.gte("date", args.dateFrom).lte("date", args.dateTo);
         } else if (args.dateFrom !== undefined) {
@@ -46,18 +42,16 @@ export const list = query({
   },
 });
 
-export const categorize = mutation({
+export const categorize = userMutation({
   args: {
-    userId: v.id("users"),
     txId: v.id("simplefinTransactions"),
     categoryId: v.optional(v.id("categories")),
     subcategoryId: v.optional(v.id("subcategories")),
     createRule: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const tx = await ctx.db.get(args.txId);
-    if (!tx || tx.userId !== args.userId) {
+    if (!tx || tx.userId !== ctx.user._id) {
       throw new Error("Transaction not found or access denied");
     }
 
@@ -72,7 +66,7 @@ export const categorize = mutation({
       const matchValue = tx.payee || tx.description || "";
       if (matchValue) {
         await ctx.db.insert("categorizationRules", {
-          userId: args.userId,
+          userId: ctx.user._id,
           matchField: tx.payee ? "payee" : "description",
           matchValue,
           categoryId: args.categoryId,
@@ -85,9 +79,8 @@ export const categorize = mutation({
   },
 });
 
-export const batchCategorize = mutation({
+export const batchCategorize = userMutation({
   args: {
-    userId: v.id("users"),
     updates: v.array(
       v.object({
         txId: v.id("simplefinTransactions"),
@@ -97,7 +90,6 @@ export const batchCategorize = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     let updatedCount = 0;
     let failedCount = 0;
     const failedIds: string[] = [];
@@ -105,7 +97,7 @@ export const batchCategorize = mutation({
     for (const update of args.updates) {
       try {
         const tx = await ctx.db.get(update.txId);
-        if (!tx || tx.userId !== args.userId) {
+        if (!tx || tx.userId !== ctx.user._id) {
           failedCount++;
           failedIds.push(update.txId);
           continue;

@@ -1,35 +1,32 @@
-import { query, mutation } from "./_generated/server";
+import { userQuery, userMutation } from "./functions";
 import { v } from "convex/values";
-import { validateUser, getMonthDateRange } from "./helpers";
+import { Id } from "./_generated/dataModel";
+import { getMonthDateRange } from "./helpers";
 
-export const list = query({
-  args: { userId: v.id("users") },
-  handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
+export const list = userQuery({
+  args: {},
+  handler: async (ctx) => {
     return await ctx.db
       .query("budgets")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId", (q) => q.eq("userId", ctx.user._id))
       .collect();
   },
 });
 
-export const create = mutation({
+export const create = userMutation({
   args: {
-    userId: v.id("users"),
     name: v.string(),
     isDefault: v.boolean(),
     emoji: v.optional(v.string()),
     color: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
-
     // If setting as default, unset other defaults
     if (args.isDefault) {
       const existing = await ctx.db
         .query("budgets")
         .withIndex("by_userId_isDefault", (q) =>
-          q.eq("userId", args.userId).eq("isDefault", true)
+          q.eq("userId", ctx.user._id).eq("isDefault", true)
         )
         .collect();
       for (const b of existing) {
@@ -38,7 +35,7 @@ export const create = mutation({
     }
 
     const id = await ctx.db.insert("budgets", {
-      userId: args.userId,
+      userId: ctx.user._id,
       name: args.name,
       isDefault: args.isDefault,
       emoji: args.emoji,
@@ -49,9 +46,8 @@ export const create = mutation({
   },
 });
 
-export const update = mutation({
+export const update = userMutation({
   args: {
-    userId: v.id("users"),
     id: v.id("budgets"),
     name: v.optional(v.string()),
     isDefault: v.optional(v.boolean()),
@@ -59,9 +55,8 @@ export const update = mutation({
     color: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const budget = await ctx.db.get(args.id);
-    if (!budget || budget.userId !== args.userId) {
+    if (!budget || budget.userId !== ctx.user._id) {
       throw new Error("Budget not found or access denied");
     }
 
@@ -70,7 +65,7 @@ export const update = mutation({
       const existing = await ctx.db
         .query("budgets")
         .withIndex("by_userId_isDefault", (q) =>
-          q.eq("userId", args.userId).eq("isDefault", true)
+          q.eq("userId", ctx.user._id).eq("isDefault", true)
         )
         .collect();
       for (const b of existing) {
@@ -90,15 +85,13 @@ export const update = mutation({
   },
 });
 
-export const deleteBudget = mutation({
+export const deleteBudget = userMutation({
   args: {
-    userId: v.id("users"),
     id: v.id("budgets"),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const budget = await ctx.db.get(args.id);
-    if (!budget || budget.userId !== args.userId) {
+    if (!budget || budget.userId !== ctx.user._id) {
       throw new Error("Budget not found or access denied");
     }
 
@@ -114,7 +107,7 @@ export const deleteBudget = mutation({
     // Delete months
     const months = await ctx.db
       .query("budgetMonths")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId", (q) => q.eq("userId", ctx.user._id))
       .filter((q) => q.eq(q.field("budgetId"), args.id))
       .collect();
     for (const m of months) {
@@ -128,15 +121,13 @@ export const deleteBudget = mutation({
 
 // Line Items
 
-export const listLineItems = query({
+export const listLineItems = userQuery({
   args: {
-    userId: v.id("users"),
     budgetId: v.id("budgets"),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const budget = await ctx.db.get(args.budgetId);
-    if (!budget || budget.userId !== args.userId) {
+    if (!budget || budget.userId !== ctx.user._id) {
       throw new Error("Budget not found or access denied");
     }
     return await ctx.db
@@ -146,18 +137,16 @@ export const listLineItems = query({
   },
 });
 
-export const createLineItem = mutation({
+export const createLineItem = userMutation({
   args: {
-    userId: v.id("users"),
     budgetId: v.id("budgets"),
     categoryId: v.id("categories"),
     subcategoryId: v.optional(v.id("subcategories")),
     amount: v.number(),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const budget = await ctx.db.get(args.budgetId);
-    if (!budget || budget.userId !== args.userId) {
+    if (!budget || budget.userId !== ctx.user._id) {
       throw new Error("Budget not found or access denied");
     }
     const id = await ctx.db.insert("budgetLineItems", {
@@ -170,20 +159,18 @@ export const createLineItem = mutation({
   },
 });
 
-export const updateLineItem = mutation({
+export const updateLineItem = userMutation({
   args: {
-    userId: v.id("users"),
     id: v.id("budgetLineItems"),
     amount: v.number(),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const lineItem = await ctx.db.get(args.id);
     if (!lineItem) {
       throw new Error("Line item not found");
     }
     const budget = await ctx.db.get(lineItem.budgetId);
-    if (!budget || budget.userId !== args.userId) {
+    if (!budget || budget.userId !== ctx.user._id) {
       throw new Error("Access denied");
     }
     await ctx.db.patch(args.id, { amount: args.amount });
@@ -191,19 +178,17 @@ export const updateLineItem = mutation({
   },
 });
 
-export const deleteLineItem = mutation({
+export const deleteLineItem = userMutation({
   args: {
-    userId: v.id("users"),
     id: v.id("budgetLineItems"),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const lineItem = await ctx.db.get(args.id);
     if (!lineItem) {
       throw new Error("Line item not found");
     }
     const budget = await ctx.db.get(lineItem.budgetId);
-    if (!budget || budget.userId !== args.userId) {
+    if (!budget || budget.userId !== ctx.user._id) {
       throw new Error("Access denied");
     }
     await ctx.db.delete(args.id);
@@ -213,27 +198,24 @@ export const deleteLineItem = mutation({
 
 // Months
 
-export const listMonths = query({
-  args: { userId: v.id("users") },
-  handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
+export const listMonths = userQuery({
+  args: {},
+  handler: async (ctx) => {
     return await ctx.db
       .query("budgetMonths")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId", (q) => q.eq("userId", ctx.user._id))
       .collect();
   },
 });
 
-export const assignMonth = mutation({
+export const assignMonth = userMutation({
   args: {
-    userId: v.id("users"),
     budgetId: v.id("budgets"),
     month: v.string(),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const budget = await ctx.db.get(args.budgetId);
-    if (!budget || budget.userId !== args.userId) {
+    if (!budget || budget.userId !== ctx.user._id) {
       throw new Error("Budget not found or access denied");
     }
 
@@ -241,7 +223,7 @@ export const assignMonth = mutation({
     const existing = await ctx.db
       .query("budgetMonths")
       .withIndex("by_userId_month", (q) =>
-        q.eq("userId", args.userId).eq("month", args.month)
+        q.eq("userId", ctx.user._id).eq("month", args.month)
       )
       .first();
     if (existing) {
@@ -252,22 +234,20 @@ export const assignMonth = mutation({
 
     const id = await ctx.db.insert("budgetMonths", {
       budgetId: args.budgetId,
-      userId: args.userId,
+      userId: ctx.user._id,
       month: args.month,
     });
     return await ctx.db.get(id);
   },
 });
 
-export const deleteMonth = mutation({
+export const deleteMonth = userMutation({
   args: {
-    userId: v.id("users"),
     id: v.id("budgetMonths"),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const month = await ctx.db.get(args.id);
-    if (!month || month.userId !== args.userId) {
+    if (!month || month.userId !== ctx.user._id) {
       throw new Error("Budget month not found or access denied");
     }
     await ctx.db.delete(args.id);
@@ -277,15 +257,13 @@ export const deleteMonth = mutation({
 
 // Accounts
 
-export const listAccounts = query({
+export const listAccounts = userQuery({
   args: {
-    userId: v.id("users"),
     budgetId: v.id("budgets"),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const budget = await ctx.db.get(args.budgetId);
-    if (!budget || budget.userId !== args.userId) {
+    if (!budget || budget.userId !== ctx.user._id) {
       throw new Error("Budget not found or access denied");
     }
 
@@ -306,20 +284,18 @@ export const listAccounts = query({
   },
 });
 
-export const addAccount = mutation({
+export const addAccount = userMutation({
   args: {
-    userId: v.id("users"),
     budgetId: v.id("budgets"),
     accountId: v.id("simplefinAccounts"),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const budget = await ctx.db.get(args.budgetId);
-    if (!budget || budget.userId !== args.userId) {
+    if (!budget || budget.userId !== ctx.user._id) {
       throw new Error("Budget not found or access denied");
     }
     const account = await ctx.db.get(args.accountId);
-    if (!account || account.userId !== args.userId) {
+    if (!account || account.userId !== ctx.user._id) {
       throw new Error("Account not found or access denied");
     }
 
@@ -339,16 +315,14 @@ export const addAccount = mutation({
   },
 });
 
-export const removeAccount = mutation({
+export const removeAccount = userMutation({
   args: {
-    userId: v.id("users"),
     budgetId: v.id("budgets"),
     accountId: v.id("simplefinAccounts"),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const budget = await ctx.db.get(args.budgetId);
-    if (!budget || budget.userId !== args.userId) {
+    if (!budget || budget.userId !== ctx.user._id) {
       throw new Error("Budget not found or access denied");
     }
     await ctx.db.patch(args.budgetId, {
@@ -360,21 +334,19 @@ export const removeAccount = mutation({
 
 // Summary
 
-export const summary = query({
+export const summary = userQuery({
   args: {
-    userId: v.id("users"),
     month: v.string(),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const { startMs, endMs } = getMonthDateRange(args.month);
 
-    // 1. Resolve active budget: check budgetMonths override → fallback to isDefault
-    let budgetId: string | null = null;
+    // 1. Resolve active budget: check budgetMonths override -> fallback to isDefault
+    let budgetId: Id<"budgets"> | null = null;
     const monthOverride = await ctx.db
       .query("budgetMonths")
       .withIndex("by_userId_month", (q) =>
-        q.eq("userId", args.userId).eq("month", args.month)
+        q.eq("userId", ctx.user._id).eq("month", args.month)
       )
       .first();
 
@@ -384,7 +356,7 @@ export const summary = query({
       const defaultBudget = await ctx.db
         .query("budgets")
         .withIndex("by_userId_isDefault", (q) =>
-          q.eq("userId", args.userId).eq("isDefault", true)
+          q.eq("userId", ctx.user._id).eq("isDefault", true)
         )
         .first();
       if (defaultBudget) {
@@ -407,7 +379,7 @@ export const summary = query({
       };
     }
 
-    const budget = await ctx.db.get(budgetId as any);
+    const budget = await ctx.db.get(budgetId);
     if (!budget) {
       throw new Error("Budget not found");
     }
@@ -423,7 +395,7 @@ export const summary = query({
       .query("simplefinTransactions")
       .withIndex("by_userId_date", (q) =>
         q
-          .eq("userId", args.userId)
+          .eq("userId", ctx.user._id)
           .gte("date", startMs)
           .lt("date", endMs)
       )
@@ -514,12 +486,12 @@ export const summary = query({
     const prevTxCandidates = await ctx.db
       .query("simplefinTransactions")
       .withIndex("by_userId_date", (q) =>
-        q.eq("userId", args.userId).lt("date", startMs)
+        q.eq("userId", ctx.user._id).lt("date", startMs)
       )
       .order("desc")
       .filter((q) =>
         budget.accountIds.length === 0
-          ? q.eq(q.field("userId"), args.userId) // no-op, always true
+          ? q.eq(q.field("userId"), ctx.user._id) // no-op, always true
           : q.or(
               ...budget.accountIds.map((id) =>
                 q.eq(q.field("accountId"), id)
@@ -532,12 +504,12 @@ export const summary = query({
     const nextTxCandidates = await ctx.db
       .query("simplefinTransactions")
       .withIndex("by_userId_date", (q) =>
-        q.eq("userId", args.userId).gte("date", endMs).lt("date", nowMs)
+        q.eq("userId", ctx.user._id).gte("date", endMs).lt("date", nowMs)
       )
       .order("asc")
       .filter((q) =>
         budget.accountIds.length === 0
-          ? q.eq(q.field("userId"), args.userId) // no-op, always true
+          ? q.eq(q.field("userId"), ctx.user._id) // no-op, always true
           : q.or(
               ...budget.accountIds.map((id) =>
                 q.eq(q.field("accountId"), id)
