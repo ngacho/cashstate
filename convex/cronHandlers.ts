@@ -1,7 +1,7 @@
 "use node";
 
 import { internalAction } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 
 export const dailySync = internalAction({
   args: {},
@@ -12,7 +12,7 @@ export const dailySync = internalAction({
       try {
         // Fetch transactions from the last 30 days
         const thirtyDaysAgo = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
-        await ctx.runAction(api.actions.simplefinSync.sync, {
+        await ctx.runAction(internal.actions.simplefinSync._syncInternal, {
           userId: item.userId,
           itemId: item._id,
           forceSync: true,

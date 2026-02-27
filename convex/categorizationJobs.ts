@@ -1,17 +1,13 @@
-import { mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
-import { validateUser } from "./helpers";
+import { userQuery, userMutation } from "./functions";
 
-export const start = mutation({
+export const start = userMutation({
   args: {
-    userId: v.id("users"),
     transactionIds: v.optional(v.array(v.id("simplefinTransactions"))),
     force: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
-
     // Count uncategorized transactions to determine job size
     let totalTransactions = 0;
     if (args.transactionIds && args.transactionIds.length > 0) {
@@ -19,7 +15,7 @@ export const start = mutation({
     } else {
       const txns = await ctx.db
         .query("simplefinTransactions")
-        .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+        .withIndex("by_userId", (q) => q.eq("userId", ctx.user._id))
         .collect();
       totalTransactions = txns.filter(
         (tx) => args.force || !tx.categoryId
@@ -28,7 +24,7 @@ export const start = mutation({
 
     // Create the job record
     const jobId = await ctx.db.insert("categorizationJobs", {
-      userId: args.userId,
+      userId: ctx.user._id,
       status: "running",
       totalTransactions,
       categorizedCount: 0,
@@ -40,7 +36,7 @@ export const start = mutation({
       0,
       internal.actions.aiCategorize._categorizeBackground,
       {
-        userId: args.userId,
+        userId: ctx.user._id,
         jobId,
         transactionIds: args.transactionIds,
         force: args.force,
@@ -51,15 +47,13 @@ export const start = mutation({
   },
 });
 
-export const getStatus = query({
+export const getStatus = userQuery({
   args: {
-    userId: v.id("users"),
     jobId: v.id("categorizationJobs"),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const job = await ctx.db.get(args.jobId);
-    if (!job || job.userId !== args.userId) {
+    if (!job || job.userId !== ctx.user._id) {
       throw new Error("Job not found or access denied");
     }
     return job;

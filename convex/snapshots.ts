@@ -1,28 +1,23 @@
-import { query, mutation } from "./_generated/server";
+import { userQuery, userMutation } from "./functions";
 import { v } from "convex/values";
-import { validateUser } from "./helpers";
 
-export const list = query({
+export const list = userQuery({
   args: {
-    userId: v.id("users"),
     startDate: v.optional(v.string()),
     endDate: v.optional(v.string()),
     granularity: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const granularity = args.granularity ?? "day";
 
     // Get all balance history for user
     const history = await ctx.db
       .query("accountBalanceHistory")
-      .withIndex("by_userId_date", (q) => {
-        let idx = q.eq("userId", args.userId);
-        if (args.startDate) {
-          idx = idx.gte("snapshotDate", args.startDate);
-        }
-        return idx;
-      })
+      .withIndex("by_userId_date", (q) =>
+        args.startDate
+          ? q.eq("userId", ctx.user._id).gte("snapshotDate", args.startDate)
+          : q.eq("userId", ctx.user._id)
+      )
       .collect();
 
     // Filter by endDate
@@ -83,33 +78,29 @@ export const list = query({
   },
 });
 
-export const listForAccount = query({
+export const listForAccount = userQuery({
   args: {
-    userId: v.id("users"),
     accountId: v.id("simplefinAccounts"),
     startDate: v.optional(v.string()),
     endDate: v.optional(v.string()),
     granularity: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
     const granularity = args.granularity ?? "day";
 
     // Verify ownership
     const account = await ctx.db.get(args.accountId);
-    if (!account || account.userId !== args.userId) {
+    if (!account || account.userId !== ctx.user._id) {
       throw new Error("Account not found or access denied");
     }
 
     const history = await ctx.db
       .query("accountBalanceHistory")
-      .withIndex("by_account_date", (q) => {
-        let idx = q.eq("simplefinAccountId", args.accountId);
-        if (args.startDate) {
-          idx = idx.gte("snapshotDate", args.startDate);
-        }
-        return idx;
-      })
+      .withIndex("by_account_date", (q) =>
+        args.startDate
+          ? q.eq("simplefinAccountId", args.accountId).gte("snapshotDate", args.startDate)
+          : q.eq("simplefinAccountId", args.accountId)
+      )
       .collect();
 
     const filtered = args.endDate
@@ -160,20 +151,18 @@ export const listForAccount = query({
   },
 });
 
-export const calculate = mutation({
+export const calculate = userMutation({
   args: {
-    userId: v.id("users"),
     startDate: v.optional(v.string()),
     endDate: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
-    await validateUser(ctx, args.userId);
+  handler: async (ctx) => {
     const today = new Date().toISOString().split("T")[0];
 
     // Get all accounts for user
     const accounts = await ctx.db
       .query("simplefinAccounts")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId", (q) => q.eq("userId", ctx.user._id))
       .collect();
 
     // Upsert balance history for today
@@ -184,7 +173,7 @@ export const calculate = mutation({
         .query("accountBalanceHistory")
         .withIndex("by_userId_account_date", (q) =>
           q
-            .eq("userId", args.userId)
+            .eq("userId", ctx.user._id)
             .eq("simplefinAccountId", account._id)
             .eq("snapshotDate", today)
         )
@@ -194,7 +183,7 @@ export const calculate = mutation({
         await ctx.db.patch(existing._id, { balance: account.balance });
       } else {
         await ctx.db.insert("accountBalanceHistory", {
-          userId: args.userId,
+          userId: ctx.user._id,
           simplefinAccountId: account._id,
           snapshotDate: today,
           balance: account.balance,
