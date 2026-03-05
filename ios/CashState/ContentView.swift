@@ -12,6 +12,11 @@ struct ContentView: View {
                 LoginView()
             }
         }
+        .onAppear {
+            print("🔐 [ContentView] session: \(String(describing: Clerk.shared.session))")
+            print("🔐 [ContentView] user: \(String(describing: Clerk.shared.user))")
+            print("🔐 [ContentView] client: \(String(describing: Clerk.shared.client))")
+        }
     }
 }
 
