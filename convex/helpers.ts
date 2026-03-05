@@ -1,20 +1,3 @@
-import { QueryCtx, MutationCtx } from "./_generated/server";
-import { Id } from "./_generated/dataModel";
-
-/**
- * Validate that a user exists by their _id. Throws if not found.
- */
-export async function validateUser(
-  ctx: QueryCtx | MutationCtx,
-  userId: Id<"users">
-) {
-  const user = await ctx.db.get(userId);
-  if (!user) {
-    throw new Error("User not found");
-  }
-  return user;
-}
-
 /**
  * Parse "YYYY-MM" month string into start/end timestamps (ms).
  * Start = first ms of the month, End = first ms of next month.

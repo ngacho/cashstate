@@ -1,6 +1,6 @@
 "use node";
 
-import { action } from "../_generated/server";
+import { action, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
@@ -46,7 +46,6 @@ async function decrypt(encrypted: string, envKey: string): Promise<string> {
 
 export const setup = action({
   args: {
-    userId: v.id("users"),
     setupToken: v.string(),
     institutionName: v.optional(v.string()),
   },
@@ -54,6 +53,11 @@ export const setup = action({
     itemId: string;
     institutionName: string | null;
   }> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+    const user = await ctx.runQuery(internal.usersHelpers._getByClerkId, { clerkId: identity.subject });
+    if (!user) throw new Error("User not found");
+
     const encryptionKey = process.env.ENCRYPTION_KEY;
     if (!encryptionKey) throw new Error("ENCRYPTION_KEY not configured");
 
@@ -76,7 +80,7 @@ export const setup = action({
     const itemId = await ctx.runMutation(
       internal.simplefinSyncHelpers._storeItem,
       {
-        userId: args.userId,
+        userId: user._id,
         accessUrl: encryptedUrl,
         institutionName: args.institutionName,
         status: "active",
@@ -92,7 +96,6 @@ export const setup = action({
 
 export const sync = action({
   args: {
-    userId: v.id("users"),
     itemId: v.id("simplefinItems"),
     startDate: v.optional(v.number()),
     forceSync: v.optional(v.boolean()),
@@ -105,6 +108,192 @@ export const sync = action({
     transactionsUpdated: number;
     errors: string[];
   }> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+    const user = await ctx.runQuery(internal.usersHelpers._getByClerkId, { clerkId: identity.subject });
+    if (!user) throw new Error("User not found");
+
+    const encryptionKey = process.env.ENCRYPTION_KEY;
+    if (!encryptionKey) throw new Error("ENCRYPTION_KEY not configured");
+
+    // Get item
+    const item = await ctx.runQuery(
+      internal.simplefinSyncHelpers._getItem,
+      { itemId: args.itemId }
+    );
+    if (!item || item.userId !== user._id) {
+      throw new Error("Item not found or access denied");
+    }
+
+    // Rate limit: 24h unless forceSync
+    if (!args.forceSync && item.lastSyncedAt) {
+      const hoursSinceSync =
+        (Date.now() - item.lastSyncedAt) / (1000 * 60 * 60);
+      if (hoursSinceSync < 24) {
+        throw new Error(
+          `Rate limited: last synced ${Math.round(hoursSinceSync)}h ago. Use forceSync to override.`
+        );
+      }
+    }
+
+    // Create sync job
+    const syncJobId = await ctx.runMutation(
+      internal.simplefinSyncHelpers._createSyncJob,
+      {
+        userId: user._id,
+        simplefinItemId: args.itemId,
+        status: "running",
+      }
+    );
+
+    try {
+      // Decrypt access URL
+      const accessUrl = await decrypt(item.accessUrl, encryptionKey);
+
+      // Parse access URL to get base URL and credentials
+      const urlObj = new URL(accessUrl);
+      const baseUrl = `${urlObj.protocol}//${urlObj.host}${urlObj.pathname}`;
+      const authHeader =
+        "Basic " +
+        Buffer.from(`${urlObj.username}:${urlObj.password}`).toString("base64");
+
+      // Build SimpleFin API URL
+      let apiUrl = `${baseUrl}/accounts`;
+      const params = new URLSearchParams();
+      if (args.startDate) {
+        params.set("start-date", String(args.startDate));
+      }
+      const qs = params.toString();
+      if (qs) apiUrl += `?${qs}`;
+
+      // Fetch from SimpleFin
+      const response = await fetch(apiUrl, {
+        headers: { Authorization: authHeader },
+      });
+      if (!response.ok) {
+        throw new Error(
+          `SimpleFin API error: ${response.status} ${response.statusText}`
+        );
+      }
+      const data = await response.json();
+
+      let totalAccountsSynced = 0;
+      let totalTxAdded = 0;
+      let totalTxUpdated = 0;
+      const errors: string[] = [];
+
+      // Process accounts
+      const sfAccounts = data.accounts || [];
+      const accountData = sfAccounts.map((acc: any) => ({
+        simplefinAccountId: acc.id,
+        name: acc.name || "Unknown Account",
+        currency: acc.currency || "USD",
+        balance: acc.balance ? parseFloat(acc.balance) : undefined,
+        availableBalance: acc["available-balance"]
+          ? parseFloat(acc["available-balance"])
+          : undefined,
+        balanceDate: acc["balance-date"]
+          ? acc["balance-date"] * 1000
+          : undefined,
+        orgName: acc.org?.name,
+      }));
+
+      const accountIds = await ctx.runMutation(
+        internal.simplefinSyncHelpers._upsertAccounts,
+        {
+          userId: user._id,
+          itemId: args.itemId,
+          accounts: accountData,
+        }
+      );
+      totalAccountsSynced = accountIds.length;
+
+      // Process transactions per account
+      for (let i = 0; i < sfAccounts.length; i++) {
+        const sfAccount = sfAccounts[i];
+        const accountId = accountIds[i];
+        const accountName = sfAccount.name || "Unknown Account";
+        const sfTransactions = sfAccount.transactions || [];
+
+        if (sfTransactions.length === 0) continue;
+
+        const txData = sfTransactions.map((tx: any) => ({
+          simplefinTxId: tx.id,
+          amount: parseFloat(tx.amount),
+          currency: sfAccount.currency || "USD",
+          date: tx.posted * 1000,
+          transactedAt: tx.transacted_at
+            ? tx.transacted_at * 1000
+            : undefined,
+          description: tx.description,
+          payee: tx.payee,
+          pending: tx.pending === true,
+        }));
+
+        try {
+          const result = await ctx.runMutation(
+            internal.simplefinSyncHelpers._upsertTransactions,
+            {
+              userId: user._id,
+              accountId: accountId as Id<"simplefinAccounts">,
+              accountName,
+              transactions: txData,
+            }
+          );
+          totalTxAdded += result.added;
+          totalTxUpdated += result.updated;
+        } catch (e: any) {
+          errors.push(`Account ${accountName}: ${e.message}`);
+        }
+      }
+
+      // Update sync job
+      await ctx.runMutation(internal.simplefinSyncHelpers._updateSyncJob, {
+        id: syncJobId,
+        status: "completed",
+        accountsSynced: totalAccountsSynced,
+        transactionsAdded: totalTxAdded,
+        transactionsUpdated: totalTxUpdated,
+        completedAt: Date.now(),
+      });
+
+      // Update item last synced
+      await ctx.runMutation(
+        internal.simplefinSyncHelpers._updateItemLastSynced,
+        {
+          itemId: args.itemId,
+          lastSyncedAt: Date.now(),
+        }
+      );
+
+      return {
+        success: true,
+        syncJobId: syncJobId.toString(),
+        accountsSynced: totalAccountsSynced,
+        transactionsAdded: totalTxAdded,
+        transactionsUpdated: totalTxUpdated,
+        errors,
+      };
+    } catch (e: any) {
+      await ctx.runMutation(internal.simplefinSyncHelpers._updateSyncJob, {
+        id: syncJobId,
+        status: "failed",
+        errorMessage: e.message,
+        completedAt: Date.now(),
+      });
+      throw e;
+    }
+  },
+});
+
+export const _syncInternal = internalAction({
+  args: {
+    userId: v.id("users"),
+    itemId: v.id("simplefinItems"),
+    startDate: v.optional(v.number()),
+    forceSync: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args): Promise<void> => {
     const encryptionKey = process.env.ENCRYPTION_KEY;
     if (!encryptionKey) throw new Error("ENCRYPTION_KEY not configured");
 
@@ -172,7 +361,6 @@ export const sync = action({
       let totalAccountsSynced = 0;
       let totalTxAdded = 0;
       let totalTxUpdated = 0;
-      const errors: string[] = [];
 
       // Process accounts
       const sfAccounts = data.accounts || [];
@@ -235,7 +423,7 @@ export const sync = action({
           totalTxAdded += result.added;
           totalTxUpdated += result.updated;
         } catch (e: any) {
-          errors.push(`Account ${accountName}: ${e.message}`);
+          console.error(`Sync error for account ${accountName}: ${e.message}`);
         }
       }
 
@@ -257,15 +445,6 @@ export const sync = action({
           lastSyncedAt: Date.now(),
         }
       );
-
-      return {
-        success: true,
-        syncJobId: syncJobId.toString(),
-        accountsSynced: totalAccountsSynced,
-        transactionsAdded: totalTxAdded,
-        transactionsUpdated: totalTxUpdated,
-        errors,
-      };
     } catch (e: any) {
       await ctx.runMutation(internal.simplefinSyncHelpers._updateSyncJob, {
         id: syncJobId,
