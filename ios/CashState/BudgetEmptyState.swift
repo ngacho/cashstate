@@ -50,7 +50,7 @@ struct BudgetEmptyStateView: View {
                 .disabled(isLoading)
 
                 // Create Budget — pushes onto the NavigationStack
-                NavigationLink(destination: AllBudgetsView(apiClient: apiClient)) {
+                NavigationLink(value: NewBudgetNavValue()) {
                     HStack {
                         Image(systemName: "plus.circle")
                         Text("Create Budget")

@@ -134,6 +134,9 @@ struct BudgetView: View {
                     onDelete: { _ in reloadData() }
                 )
             }
+            .navigationDestination(for: NewBudgetNavValue.self) { _ in
+                NewBudgetView(apiClient: apiClient) { _ in reloadData() }
+            }
             .toolbar {
                 if hasBudget {
                     ToolbarItem(placement: .navigationBarTrailing) {
@@ -184,11 +187,6 @@ struct BudgetView: View {
                 Analytics.shared.track(.budgetMonthNavigated)
                 isLoading = true  // Show loading state immediately
                 reloadData()
-            }
-        }
-        .onChange(of: budgetTab) { _, newValue in
-            if newValue == 1 {
-                Analytics.shared.track(.spendingCompareViewed)
             }
         }
     }
@@ -1246,7 +1244,6 @@ struct AllBudgetsView: View {
     @State private var budgets: [BudgetAPI] = []
     @State private var isLoading = true
     @State private var loadError: String?
-    @State private var showCreateBudget = false
     @State private var allCategories: [CategoryWithSubcategories] = []
     @State private var budgetLineItems: [String: [BudgetLineItem]] = [:]
 
@@ -1284,8 +1281,10 @@ struct AllBudgetsView: View {
             Text("No budgets yet")
                 .font(.headline)
                 .foregroundColor(Theme.Colors.textSecondary)
-            Button("Create Budget") { showCreateBudget = true }
-                .foregroundColor(Theme.Colors.primary)
+            NavigationLink(value: NewBudgetNavValue()) {
+                Text("Create Budget")
+                    .foregroundColor(Theme.Colors.primary)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -1318,15 +1317,13 @@ struct AllBudgetsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    showCreateBudget = true
-                } label: {
+                NavigationLink(value: NewBudgetNavValue()) {
                     Image(systemName: "plus")
                 }
             }
         }
-        .sheet(isPresented: $showCreateBudget) {
-            CreateBudgetSheet(apiClient: apiClient) { newBudget in
+        .navigationDestination(for: NewBudgetNavValue.self) { _ in
+            NewBudgetView(apiClient: apiClient) { newBudget in
                 if newBudget.isDefault {
                     for idx in budgets.indices where budgets[idx].isDefault {
                         budgets[idx] = BudgetAPI(
@@ -1341,7 +1338,6 @@ struct AllBudgetsView: View {
                     }
                 }
                 budgets.append(newBudget)
-                showCreateBudget = false
             }
         }
         .onAppear { Task { await loadData() } }
@@ -2842,83 +2838,786 @@ private struct CategoryManageRow: View {
     }
 }
 
-// MARK: - Create Budget Sheet
+// MARK: - New Budget View (navigation destination)
 
-struct CreateBudgetSheet: View {
+struct NewBudgetNavValue: Hashable {}
+
+struct NewBudgetView: View {
     let apiClient: APIClient
     let onCreate: (BudgetAPI) -> Void
 
-    @State private var name = ""
-    @State private var isDefault = false
-    @State private var isSaving = false
-    @State private var errorMessage: String?
     @Environment(\.dismiss) private var dismiss
 
+    // Step tracking: details first, then configure
+    @State private var createdBudget: BudgetAPI?
+
+    // Budget details (step 1)
+    @State private var name = ""
+    @State private var isDefault = false
+    @State private var emoji = "💰"
+    @State private var selectedColor = "#00A699"
+    @State private var isCreating = false
+    @State private var errorMessage: String?
+
+    // Emoji editor
+    @State private var showEmojiEditor = false
+    @State private var emojiInput = ""
+
+    // Post-creation state (step 2)
+    @State private var lineItems: [BudgetLineItem] = []
+    @State private var allCategories: [CategoryWithSubcategories] = []
+    @State private var allAccounts: [SimplefinAccount] = []
+    @State private var linkedAccountIds: Set<String> = []
+    @State private var isLoadingPostCreate = true
+    @State private var showAddLineItem = false
+    @State private var showAddAccount = false
+    @State private var accountErrorMessage: String?
+
+    private let fallbackColors = [
+        "#5b8def", "#e8845c", "#d4d46a", "#c17ad4", "#7dd8a0",
+        "#6bcbd4", "#ef8f5b", "#a0a0ef", "#efcf5b"
+    ]
+
+    private let colorOptions: [(name: String, hex: String)] = [
+        ("Teal", "#00A699"), ("Blue", "#3B82F6"), ("Purple", "#8B5CF6"),
+        ("Pink", "#EC4899"), ("Red", "#EF4444"), ("Orange", "#F59E0B"),
+        ("Yellow", "#FBBF24"), ("Green", "#10B981"), ("Indigo", "#6366F1"),
+        ("Cyan", "#14B8A6"), ("Rose", "#E54D8A"), ("Slate", "#64748B")
+    ]
+
+    private var canCreate: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty && !isCreating
+    }
+
+    var linkedAccounts: [SimplefinAccount] {
+        allAccounts.filter { linkedAccountIds.contains($0.id) }
+    }
+
+    var unlinkedAccounts: [SimplefinAccount] {
+        allAccounts.filter { !linkedAccountIds.contains($0.id) }
+    }
+
+    var categoryLineItems: [BudgetLineItem] {
+        lineItems.filter { $0.subcategoryId == nil }
+    }
+
+    var totalBudget: Double {
+        categoryLineItems.reduce(0) { $0 + $1.amount }
+    }
+
     var body: some View {
-        NavigationView {
-            Form {
-                Section("Budget Details") {
-                    HStack {
-                        Text("Name")
-                        Spacer()
-                        TextField("e.g. Monthly Budget", text: $name)
-                            .multilineTextAlignment(.trailing)
-                            .foregroundColor(Theme.Colors.textSecondary)
-                    }
-                    Toggle("Set as Default", isOn: $isDefault)
-                        .tint(Theme.Colors.primary)
-                }
+        ZStack {
+            Theme.Colors.background.ignoresSafeArea()
 
-                Section {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        Image(systemName: "info.circle.fill")
-                            .foregroundColor(.blue)
-                        Text("The default budget is applied to all months unless you set a specific budget for a month.")
-                            .font(.caption)
-                            .foregroundColor(Theme.Colors.textSecondary)
+            ScrollView {
+                VStack(spacing: 0) {
+                    if createdBudget == nil {
+                        detailsStep
+                    } else {
+                        configureStep
                     }
                 }
+                .padding(.top, 8)
+            }
+        }
+        .navigationTitle(createdBudget == nil ? "New Budget" : name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                if createdBudget == nil {
+                    if isCreating {
+                        ProgressView()
+                    } else {
+                        Button("Create") { Task { await createBudget() } }
+                            .fontWeight(.semibold)
+                            .foregroundColor(Theme.Colors.primary)
+                            .disabled(!canCreate)
+                    }
+                } else {
+                    Button("Done") {
+                        if let budget = createdBudget {
+                            onCreate(budget)
+                        }
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                    .foregroundColor(Theme.Colors.primary)
+                }
+            }
+        }
+        .sheet(isPresented: $showEmojiEditor) {
+            NavigationStack {
+                VStack(spacing: 24) {
+                    Text(emojiInput.isEmpty ? emoji : emojiInput)
+                        .font(.system(size: 72))
+                        .padding(.top, 32)
 
-                if let error = errorMessage {
-                    Section {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundColor(.red)
+                    TextField("Type or paste an emoji", text: $emojiInput)
+                        .font(.system(size: 28))
+                        .multilineTextAlignment(.center)
+                        .padding()
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(12)
+                        .padding(.horizontal, 40)
+
+                    Text("Tap the text field and use the emoji keyboard to pick one")
+                        .font(.caption)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+
+                    Spacer()
+                }
+                .navigationTitle("Choose Emoji")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("Cancel") { showEmojiEditor = false }
+                    }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") {
+                            let first = emojiInput.unicodeScalars.first
+                            if let scalar = first, scalar.properties.isEmoji {
+                                emoji = String(emojiInput.prefix(2))
+                            } else if !emojiInput.isEmpty {
+                                emoji = String(emojiInput.prefix(2))
+                            }
+                            showEmojiEditor = false
+                        }
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.primary)
                     }
                 }
             }
-            .navigationTitle("New Budget")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }
+            .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showAddLineItem, onDismiss: {
+            if let budget = createdBudget {
+                Task { await loadPostCreateData(budgetId: budget.id) }
+            }
+        }) {
+            if let budget = createdBudget {
+                ManageBudgetCategoriesView(
+                    budgetId: budget.id,
+                    apiClient: apiClient,
+                    existingLineItems: lineItems,
+                    allCategories: allCategories
+                )
+                .presentationDetents([.medium, .large])
+            }
+        }
+        .sheet(isPresented: $showAddAccount) {
+            addAccountSheet
+        }
+    }
+
+    // MARK: - Step 1: Budget Details
+
+    private var detailsStep: some View {
+        VStack(spacing: 24) {
+            // Emoji preview
+            VStack(spacing: 12) {
+                Button {
+                    emojiInput = emoji
+                    showEmojiEditor = true
+                } label: {
+                    Text(emoji)
+                        .font(.system(size: 52))
+                        .frame(width: 88, height: 88)
+                        .background(Color(hex: selectedColor).opacity(0.15))
+                        .clipShape(Circle())
+                        .overlay(Circle().strokeBorder(Color(hex: selectedColor), lineWidth: 3))
+                        .overlay(
+                            Image(systemName: "pencil.circle.fill")
+                                .font(.system(size: 22))
+                                .foregroundColor(Theme.Colors.primary)
+                                .background(Circle().fill(Color.white).frame(width: 20, height: 20))
+                                .offset(x: 30, y: 30)
+                        )
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if isSaving {
-                        ProgressView()
-                    } else {
-                        Button("Create") { Task { await create() } }
-                            .fontWeight(.semibold)
-                            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
+
+                Text("Tap to change emoji")
+                    .font(.caption)
+                    .foregroundColor(Theme.Colors.textSecondary)
+            }
+            .padding(.top, 12)
+
+            // Name field
+            VStack(alignment: .leading, spacing: 8) {
+                Text("BUDGET NAME")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Theme.Colors.textSecondary)
+                    .kerning(1.0)
+
+                TextField("e.g. Monthly Budget", text: $name)
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundColor(Theme.Colors.textPrimary)
+                    .padding(16)
+                    .background(Color.white)
+                    .cornerRadius(12)
+                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+            }
+            .padding(.horizontal, 20)
+
+            // Color picker
+            VStack(alignment: .leading, spacing: 10) {
+                Text("COLOR")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Theme.Colors.textSecondary)
+                    .kerning(1.0)
+
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 10) {
+                    ForEach(colorOptions, id: \.hex) { option in
+                        Button { selectedColor = option.hex } label: {
+                            Circle()
+                                .fill(Color(hex: option.hex))
+                                .frame(width: 38, height: 38)
+                                .overlay(Circle().stroke(Color.white, lineWidth: selectedColor == option.hex ? 3 : 0).padding(3))
+                                .overlay(Circle().stroke(Color(hex: option.hex), lineWidth: selectedColor == option.hex ? 2 : 0))
+                        }
                     }
                 }
+            }
+            .padding(20)
+            .background(Color.white)
+            .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+            .padding(.horizontal, 20)
+
+            // Default toggle
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Set as Default")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(Theme.Colors.textPrimary)
+                    Text("The default budget applies to all months unless you assign a specific one.")
+                        .font(.system(size: 12))
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Toggle("", isOn: $isDefault)
+                    .labelsHidden()
+                    .tint(Theme.Colors.primary)
+            }
+            .padding(16)
+            .background(Color.white)
+            .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+            .padding(.horizontal, 20)
+
+            // Error
+            if let error = errorMessage {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .padding(.horizontal, 20)
+            }
+
+            // Hint about next steps
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "info.circle.fill")
+                    .foregroundColor(Theme.Colors.primary)
+                    .font(.system(size: 13))
+                    .padding(.top, 1)
+                Text("After creating, you'll be able to link bank accounts and add category budgets.")
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .background(Theme.Colors.primary.opacity(0.05))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Theme.Colors.primary.opacity(0.15), lineWidth: 1)
+            )
+            .cornerRadius(10)
+            .padding(.horizontal, 20)
+
+            Spacer(minLength: 40)
+        }
+    }
+
+    // MARK: - Step 2: Configure Budget
+
+    private var configureStep: some View {
+        VStack(spacing: 0) {
+            // Success header
+            VStack(spacing: 8) {
+                Text(emoji)
+                    .font(.system(size: 44))
+                    .frame(width: 72, height: 72)
+                    .background(Color(hex: selectedColor).opacity(0.15))
+                    .clipShape(Circle())
+                    .overlay(Circle().strokeBorder(Color(hex: selectedColor), lineWidth: 2))
+
+                Text(name)
+                    .font(.title3.bold())
+                    .foregroundColor(Theme.Colors.textPrimary)
+
+                if isDefault {
+                    Text("DEFAULT")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Theme.Colors.primary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Theme.Colors.primary.opacity(0.1))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Theme.Colors.primary.opacity(0.25), lineWidth: 1)
+                        )
+                        .cornerRadius(6)
+                }
+            }
+            .padding(.vertical, 16)
+
+            // Linked Accounts Section
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("LINKED ACCOUNTS")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .kerning(1.0)
+                    Spacer()
+                    Button {
+                        showAddAccount = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text("Add Account")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundColor(unlinkedAccounts.isEmpty ? Theme.Colors.textSecondary : Theme.Colors.primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Theme.Colors.background)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                        )
+                        .cornerRadius(8)
+                    }
+                    .disabled(unlinkedAccounts.isEmpty)
+                }
+
+                if isLoadingPostCreate {
+                    HStack {
+                        ProgressView().scaleEffect(0.8)
+                        Text("Loading accounts...")
+                            .font(.system(size: 12))
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.gray.opacity(0.06))
+                    .cornerRadius(10)
+                } else if linkedAccounts.isEmpty {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "building.columns")
+                            .foregroundColor(Theme.Colors.primary)
+                            .font(.system(size: 13))
+                            .padding(.top, 1)
+                        Text(allAccounts.isEmpty
+                             ? "No bank accounts connected yet. You can add them later from the Overview tab."
+                             : "Link bank accounts to track spending for this budget. Tap \"Add Account\" to get started.")
+                            .font(.system(size: 12))
+                            .foregroundColor(Theme.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(12)
+                    .background(Theme.Colors.primary.opacity(0.05))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Theme.Colors.primary.opacity(0.15), lineWidth: 1)
+                    )
+                    .cornerRadius(10)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(Array(linkedAccounts.enumerated()), id: \.element.id) { idx, account in
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(account.name)
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(Theme.Colors.textPrimary)
+                                    if let org = account.organizationName {
+                                        Text(org)
+                                            .font(.system(size: 12))
+                                            .foregroundColor(Theme.Colors.textSecondary)
+                                    }
+                                }
+                                Spacer()
+                                if let balance = account.balance {
+                                    Text(String(format: "$%.2f", balance))
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(balance < 0 ? Theme.Colors.expense : Theme.Colors.textPrimary)
+                                }
+                                Button {
+                                    Task { await toggleAccount(account) }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(Color.gray.opacity(0.4))
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+
+                            if idx < linkedAccounts.count - 1 {
+                                Divider().padding(.leading, 16)
+                            }
+                        }
+                    }
+                    .background(Color.white)
+                    .cornerRadius(12)
+                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                }
+
+                if let error = accountErrorMessage {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(Theme.Colors.expense)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+
+            // Budget Total Card
+            if !categoryLineItems.isEmpty {
+                newBudgetTotalCard
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 24)
+            }
+
+            // Categories section
+            HStack {
+                Text("CATEGORIES & AMOUNTS")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Theme.Colors.textSecondary)
+                    .kerning(1.0)
+                Spacer()
+                Button {
+                    showAddLineItem = true
+                } label: {
+                    Text("+ Add / Remove")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Theme.Colors.primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Theme.Colors.background)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                        )
+                        .cornerRadius(8)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 8)
+
+            if isLoadingPostCreate {
+                ProgressView()
+                    .padding(.top, 40)
+            } else if categoryLineItems.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "square.grid.2x2")
+                        .font(.system(size: 32))
+                        .foregroundColor(Theme.Colors.textSecondary.opacity(0.5))
+
+                    Text("No categories yet")
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .font(.system(size: 14))
+
+                    Text("Add categories to set spending limits for each area of your budget.")
+                        .font(.system(size: 12))
+                        .foregroundColor(Theme.Colors.textSecondary.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+
+                    Button {
+                        showAddLineItem = true
+                    } label: {
+                        Text("Add Categories")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Theme.Colors.primary)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(Theme.Colors.primary.opacity(0.08))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Theme.Colors.primary.opacity(0.25), lineWidth: 1)
+                            )
+                            .cornerRadius(12)
+                    }
+                }
+                .padding(.top, 32)
+                .padding(.bottom, 40)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(categoryLineItems.enumerated()), id: \.element.id) { idx, item in
+                        let cat = allCategories.first { $0.id == item.categoryId }
+                        if let cat {
+                            HStack(spacing: 12) {
+                                Text(cat.icon)
+                                    .font(.system(size: 22))
+                                    .frame(width: 36, alignment: .center)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(cat.name)
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(Theme.Colors.textPrimary)
+                                    Text("\(cat.subcategories.count) subcategories")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Theme.Colors.textSecondary)
+                                }
+                                Spacer()
+                                Text(formatAmount(item.amount))
+                                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 14)
+                        }
+
+                        if idx < categoryLineItems.count - 1 {
+                            Divider().padding(.leading, 68)
+                        }
+                    }
+                }
+                .padding(.bottom, 40)
+            }
+
+            if let error = errorMessage {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
             }
         }
     }
 
-    private func create() async {
+    // MARK: - Budget Total Card
+
+    @ViewBuilder
+    private var newBudgetTotalCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .lastTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("TOTAL BUDGET")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .kerning(0.5)
+                    Text(formatAmount(totalBudget))
+                        .font(.system(size: 32, weight: .bold, design: .monospaced))
+                        .foregroundColor(Theme.Colors.textPrimary)
+                        .kerning(-1)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("CATEGORIES")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .kerning(0.5)
+                    Text("\(categoryLineItems.count)")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Theme.Colors.textSecondary)
+                }
+            }
+
+            if totalBudget > 0 && !categoryLineItems.isEmpty {
+                GeometryReader { geometry in
+                    HStack(spacing: 3) {
+                        ForEach(Array(categoryLineItems.enumerated()), id: \.element.id) { idx, item in
+                            let pct = CGFloat(item.amount / totalBudget)
+                            let w = max(4, (geometry.size.width - CGFloat(categoryLineItems.count - 1) * 3) * pct)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color(hex: categoryColorFor(id: item.categoryId, index: idx)))
+                                .frame(width: w)
+                        }
+                    }
+                }
+                .frame(height: 6)
+                .cornerRadius(3)
+                .padding(.top, 18)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(Array(categoryLineItems.enumerated()), id: \.element.id) { idx, item in
+                            HStack(spacing: 5) {
+                                Circle()
+                                    .fill(Color(hex: categoryColorFor(id: item.categoryId, index: idx)))
+                                    .frame(width: 7, height: 7)
+                                Text(allCategories.first { $0.id == item.categoryId }?.name ?? "Category")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 12)
+            }
+        }
+        .padding(22)
+        .background(Color.white)
+        .cornerRadius(18)
+        .shadow(color: Color.black.opacity(0.07), radius: 8, x: 0, y: 2)
+        .animation(.easeInOut(duration: 0.3), value: totalBudget)
+    }
+
+    // MARK: - Add Account Sheet
+
+    private var addAccountSheet: some View {
+        NavigationStack {
+            Group {
+                if unlinkedAccounts.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 48))
+                            .foregroundColor(Theme.Colors.primary)
+                        Text("All accounts are already linked to this budget")
+                            .font(.subheadline)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List(unlinkedAccounts) { account in
+                        Button {
+                            Task {
+                                await toggleAccount(account)
+                                if unlinkedAccounts.isEmpty { showAddAccount = false }
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(account.name)
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(Theme.Colors.textPrimary)
+                                    if let org = account.organizationName {
+                                        Text(org)
+                                            .font(.system(size: 13))
+                                            .foregroundColor(Theme.Colors.textSecondary)
+                                    }
+                                }
+                                Spacer()
+                                if let balance = account.balance {
+                                    Text(String(format: "$%.2f", balance))
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(balance < 0 ? Theme.Colors.expense : Theme.Colors.textPrimary)
+                                }
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(Theme.Colors.primary)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .listStyle(.insetGrouped)
+                }
+            }
+            .navigationTitle("Add Account")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { showAddAccount = false }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    // MARK: - Actions
+
+    private func createBudget() async {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
-        isSaving = true
+        isCreating = true
         errorMessage = nil
         do {
-            let created = try await apiClient.createBudget(name: trimmed, isDefault: isDefault)
+            let created = try await apiClient.createBudget(
+                name: trimmed,
+                isDefault: isDefault,
+                emoji: emoji,
+                color: selectedColor
+            )
             Analytics.shared.track(.budgetCreated, properties: ["budget_name": trimmed])
-            onCreate(created)
+            createdBudget = created
+            await loadPostCreateData(budgetId: created.id)
         } catch {
             errorMessage = "Failed to create: \(error.localizedDescription)"
-            isSaving = false
         }
+        isCreating = false
+    }
+
+    private func loadPostCreateData(budgetId: String) async {
+        isLoadingPostCreate = true
+        do {
+            async let lineItemsFetch = apiClient.fetchBudgetLineItems(budgetId: budgetId)
+            async let categoriesFetch = apiClient.fetchCategoriesTree()
+            let (items, cats) = try await (lineItemsFetch, categoriesFetch)
+            lineItems = items
+            allCategories = cats
+        } catch {
+            // Categories section stays empty on error
+        }
+
+        do {
+            allAccounts = try await loadAllAccounts()
+        } catch {
+            // Silently fail if no accounts connected
+        }
+        isLoadingPostCreate = false
+    }
+
+    private func loadAllAccounts() async throws -> [SimplefinAccount] {
+        let items = try await apiClient.listSimplefinItems()
+        var accounts: [SimplefinAccount] = []
+        for item in items {
+            let accs = try await apiClient.listSimplefinAccounts(itemId: item.id)
+            accounts.append(contentsOf: accs)
+        }
+        return accounts
+    }
+
+    private func toggleAccount(_ account: SimplefinAccount) async {
+        guard let budget = createdBudget else { return }
+        let isLinked = linkedAccountIds.contains(account.id)
+        accountErrorMessage = nil
+
+        if isLinked {
+            linkedAccountIds.remove(account.id)
+            do {
+                try await apiClient.removeBudgetAccount(budgetId: budget.id, accountId: account.id)
+            } catch {
+                linkedAccountIds.insert(account.id)
+                accountErrorMessage = "Failed to remove account"
+            }
+        } else {
+            linkedAccountIds.insert(account.id)
+            do {
+                _ = try await apiClient.addBudgetAccount(budgetId: budget.id, accountId: account.id)
+            } catch {
+                linkedAccountIds.remove(account.id)
+                let desc = error.localizedDescription
+                accountErrorMessage = desc.contains("already linked") ? "This account is already linked to another budget" : "Failed to add account"
+            }
+        }
+    }
+
+    private func categoryColorFor(id: String, index: Int) -> String {
+        allCategories.first(where: { $0.id == id })?.color
+            ?? fallbackColors[index % fallbackColors.count]
+    }
+
+    private func formatAmount(_ amount: Double) -> String {
+        let fmt = NumberFormatter()
+        fmt.numberStyle = .currency
+        fmt.currencyCode = "USD"
+        fmt.maximumFractionDigits = 0
+        fmt.minimumFractionDigits = 0
+        return fmt.string(from: NSNumber(value: amount)) ?? "$\(Int(amount))"
     }
 }
 

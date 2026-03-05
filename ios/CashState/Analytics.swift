@@ -33,7 +33,6 @@ enum AnalyticsEvent: String {
 
     // Budget
     case budgetMonthNavigated = "budget_month_navigated"
-    case spendingCompareViewed = "spending_compare_viewed"
     case categoryDrillDown = "category_drill_down"
     case aiCategorizationStarted = "ai_categorization_started"
     case aiCategorizationCompleted = "ai_categorization_completed"
