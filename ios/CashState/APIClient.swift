@@ -1,4 +1,5 @@
 import Combine
+import ClerkKit
 import ConvexMobile
 import Foundation
 
@@ -25,6 +26,26 @@ struct ConvexPage<T: Decodable>: Decodable {
     let continueCursor: String
 }
 
+// Thread-safe single-use continuation wrapper used by APIClient.query().
+private final class QueryState<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Value, Error>?
+    var cancellable: AnyCancellable?
+
+    func store(_ cont: CheckedContinuation<Value, Error>) {
+        lock.lock(); defer { lock.unlock() }
+        continuation = cont
+    }
+
+    func resume(with result: Result<Value, Error>) {
+        lock.lock()
+        let cont = continuation
+        continuation = nil
+        lock.unlock()
+        cont?.resume(with: result)
+    }
+}
+
 // MARK: - APIClient
 
 /// Networking client that wraps the global ConvexMobile client.
@@ -34,34 +55,84 @@ class APIClient {
 
     private init() {}
 
+    /// Returns the current Clerk user's ID to pass as `clerkId` arg to all Convex functions.
+    private func clerkId() async throws -> String {
+        guard let id = await Clerk.shared.user?.id else {
+            throw APIError.convexError("Not authenticated")
+        }
+        return id
+    }
+
+    /// Returns args dict with clerkId injected.
+    private func withClerkId(_ args: [String: ConvexEncodable?]? = nil) async throws -> [String: ConvexEncodable?] {
+        var result = args ?? [:]
+        result["clerkId"] = try await clerkId()
+        return result
+    }
+
     /// One-shot query: subscribe, take first value, cancel.
+    /// Uses withTaskCancellationHandler so the continuation is always resumed when
+    /// the timeout fires — without this the task group hangs forever.
     private func query<T: Decodable>(_ name: String, with args: [String: ConvexEncodable?]? = nil) async throws -> T {
-        try await withCheckedThrowingContinuation { continuation in
-            var cancellable: AnyCancellable?
-            cancellable = convexClient
-                .subscribe(to: name, with: args, yielding: T.self)
-                .first()
-                .sink(
-                    receiveCompletion: { completion in
-                        switch completion {
-                        case .finished:
-                            break
-                        case .failure(let error):
-                            continuation.resume(throwing: error)
+        let argsWithClerkId = try await withClerkId(args)
+        print("📡 [APIClient] query START: \(name)")
+
+        let state = QueryState<T>()
+
+        return try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                // withTaskCancellationHandler ensures onCancel fires when this task
+                // is cancelled by the task group, which resumes the continuation and
+                // lets the group exit cleanly instead of hanging forever.
+                try await withTaskCancellationHandler(
+                    operation: {
+                        try await withCheckedThrowingContinuation { cont in
+                            state.store(cont)
+                            state.cancellable = convexClient
+                                .subscribe(to: name, with: argsWithClerkId, yielding: T.self)
+                                .handleEvents(
+                                    receiveSubscription: { _ in print("📡 [APIClient] subscription created: \(name)") },
+                                    receiveOutput: { _ in print("📡 [APIClient] subscription output: \(name)") },
+                                    receiveCompletion: { c in print("📡 [APIClient] subscription completion: \(name) → \(c)") },
+                                    receiveCancel: { print("📡 [APIClient] subscription cancelled: \(name)") }
+                                )
+                                .first()
+                                .sink(
+                                    receiveCompletion: { completion in
+                                        if case .failure(let error) = completion {
+                                            print("📡 [APIClient] query ERROR: \(name) → \(error)")
+                                            state.resume(with: .failure(error))
+                                        }
+                                    },
+                                    receiveValue: { value in
+                                        print("📡 [APIClient] query GOT VALUE: \(name)")
+                                        state.resume(with: .success(value))
+                                    }
+                                )
                         }
-                        cancellable?.cancel()
                     },
-                    receiveValue: { value in
-                        continuation.resume(returning: value)
+                    onCancel: {
+                        print("📡 [APIClient] query CANCELLED: \(name)")
+                        state.resume(with: .failure(CancellationError()))
+                        state.cancellable?.cancel()
                     }
                 )
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: 15_000_000_000) // 15s timeout
+                print("📡 [APIClient] query TIMEOUT: \(name)")
+                throw APIError.convexError("Query timed out: \(name)")
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
     }
 
     // MARK: - SimpleFin Methods
 
     func setupSimplefin(setupToken: String, institutionName: String?) async throws -> SimplefinSetupResponse {
-        var args: [String: ConvexEncodable?] = ["setupToken": setupToken]
+        var args = try await withClerkId(["setupToken": setupToken])
         if let name = institutionName { args["institutionName"] = name }
         return try await convexClient.action("actions/simplefinSync:setup", with: args)
     }
@@ -71,13 +142,13 @@ class APIClient {
     }
 
     func syncSimplefin(itemId: String, startDate: Int? = nil, forceSync: Bool = false) async throws -> SimplefinSyncResponse {
-        var args: [String: ConvexEncodable?] = ["itemId": itemId, "forceSync": forceSync]
-        if let sd = startDate { args["startDate"] = sd }
+        var args = try await withClerkId(["itemId": itemId, "forceSync": forceSync])
+        if let sd = startDate { args["startDate"] = Double(sd) }
         return try await convexClient.action("actions/simplefinSync:sync", with: args)
     }
 
     func deleteSimplefinItem(itemId: String) async throws {
-        try await convexClient.mutation("accounts:disconnect", with: ["itemId": itemId])
+        try await convexClient.mutation("accounts:disconnect", with: try await withClerkId(["itemId": itemId]))
     }
 
     func listSimplefinAccounts(itemId: String) async throws -> [SimplefinAccount] {
@@ -96,10 +167,10 @@ class APIClient {
         accountIds: [String]? = nil
     ) async throws -> TransactionListResponse {
         var args: [String: ConvexEncodable?] = [
-            "paginationOpts": ["numItems": limit, "cursor": nil] as [String: ConvexEncodable?],
+            "paginationOpts": ["numItems": Double(limit), "cursor": nil] as [String: ConvexEncodable?],
         ]
-        if let dateFrom = dateFrom { args["dateFrom"] = dateFrom }
-        if let dateTo = dateTo { args["dateTo"] = dateTo }
+        if let dateFrom = dateFrom { args["dateFrom"] = Double(dateFrom) }
+        if let dateTo = dateTo { args["dateTo"] = Double(dateTo) }
         if let accountIds = accountIds, !accountIds.isEmpty {
             args["accountIds"] = accountIds as [ConvexEncodable?]
         }
@@ -134,7 +205,7 @@ class APIClient {
         var args: [String: ConvexEncodable?] = [:]
         if let sd = startDate { args["startDate"] = formatter.string(from: sd) }
         if let ed = endDate { args["endDate"] = formatter.string(from: ed) }
-        try await convexClient.mutation("snapshots:calculate", with: args)
+        try await convexClient.mutation("snapshots:calculate", with: try await withClerkId(args))
     }
 
     func getAccountSnapshots(
@@ -158,7 +229,7 @@ class APIClient {
             "monthlyBudget": monthlyBudget,
             "accountIds": accountIds as [ConvexEncodable?],
         ]
-        return try await convexClient.mutation("categories:seedDefaults", with: args)
+        return try await convexClient.mutation("categories:seedDefaults", with: try await withClerkId(args))
     }
 
     func fetchCategories() async throws -> [Category] {
@@ -172,7 +243,7 @@ class APIClient {
     func createSubcategory(categoryId: String, name: String, icon: String) async throws -> Subcategory {
         return try await convexClient.mutation(
             "categories:createSubcategory",
-            with: ["categoryId": categoryId, "name": name, "icon": icon]
+            with: try await withClerkId(["categoryId": categoryId, "name": name, "icon": icon])
         )
     }
 
@@ -180,18 +251,18 @@ class APIClient {
         var args: [String: ConvexEncodable?] = ["id": subcategoryId]
         if let n = name { args["name"] = n }
         if let i = icon { args["icon"] = i }
-        return try await convexClient.mutation("categories:updateSubcategory", with: args)
+        return try await convexClient.mutation("categories:updateSubcategory", with: try await withClerkId(args))
     }
 
     func updateCategory(categoryId: String, name: String, icon: String, color: String) async throws -> Category {
         return try await convexClient.mutation(
             "categories:update",
-            with: ["id": categoryId, "name": name, "icon": icon, "color": color]
+            with: try await withClerkId(["id": categoryId, "name": name, "icon": icon, "color": color])
         )
     }
 
     func deleteCategory(categoryId: String) async throws {
-        try await convexClient.mutation("categories:deleteCategory", with: ["id": categoryId])
+        try await convexClient.mutation("categories:deleteCategory", with: try await withClerkId(["id": categoryId]))
     }
 
     func categorizeTransaction(
@@ -206,7 +277,7 @@ class APIClient {
         ]
         if let cid = categoryId { args["categoryId"] = cid }
         if let sid = subcategoryId { args["subcategoryId"] = sid }
-        try await convexClient.mutation("transactions:categorize", with: args)
+        try await convexClient.mutation("transactions:categorize", with: try await withClerkId(args))
     }
 
     func listCategorizationRules() async throws -> [CategorizationRule] {
@@ -220,17 +291,17 @@ class APIClient {
             "categoryId": categoryId,
         ]
         if let sid = subcategoryId { args["subcategoryId"] = sid }
-        return try await convexClient.mutation("categories:createRule", with: args)
+        return try await convexClient.mutation("categories:createRule", with: try await withClerkId(args))
     }
 
     func deleteCategorizationRule(ruleId: String) async throws {
-        try await convexClient.mutation("categories:deleteRule", with: ["id": ruleId])
+        try await convexClient.mutation("categories:deleteRule", with: try await withClerkId(["id": ruleId]))
     }
 
     func createCategory(name: String, icon: String, color: String) async throws -> Category {
         return try await convexClient.mutation(
             "categories:create",
-            with: ["name": name, "icon": icon, "color": color]
+            with: try await withClerkId(["name": name, "icon": icon, "color": color])
         )
     }
 
@@ -251,18 +322,18 @@ class APIClient {
             "amount": amount,
         ]
         if let sid = subcategoryId { args["subcategoryId"] = sid }
-        return try await convexClient.mutation("budgets:createLineItem", with: args)
+        return try await convexClient.mutation("budgets:createLineItem", with: try await withClerkId(args))
     }
 
     func updateBudgetLineItem(budgetId: String, lineItemId: String, amount: Double) async throws -> BudgetLineItem {
         return try await convexClient.mutation(
             "budgets:updateLineItem",
-            with: ["id": lineItemId, "amount": amount]
+            with: try await withClerkId(["id": lineItemId, "amount": amount])
         )
     }
 
     func deleteBudgetLineItem(budgetId: String, lineItemId: String) async throws {
-        try await convexClient.mutation("budgets:deleteLineItem", with: ["id": lineItemId])
+        try await convexClient.mutation("budgets:deleteLineItem", with: try await withClerkId(["id": lineItemId]))
     }
 
     func fetchBudgetLineItems(budgetId: String) async throws -> [BudgetLineItem] {
@@ -273,7 +344,7 @@ class APIClient {
         var args: [String: ConvexEncodable?] = ["name": name, "isDefault": isDefault]
         if let e = emoji { args["emoji"] = e }
         if let c = color { args["color"] = c }
-        return try await convexClient.mutation("budgets:create", with: args)
+        return try await convexClient.mutation("budgets:create", with: try await withClerkId(args))
     }
 
     func updateBudget(budgetId: String, name: String? = nil, isDefault: Bool? = nil, emoji: String? = nil, color: String? = nil) async throws -> BudgetAPI {
@@ -282,7 +353,7 @@ class APIClient {
         if let d = isDefault { args["isDefault"] = d }
         if let e = emoji { args["emoji"] = e }
         if let c = color { args["color"] = c }
-        return try await convexClient.mutation("budgets:update", with: args)
+        return try await convexClient.mutation("budgets:update", with: try await withClerkId(args))
     }
 
     func fetchBudgetMonths() async throws -> [BudgetMonth] {
@@ -292,16 +363,16 @@ class APIClient {
     func assignBudgetMonth(budgetId: String, month: String) async throws -> BudgetMonth {
         return try await convexClient.mutation(
             "budgets:assignMonth",
-            with: ["budgetId": budgetId, "month": month]
+            with: try await withClerkId(["budgetId": budgetId, "month": month])
         )
     }
 
     func deleteBudgetMonth(monthId: String) async throws {
-        try await convexClient.mutation("budgets:deleteMonth", with: ["id": monthId])
+        try await convexClient.mutation("budgets:deleteMonth", with: try await withClerkId(["id": monthId]))
     }
 
     func deleteBudget(budgetId: String) async throws {
-        try await convexClient.mutation("budgets:deleteBudget", with: ["id": budgetId])
+        try await convexClient.mutation("budgets:deleteBudget", with: try await withClerkId(["id": budgetId]))
     }
 
     func listBudgetAccounts(budgetId: String) async throws -> [BudgetAccountItem] {
@@ -311,14 +382,14 @@ class APIClient {
     func addBudgetAccount(budgetId: String, accountId: String) async throws -> BudgetAccountItem {
         return try await convexClient.mutation(
             "budgets:addAccount",
-            with: ["budgetId": budgetId, "accountId": accountId]
+            with: try await withClerkId(["budgetId": budgetId, "accountId": accountId])
         )
     }
 
     func removeBudgetAccount(budgetId: String, accountId: String) async throws {
         try await convexClient.mutation(
             "budgets:removeAccount",
-            with: ["budgetId": budgetId, "accountId": accountId]
+            with: try await withClerkId(["budgetId": budgetId, "accountId": accountId])
         )
     }
 
@@ -331,13 +402,13 @@ class APIClient {
             if let sid = u.subcategoryId { d["subcategoryId"] = sid }
             return d
         }
-        return try await convexClient.mutation("transactions:batchCategorize", with: ["updates": updateList as [ConvexEncodable?]])
+        return try await convexClient.mutation("transactions:batchCategorize", with: try await withClerkId(["updates": updateList as [ConvexEncodable?]]))
     }
 
     func categorizeWithAI(transactionIds: [String]? = nil, force: Bool = false) async throws -> AICategorizationResponse {
         var args: [String: ConvexEncodable?] = ["force": force]
         if let ids = transactionIds { args["transactionIds"] = ids as [ConvexEncodable?] }
-        return try await convexClient.action("actions/aiCategorize:categorize", with: args)
+        return try await convexClient.action("actions/aiCategorize:categorize", with: try await withClerkId(args))
     }
 
     // MARK: - Categorization Jobs
@@ -345,7 +416,7 @@ class APIClient {
     func startCategorizationJob(transactionIds: [String]? = nil, force: Bool = false) async throws -> CategorizationJobStartResponse {
         var args: [String: ConvexEncodable?] = ["force": force]
         if let ids = transactionIds { args["transactionIds"] = ids as [ConvexEncodable?] }
-        return try await convexClient.mutation("categorizationJobs:start", with: args)
+        return try await convexClient.mutation("categorizationJobs:start", with: try await withClerkId(args))
     }
 
     func getCategorizationJobStatus(jobId: String) async throws -> CategorizationJob {
@@ -402,7 +473,7 @@ extension APIClient {
         ]
         if let d = description { args["description"] = d }
         if let td = targetDate { args["targetDate"] = td }
-        return try await convexClient.mutation("goals:create", with: args)
+        return try await convexClient.mutation("goals:create", with: try await withClerkId(args))
     }
 
     func fetchGoalDetail(
@@ -440,10 +511,10 @@ extension APIClient {
             }
             args["accounts"] = accountsList as [ConvexEncodable?]
         }
-        return try await convexClient.mutation("goals:update", with: args)
+        return try await convexClient.mutation("goals:update", with: try await withClerkId(args))
     }
 
     func deleteGoal(goalId: String) async throws {
-        try await convexClient.mutation("goals:deleteGoal", with: ["id": goalId])
+        try await convexClient.mutation("goals:deleteGoal", with: try await withClerkId(["id": goalId]))
     }
 }

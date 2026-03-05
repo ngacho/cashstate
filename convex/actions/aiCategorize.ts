@@ -19,6 +19,7 @@ type CategorizationResult = {
 
 export const categorize = action({
   args: {
+    clerkId: v.string(),
     transactionIds: v.optional(v.array(v.id("simplefinTransactions"))),
     force: v.optional(v.boolean()),
   },
@@ -27,9 +28,7 @@ export const categorize = action({
     failedCount: number;
     results: CategorizationResult[];
   }> => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-    const user = await ctx.runQuery(internal.usersHelpers._getByClerkId, { clerkId: identity.subject });
+    const user = await ctx.runQuery(internal.usersHelpers._getByClerkId, { clerkId: args.clerkId });
     if (!user) throw new Error("User not found");
 
     const openRouterKey = process.env.OPENROUTER_API_KEY;

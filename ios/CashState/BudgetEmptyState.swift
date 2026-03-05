@@ -6,7 +6,6 @@ struct BudgetEmptyStateView: View {
     @Binding var error: String?
     var onCategoriesAdded: () -> Void
 
-    @State private var showAddCategory = false
     @State private var showOnboarding = false
     @State private var seedResult: SeedDefaultsResponse?
 
@@ -20,12 +19,12 @@ struct BudgetEmptyStateView: View {
                 .foregroundColor(.gray)
 
             // Title
-            Text("No Categories Yet")
+            Text("No Budget Yet")
                 .font(.title2)
                 .fontWeight(.bold)
 
             // Description
-            Text("Get started by adding categories to track your spending")
+            Text("Get started by adding a budget with the categories you want to keep track of")
                 .font(.body)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -50,14 +49,11 @@ struct BudgetEmptyStateView: View {
                 }
                 .disabled(isLoading)
 
-                // Create Custom Button
-                Button(action: {
-                    Analytics.shared.screen(.addCategory, properties: ["source": "empty_state"])
-                    showAddCategory = true
-                }) {
+                // Create Budget — pushes onto the NavigationStack
+                NavigationLink(destination: AllBudgetsView(apiClient: apiClient)) {
                     HStack {
                         Image(systemName: "plus.circle")
-                        Text("Create Custom Category")
+                        Text("Create Budget")
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
@@ -83,11 +79,6 @@ struct BudgetEmptyStateView: View {
             }
 
             Spacer()
-        }
-        .sheet(isPresented: $showAddCategory) {
-            AddCategoryView(isPresented: $showAddCategory, apiClient: apiClient) { _ in
-                onCategoriesAdded()
-            }
         }
         .sheet(isPresented: $showOnboarding) {
             OnboardingFlow(

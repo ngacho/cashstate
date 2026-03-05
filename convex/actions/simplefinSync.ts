@@ -46,6 +46,7 @@ async function decrypt(encrypted: string, envKey: string): Promise<string> {
 
 export const setup = action({
   args: {
+    clerkId: v.string(),
     setupToken: v.string(),
     institutionName: v.optional(v.string()),
   },
@@ -53,9 +54,7 @@ export const setup = action({
     itemId: string;
     institutionName: string | null;
   }> => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-    const user = await ctx.runQuery(internal.usersHelpers._getByClerkId, { clerkId: identity.subject });
+    const user = await ctx.runQuery(internal.usersHelpers._getByClerkId, { clerkId: args.clerkId });
     if (!user) throw new Error("User not found");
 
     const encryptionKey = process.env.ENCRYPTION_KEY;
@@ -96,6 +95,7 @@ export const setup = action({
 
 export const sync = action({
   args: {
+    clerkId: v.string(),
     itemId: v.id("simplefinItems"),
     startDate: v.optional(v.number()),
     forceSync: v.optional(v.boolean()),
@@ -108,9 +108,7 @@ export const sync = action({
     transactionsUpdated: number;
     errors: string[];
   }> => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-    const user = await ctx.runQuery(internal.usersHelpers._getByClerkId, { clerkId: identity.subject });
+    const user = await ctx.runQuery(internal.usersHelpers._getByClerkId, { clerkId: args.clerkId });
     if (!user) throw new Error("User not found");
 
     const encryptionKey = process.env.ENCRYPTION_KEY;

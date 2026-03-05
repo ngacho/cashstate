@@ -7,9 +7,6 @@ import UIKit
 
 class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_: UIApplication, didFinishLaunchingWithOptions _: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        print("🔐 [AppDelegate] Configuring Clerk with key: \(Config.clerkPublishableKey.prefix(20))...")
-        Clerk.configure(publishableKey: Config.clerkPublishableKey)
-        print("🔐 [AppDelegate] Clerk configured. Session: \(String(describing: Clerk.shared.session))")
         Analytics.shared.configure()
         return true
     }

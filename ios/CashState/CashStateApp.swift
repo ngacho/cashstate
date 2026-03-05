@@ -7,18 +7,18 @@
 
 import SwiftUI
 import ConvexMobile
-import ClerkConvex
 import ClerkKit
 
 @MainActor
-let convexClient = ConvexClientWithAuth(
-    deploymentUrl: Config.convexURL,
-    authProvider: ClerkConvexAuthProvider()
-)
+let convexClient = ConvexClient(deploymentUrl: Config.convexURL)
 
 @main
 struct CashStateApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
+    init() {
+        Clerk.configure(publishableKey: Config.clerkPublishableKey)
+    }
 
     var body: some Scene {
         WindowGroup {
