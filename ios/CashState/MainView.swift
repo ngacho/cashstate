@@ -84,7 +84,7 @@ struct TransactionsView: View {
                         }
                         .background(Theme.Colors.cardBackground)
                         .cornerRadius(Theme.CornerRadius.md)
-                        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                        .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
                         .padding(Theme.Spacing.md)
                     }
                     .background(Theme.Colors.background)
@@ -417,7 +417,7 @@ struct InsightsView: View {
                     .frame(height: 170)
                     .background(Theme.Colors.cardBackground)
                     .cornerRadius(Theme.CornerRadius.md)
-                    .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                    .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
                     .padding(.horizontal, Theme.Spacing.md)
                 }
             }
@@ -472,7 +472,7 @@ struct InsightsView: View {
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.cardBackground)
         .cornerRadius(Theme.CornerRadius.md)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+        .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
         .padding(.horizontal, Theme.Spacing.md)
     }
 
@@ -656,7 +656,7 @@ struct SummaryCard: View {
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.cardBackground)
         .cornerRadius(Theme.CornerRadius.md)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+        .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
     }
 }
 
@@ -684,7 +684,7 @@ struct CategoryRow: View {
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.gray.opacity(0.15))
+                            .fill(Theme.Colors.divider)
                             .frame(height: 6)
 
                         RoundedRectangle(cornerRadius: 3)
@@ -734,12 +734,14 @@ struct AccountsView: View {
     @State private var isSyncing = false
     @State private var syncErrorMessage: String?
     @State private var showSyncError = false
+    @AppStorage("appearanceMode") private var appearanceMode: String = AppearanceMode.system.rawValue
 
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: Theme.Spacing.lg) {
                     connectionSection
+                    appearanceSection
                     signOutSection
                     Spacer()
                 }
@@ -827,7 +829,7 @@ struct AccountsView: View {
         }
         .background(Theme.Colors.cardBackground)
         .cornerRadius(Theme.CornerRadius.md)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+        .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
     }
 
     private var connectedStatusCard: some View {
@@ -878,7 +880,41 @@ struct AccountsView: View {
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.cardBackground)
         .cornerRadius(Theme.CornerRadius.md)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+        .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
+    }
+
+    private var appearanceSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(spacing: Theme.Spacing.sm) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.Colors.primary.opacity(0.15))
+                        .frame(width: 40, height: 40)
+                    Image(systemName: "paintbrush.fill")
+                        .font(.body)
+                        .foregroundColor(Theme.Colors.primary)
+                }
+
+                Text("Appearance")
+                    .font(.body)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Theme.Colors.textPrimary)
+
+                Spacer()
+            }
+
+            Picker("Appearance", selection: $appearanceMode) {
+                ForEach(AppearanceMode.allCases, id: \.rawValue) { mode in
+                    Text(mode.rawValue).tag(mode.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+        .padding(Theme.Spacing.md)
+        .background(Theme.Colors.cardBackground)
+        .cornerRadius(Theme.CornerRadius.md)
+        .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
+        .padding(.horizontal, Theme.Spacing.md)
     }
 
     private var signOutSection: some View {
@@ -903,7 +939,7 @@ struct AccountsView: View {
             }
         }
         .cornerRadius(Theme.CornerRadius.md)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+        .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
         .padding(.horizontal, Theme.Spacing.md)
     }
 

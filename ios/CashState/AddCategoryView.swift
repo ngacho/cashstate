@@ -84,7 +84,7 @@ struct AddCategoryView: View {
                                         .frame(width: 50, height: 50)
                                         .overlay(
                                             Circle()
-                                                .stroke(selectedColor == color ? Color.white : Color.clear, lineWidth: 3)
+                                                .stroke(selectedColor == color ? Theme.Colors.cardBackground : Color.clear, lineWidth: 3)
                                                 .padding(3)
                                         )
                                         .overlay(
@@ -519,7 +519,7 @@ struct EditCategoryView: View {
                                         .frame(width: 50, height: 50)
                                         .overlay(
                                             Circle()
-                                                .stroke(selectedColor == color ? Color.white : Color.clear, lineWidth: 3)
+                                                .stroke(selectedColor == color ? Theme.Colors.cardBackground : Color.clear, lineWidth: 3)
                                                 .padding(3)
                                         )
                                         .overlay(

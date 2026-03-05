@@ -262,7 +262,7 @@ class APIClient {
     }
 
     func deleteCategory(categoryId: String) async throws {
-        try await convexClient.mutation("categories:deleteCategory", with: try await withClerkId(["id": categoryId]))
+        let _: [String: Bool] = try await convexClient.mutation("categories:deleteCategory", with: try await withClerkId(["id": categoryId]))
     }
 
     func categorizeTransaction(

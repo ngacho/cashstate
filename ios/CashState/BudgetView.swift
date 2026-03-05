@@ -10,9 +10,8 @@ struct BudgetView: View {
     @State private var uncategorizedTransactions: [CategorizableTransaction] = []
     @State private var showManualCategorization = false
 
-    // AI categorization (inline, no modal)
-    @State private var isAICategorizationRunning = false
-    @State private var aiCategorizationProgress: Double = 0
+    // AI categorization (fire-and-forget)
+    @State private var aiCategorizationQueued = false
     @State private var aiCategorizationError: String?
 
     // Budget account scoping
@@ -252,46 +251,53 @@ struct BudgetView: View {
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.top, Theme.Spacing.sm)
 
-                    // Uncategorized Transactions Card or AI Progress
+                    // Uncategorized Transactions Card
                     if !uncategorizedTransactions.isEmpty {
-                        if isAICategorizationRunning {
-                            AICategorizationProgressCard(
-                                progress: aiCategorizationProgress,
-                                totalCount: uncategorizedTransactions.count
-                            )
+                        if aiCategorizationQueued {
+                            // Brief confirmation that job was queued
+                            HStack(spacing: Theme.Spacing.sm) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(Theme.Colors.income)
+                                Text("AI categorization queued — pull to refresh to see results")
+                                    .font(.caption)
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                            }
+                            .padding(Theme.Spacing.md)
+                            .background(Theme.Colors.income.opacity(0.08))
+                            .cornerRadius(Theme.CornerRadius.sm)
                             .padding(.horizontal, Theme.Spacing.md)
-                        } else {
-                            UncategorizedTransactionsCard(
-                                uncategorizedCount: uncategorizedTransactions.count,
-                                showManualCategorization: $showManualCategorization,
-                                onAICategorizationTap: {
+                        }
+
+                        UncategorizedTransactionsCard(
+                            uncategorizedCount: uncategorizedTransactions.count,
+                            showManualCategorization: $showManualCategorization,
+                            onAICategorizationTap: {
+                                Task { await startAICategorization() }
+                            }
+                        )
+                        .padding(.horizontal, Theme.Spacing.md)
+
+                        // Show error if AI categorization failed
+                        if let error = aiCategorizationError {
+                            HStack(spacing: Theme.Spacing.sm) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                Text(error)
+                                    .font(.caption)
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                                Spacer()
+                                Button("Retry") {
+                                    aiCategorizationError = nil
                                     Task { await startAICategorization() }
                                 }
-                            )
-                            .padding(.horizontal, Theme.Spacing.md)
-
-                            // Show error if AI categorization failed
-                            if let error = aiCategorizationError {
-                                HStack(spacing: Theme.Spacing.sm) {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundColor(.orange)
-                                    Text(error)
-                                        .font(.caption)
-                                        .foregroundColor(Theme.Colors.textSecondary)
-                                    Spacer()
-                                    Button("Retry") {
-                                        aiCategorizationError = nil
-                                        Task { await startAICategorization() }
-                                    }
-                                    .font(.caption)
-                                    .foregroundColor(Theme.Colors.primary)
-                                }
+                                .font(.caption)
+                                .foregroundColor(Theme.Colors.primary)
+                            }
                                 .padding(Theme.Spacing.sm)
                                 .background(Color.orange.opacity(0.1))
                                 .cornerRadius(Theme.CornerRadius.sm)
                                 .padding(.horizontal, Theme.Spacing.md)
                             }
-                        }
                     }
 
                     // Budget Overview Card
@@ -374,7 +380,7 @@ struct BudgetView: View {
                     .padding(Theme.Spacing.md)
                     .background(Theme.Colors.cardBackground)
                     .cornerRadius(Theme.CornerRadius.md)
-                    .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                    .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
                     .padding(.horizontal, Theme.Spacing.md)
 
                     // Categories Section with Donut Chart
@@ -437,7 +443,7 @@ struct BudgetView: View {
                     .padding(Theme.Spacing.md)
                     .background(Theme.Colors.cardBackground)
                     .cornerRadius(Theme.CornerRadius.md)
-                    .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                    .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
                     .padding(.horizontal, Theme.Spacing.md)
 
                     Spacer(minLength: Theme.Spacing.lg)
@@ -647,56 +653,22 @@ struct BudgetView: View {
     }
 
     private func startAICategorization() async {
-        guard !isAICategorizationRunning else { return }
+        guard !aiCategorizationQueued else { return }
 
-        isAICategorizationRunning = true
-        aiCategorizationProgress = 0
         aiCategorizationError = nil
         Analytics.shared.track(.aiCategorizationStarted, properties: [
             "transaction_count": uncategorizedTransactions.count
         ])
 
         do {
-            // Start background categorization job
             let transactionIds = uncategorizedTransactions.map { $0.id }
-            let startResponse = try await apiClient.startCategorizationJob(
+            _ = try await apiClient.startCategorizationJob(
                 transactionIds: transactionIds,
                 force: false
             )
-            let jobId = startResponse.jobId
-
-            // Poll for progress every 5 seconds
-            while true {
-                try await Task.sleep(nanoseconds: 5_000_000_000)
-
-                let job = try await apiClient.getCategorizationJobStatus(jobId: jobId)
-
-                // Update progress
-                if job.totalTransactions > 0 {
-                    aiCategorizationProgress = Double(job.categorizedCount) / Double(job.totalTransactions)
-                }
-
-                if job.status == "completed" {
-                    aiCategorizationProgress = 1.0
-                    Analytics.shared.track(.aiCategorizationCompleted, properties: [
-                        "categorized_count": job.categorizedCount
-                    ])
-                    try await Task.sleep(nanoseconds: 500_000_000)
-                    await loadData()
-                    isAICategorizationRunning = false
-                    aiCategorizationProgress = 0
-                    return
-                } else if job.status == "failed" {
-                    aiCategorizationError = job.errorMessage ?? "Categorization failed"
-                    isAICategorizationRunning = false
-                    aiCategorizationProgress = 0
-                    return
-                }
-            }
+            aiCategorizationQueued = true
         } catch {
-            aiCategorizationError = "Failed to categorize: \(error.localizedDescription)"
-            isAICategorizationRunning = false
-            aiCategorizationProgress = 0
+            aiCategorizationError = "Failed to queue categorization: \(error.localizedDescription)"
         }
     }
 
@@ -1212,9 +1184,9 @@ private struct BudgetListCard: View {
             }
         }
         .padding(20)
-        .background(Color.white)
+        .background(Theme.Colors.cardBackground)
         .cornerRadius(18)
-        .shadow(color: Color.black.opacity(0.07), radius: 8, x: 0, y: 2)
+        .shadow(color: Theme.Colors.shadowColor, radius: 8, x: 0, y: 2)
     }
 
     private func categoryColor(for categoryId: String, index: Int) -> String {
@@ -1389,6 +1361,8 @@ private struct CategoryLineItemEditView: View {
     @State private var subcatIcons: [String: String] = [:]
     @State private var editingSubcatForEmoji: Subcategory? = nil
     @State private var isSaving = false
+    @State private var isDeleting = false
+    @State private var showDeleteConfirmation = false
     @State private var errorMessage: String?
 
     private let emojiOptions = [
@@ -1472,7 +1446,7 @@ private struct CategoryLineItemEditView: View {
                                     Circle()
                                         .fill(Color(hex: option.hex))
                                         .frame(width: 38, height: 38)
-                                        .overlay(Circle().stroke(Color.white, lineWidth: selectedColorHex == option.hex ? 3 : 0).padding(3))
+                                        .overlay(Circle().stroke(Theme.Colors.cardBackground, lineWidth: selectedColorHex == option.hex ? 3 : 0).padding(3))
                                         .overlay(Circle().stroke(Color(hex: option.hex), lineWidth: selectedColorHex == option.hex ? 2 : 0))
                                 }
                             }
@@ -1531,7 +1505,7 @@ private struct CategoryLineItemEditView: View {
                                         .padding(.vertical, 6)
                                         .background(Theme.Colors.background)
                                         .cornerRadius(8)
-                                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+                                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.Colors.border, lineWidth: 1))
                                     }
                                     .padding(.vertical, 10)
                                     if idx < category.subcategories.count - 1 {
@@ -1548,6 +1522,24 @@ private struct CategoryLineItemEditView: View {
                             .foregroundColor(Theme.Colors.expense)
                             .padding(.horizontal)
                     }
+
+                    // Delete category
+                    Button {
+                        showDeleteConfirmation = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "trash")
+                            Text("Delete Category")
+                        }
+                        .font(.body)
+                        .fontWeight(.medium)
+                        .foregroundColor(Theme.Colors.expense)
+                        .frame(maxWidth: .infinity)
+                        .padding(Theme.Spacing.md)
+                        .background(Theme.Colors.expense.opacity(0.1))
+                        .cornerRadius(Theme.CornerRadius.md)
+                    }
+                    .disabled(isDeleting)
 
                     Spacer(minLength: 32)
                 }
@@ -1568,6 +1560,17 @@ private struct CategoryLineItemEditView: View {
                     .fontWeight(.semibold)
                 }
             }
+        }
+        .alert(
+            "Delete \"\(category.name)\"?",
+            isPresented: $showDeleteConfirmation
+        ) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                Task { await deleteCategory() }
+            }
+        } message: {
+            Text("This will delete the category, its subcategories, and remove it from the budget. Transactions will become uncategorized.")
         }
         .sheet(item: $editingSubcatForEmoji) { subcat in
             SubcategoryEmojiPickerSheet(
@@ -1596,6 +1599,17 @@ private struct CategoryLineItemEditView: View {
     private func save() async {
         isSaving = true
         errorMessage = nil
+
+        let catAmount = Double(categoryAmountText.filter { $0.isNumber }) ?? 0
+        let subcatTotal = category.subcategories.reduce(0.0) { total, subcat in
+            total + (Double(subcatAmounts[subcat.id]?.filter { $0.isNumber } ?? "0") ?? 0)
+        }
+        if catAmount < subcatTotal {
+            errorMessage = "Category budget ($\(String(format: "%.0f", catAmount))) cannot be less than subcategories total ($\(String(format: "%.0f", subcatTotal)))"
+            isSaving = false
+            return
+        }
+
         do {
             if selectedIcon != category.icon || selectedColorHex != category.color {
                 _ = try await apiClient.updateCategory(
@@ -1641,6 +1655,20 @@ private struct CategoryLineItemEditView: View {
         } catch {
             errorMessage = "Failed to save changes"
             isSaving = false
+        }
+    }
+
+    private func deleteCategory() async {
+        isDeleting = true
+        errorMessage = nil
+        do {
+            // Backend handles cascade: deletes subcategories, line items, rules, and reassigns transactions
+            try await apiClient.deleteCategory(categoryId: category.id)
+            Analytics.shared.track(.categoryDeleted, properties: ["category_name": category.name])
+            dismiss()
+        } catch {
+            errorMessage = "Failed to delete category: \(error.localizedDescription)"
+            isDeleting = false
         }
     }
 }
@@ -1865,7 +1893,7 @@ private struct BudgetEditView: View {
                                 .background(Theme.Colors.background)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                        .stroke(Theme.Colors.border, lineWidth: 1)
                                 )
                                 .cornerRadius(8)
                             }
@@ -1930,9 +1958,9 @@ private struct BudgetEditView: View {
                                     }
                                 }
                             }
-                            .background(Color.white)
+                            .background(Theme.Colors.cardBackground)
                             .cornerRadius(12)
-                            .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                            .shadow(color: Theme.Colors.shadowColor, radius: 4, x: 0, y: 2)
                         }
 
                         if let error = accountErrorMessage {
@@ -1967,7 +1995,7 @@ private struct BudgetEditView: View {
                                 .background(Theme.Colors.background)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                        .stroke(Theme.Colors.border, lineWidth: 1)
                                 )
                                 .cornerRadius(8)
                         }
@@ -1995,7 +2023,7 @@ private struct BudgetEditView: View {
                                     .background(Color(red: 0.96, green: 0.97, blue: 0.97))
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 12)
-                                            .stroke(Color.gray.opacity(0.25), lineWidth: 1)
+                                            .stroke(Theme.Colors.border, lineWidth: 1)
                                     )
                                     .cornerRadius(12)
                             }
@@ -2078,7 +2106,7 @@ private struct BudgetEditView: View {
                                         .background(Theme.Colors.background)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 8)
-                                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                                .stroke(Theme.Colors.border, lineWidth: 1)
                                         )
                                         .cornerRadius(8)
                                 }
@@ -2139,10 +2167,10 @@ private struct BudgetEditView: View {
                                     }
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
-                                    .background(Color.white)
+                                    .background(Theme.Colors.cardBackground)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 8)
-                                            .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                            .stroke(Theme.Colors.border, lineWidth: 1)
                                     )
                                     .cornerRadius(8)
                                     .shadow(color: .black.opacity(0.04), radius: 2)
@@ -2422,9 +2450,9 @@ private struct BudgetEditView: View {
             }
         }
         .padding(22)
-        .background(Color.white)
+        .background(Theme.Colors.cardBackground)
         .cornerRadius(18)
-        .shadow(color: Color.black.opacity(0.07), radius: 8, x: 0, y: 2)
+        .shadow(color: Theme.Colors.shadowColor, radius: 8, x: 0, y: 2)
         .animation(.easeInOut(duration: 0.3), value: totalBudget)
     }
 
@@ -2832,9 +2860,9 @@ private struct CategoryManageRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(Color.white)
+        .background(Theme.Colors.cardBackground)
         .cornerRadius(14)
-        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 1)
+        .shadow(color: Theme.Colors.shadowColor, radius: 4, x: 0, y: 1)
     }
 }
 
@@ -3031,7 +3059,7 @@ struct NewBudgetView: View {
                             Image(systemName: "pencil.circle.fill")
                                 .font(.system(size: 22))
                                 .foregroundColor(Theme.Colors.primary)
-                                .background(Circle().fill(Color.white).frame(width: 20, height: 20))
+                                .background(Circle().fill(Theme.Colors.cardBackground).frame(width: 20, height: 20))
                                 .offset(x: 30, y: 30)
                         )
                 }
@@ -3053,9 +3081,9 @@ struct NewBudgetView: View {
                     .font(.system(size: 26, weight: .bold))
                     .foregroundColor(Theme.Colors.textPrimary)
                     .padding(16)
-                    .background(Color.white)
+                    .background(Theme.Colors.cardBackground)
                     .cornerRadius(12)
-                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                    .shadow(color: Theme.Colors.shadowColor, radius: 4, x: 0, y: 2)
             }
             .padding(.horizontal, 20)
 
@@ -3072,16 +3100,16 @@ struct NewBudgetView: View {
                             Circle()
                                 .fill(Color(hex: option.hex))
                                 .frame(width: 38, height: 38)
-                                .overlay(Circle().stroke(Color.white, lineWidth: selectedColor == option.hex ? 3 : 0).padding(3))
+                                .overlay(Circle().stroke(Theme.Colors.cardBackground, lineWidth: selectedColor == option.hex ? 3 : 0).padding(3))
                                 .overlay(Circle().stroke(Color(hex: option.hex), lineWidth: selectedColor == option.hex ? 2 : 0))
                         }
                     }
                 }
             }
             .padding(20)
-            .background(Color.white)
+            .background(Theme.Colors.cardBackground)
             .cornerRadius(14)
-            .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+            .shadow(color: Theme.Colors.shadowColor, radius: 4, x: 0, y: 2)
             .padding(.horizontal, 20)
 
             // Default toggle
@@ -3101,9 +3129,9 @@ struct NewBudgetView: View {
                     .tint(Theme.Colors.primary)
             }
             .padding(16)
-            .background(Color.white)
+            .background(Theme.Colors.cardBackground)
             .cornerRadius(14)
-            .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+            .shadow(color: Theme.Colors.shadowColor, radius: 4, x: 0, y: 2)
             .padding(.horizontal, 20)
 
             // Error
@@ -3194,7 +3222,7 @@ struct NewBudgetView: View {
                         .background(Theme.Colors.background)
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                .stroke(Theme.Colors.border, lineWidth: 1)
                         )
                         .cornerRadius(8)
                     }
@@ -3268,9 +3296,9 @@ struct NewBudgetView: View {
                             }
                         }
                     }
-                    .background(Color.white)
+                    .background(Theme.Colors.cardBackground)
                     .cornerRadius(12)
-                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                    .shadow(color: Theme.Colors.shadowColor, radius: 4, x: 0, y: 2)
                 }
 
                 if let error = accountErrorMessage {
@@ -3307,7 +3335,7 @@ struct NewBudgetView: View {
                         .background(Theme.Colors.background)
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                .stroke(Theme.Colors.border, lineWidth: 1)
                         )
                         .cornerRadius(8)
                 }
@@ -3458,9 +3486,9 @@ struct NewBudgetView: View {
             }
         }
         .padding(22)
-        .background(Color.white)
+        .background(Theme.Colors.cardBackground)
         .cornerRadius(18)
-        .shadow(color: Color.black.opacity(0.07), radius: 8, x: 0, y: 2)
+        .shadow(color: Theme.Colors.shadowColor, radius: 8, x: 0, y: 2)
         .animation(.easeInOut(duration: 0.3), value: totalBudget)
     }
 
@@ -4040,9 +4068,9 @@ private struct AddSubcategorySheet: View {
                         Spacer()
                     }
                     .padding(14)
-                    .background(Color.white)
+                    .background(Theme.Colors.cardBackground)
                     .cornerRadius(14)
-                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                    .shadow(color: Theme.Colors.shadowColor, radius: 4, x: 0, y: 2)
 
                     // Icon picker
                     VStack(alignment: .leading, spacing: 10) {
@@ -4069,9 +4097,9 @@ private struct AddSubcategorySheet: View {
                         }
                     }
                     .padding(14)
-                    .background(Color.white)
+                    .background(Theme.Colors.cardBackground)
                     .cornerRadius(14)
-                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                    .shadow(color: Theme.Colors.shadowColor, radius: 4, x: 0, y: 2)
 
                     if let error = errorMessage {
                         Text(error)
@@ -4237,7 +4265,7 @@ private struct SubcategoryQuickEditSheet: View {
                                         .frame(width: 40, height: 40)
                                         .overlay(
                                             Circle()
-                                                .stroke(Color.white, lineWidth: selectedColorHex == option.hex ? 3 : 0)
+                                                .stroke(Theme.Colors.cardBackground, lineWidth: selectedColorHex == option.hex ? 3 : 0)
                                                 .padding(3)
                                         )
                                         .overlay(

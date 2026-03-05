@@ -49,6 +49,7 @@ enum AnalyticsEvent: String {
     // Categories
     case categoryCreated = "category_created"
     case categoryUpdated = "category_updated"
+    case categoryDeleted = "category_deleted"
     case subcategoryCreated = "subcategory_created"
 
     // Manual Categorization

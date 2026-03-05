@@ -182,7 +182,7 @@ private struct TransactionDetailContentView: View {
                         .padding(Theme.Spacing.lg)
                         .background(Theme.Colors.cardBackground)
                         .cornerRadius(Theme.CornerRadius.lg)
-                        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
+                        .shadow(color: Theme.Colors.shadowColor, radius: 8, x: 0, y: 4)
                         .padding(.horizontal, Theme.Spacing.lg)
                         .padding(.top, Theme.Spacing.md)
 
@@ -199,7 +199,7 @@ private struct TransactionDetailContentView: View {
                             .padding(Theme.Spacing.xl)
                             .background(Theme.Colors.cardBackground)
                             .cornerRadius(Theme.CornerRadius.lg)
-                            .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
+                            .shadow(color: Theme.Colors.shadowColor, radius: 8, x: 0, y: 4)
                             .padding(.horizontal, Theme.Spacing.lg)
                         } else if let error = categoryLoadError {
                             VStack(spacing: Theme.Spacing.sm) {
@@ -235,7 +235,7 @@ private struct TransactionDetailContentView: View {
                             .padding(Theme.Spacing.lg)
                             .background(Theme.Colors.cardBackground)
                             .cornerRadius(Theme.CornerRadius.lg)
-                            .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
+                            .shadow(color: Theme.Colors.shadowColor, radius: 8, x: 0, y: 4)
                             .padding(.horizontal, Theme.Spacing.lg)
                         } else if effectiveCategories.isEmpty {
                             VStack(spacing: Theme.Spacing.sm) {
@@ -250,7 +250,7 @@ private struct TransactionDetailContentView: View {
                             .padding(Theme.Spacing.xl)
                             .background(Theme.Colors.cardBackground)
                             .cornerRadius(Theme.CornerRadius.lg)
-                            .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
+                            .shadow(color: Theme.Colors.shadowColor, radius: 8, x: 0, y: 4)
                             .padding(.horizontal, Theme.Spacing.lg)
                         } else {
                             CategorySelectionCard(
@@ -626,7 +626,7 @@ struct CategorySelectionCard: View {
         .padding(.vertical, Theme.Spacing.md)
         .background(Theme.Colors.cardBackground)
         .cornerRadius(Theme.CornerRadius.lg)
-        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
+        .shadow(color: Theme.Colors.shadowColor, radius: 8, x: 0, y: 4)
     }
 }
 

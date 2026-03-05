@@ -184,7 +184,7 @@ struct HomeView: View {
                                 .padding(Theme.Spacing.md)
                                 .background(Theme.Colors.cardBackground)
                                 .cornerRadius(Theme.CornerRadius.lg)
-                                .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                                .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
                                 .padding(.horizontal, Theme.Spacing.md)
                         }
                     }
@@ -260,7 +260,7 @@ struct HomeView: View {
                                     }
                                     .background(Theme.Colors.cardBackground)
                                     .cornerRadius(Theme.CornerRadius.md)
-                                    .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                                    .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
                                 }
                                 .padding(.horizontal, Theme.Spacing.md)
                             }
@@ -934,7 +934,7 @@ struct AccountDetailView: View {
                 .padding(.horizontal, Theme.Spacing.md)
                 .background(Theme.Colors.cardBackground)
                 .cornerRadius(Theme.CornerRadius.xl)
-                .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+                .shadow(color: Theme.Colors.shadowColor, radius: 8, x: 0, y: 2)
                 .padding(.horizontal, Theme.Spacing.md)
 
                 // Time Range Picker
@@ -965,7 +965,7 @@ struct AccountDetailView: View {
                     .padding(.vertical, Theme.Spacing.sm)
                     .background(Theme.Colors.cardBackground)
                     .cornerRadius(Theme.CornerRadius.md)
-                    .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                    .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
                 }
                 .padding(.horizontal, Theme.Spacing.md)
 
@@ -1004,7 +1004,7 @@ struct AccountDetailView: View {
                 }
                 .background(Theme.Colors.cardBackground)
                 .cornerRadius(Theme.CornerRadius.xl)
-                .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+                .shadow(color: Theme.Colors.shadowColor, radius: 8, x: 0, y: 2)
                 .padding(.horizontal, Theme.Spacing.md)
 
                 // Spending Breakdown Section
@@ -1076,7 +1076,7 @@ struct AccountDetailView: View {
                         }
                         .background(Theme.Colors.cardBackground)
                         .cornerRadius(Theme.CornerRadius.xl)
-                        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+                        .shadow(color: Theme.Colors.shadowColor, radius: 8, x: 0, y: 2)
                         .padding(.horizontal, Theme.Spacing.md)
                     }
                 }
@@ -1152,7 +1152,7 @@ struct AccountDetailView: View {
                         }
                         .background(Theme.Colors.cardBackground)
                         .cornerRadius(Theme.CornerRadius.xl)
-                        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+                        .shadow(color: Theme.Colors.shadowColor, radius: 8, x: 0, y: 2)
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -1288,7 +1288,7 @@ struct StatCard: View {
         .padding(.vertical, 14)
         .background(Theme.Colors.cardBackground)
         .cornerRadius(Theme.CornerRadius.md)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+        .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
     }
 }
 

@@ -60,7 +60,7 @@ struct CreateGoalView: View {
                             .background(Theme.Colors.cardBackground)
                     }
                     .cornerRadius(Theme.CornerRadius.md)
-                    .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                    .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
                 }
 
                 // Goal type picker
@@ -102,7 +102,7 @@ struct CreateGoalView: View {
                     .padding(Theme.Spacing.md)
                     .background(Theme.Colors.cardBackground)
                     .cornerRadius(Theme.CornerRadius.md)
-                    .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                    .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
                 }
 
                 // Target date
@@ -134,7 +134,7 @@ struct CreateGoalView: View {
                         .padding(Theme.Spacing.md)
                         .background(Theme.Colors.cardBackground)
                         .cornerRadius(Theme.CornerRadius.md)
-                        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                        .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
                     }
 
                     if showDatePicker {
@@ -332,7 +332,7 @@ struct DebtAccountRow: View {
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.cardBackground)
         .cornerRadius(Theme.CornerRadius.md)
-        .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 1)
+        .shadow(color: Theme.Colors.shadowColor, radius: 4, x: 0, y: 1)
     }
 }
 
@@ -406,7 +406,7 @@ struct AccountAllocationRow: View {
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.cardBackground)
         .cornerRadius(Theme.CornerRadius.md)
-        .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 1)
+        .shadow(color: Theme.Colors.shadowColor, radius: 4, x: 0, y: 1)
         .opacity(available <= 0 && !isSelected ? 0.5 : 1)
     }
 }

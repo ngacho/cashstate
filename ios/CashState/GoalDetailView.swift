@@ -152,7 +152,7 @@ struct GoalDetailView: View {
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.cardBackground)
         .cornerRadius(Theme.CornerRadius.md)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+        .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
     }
 
     private func chartCard(detail: GoalDetail) -> some View {
@@ -260,7 +260,7 @@ struct GoalDetailView: View {
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.cardBackground)
         .cornerRadius(Theme.CornerRadius.md)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+        .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
     }
 
     // MARK: - Chart helpers
@@ -368,7 +368,7 @@ struct GoalDetailView: View {
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.cardBackground)
         .cornerRadius(Theme.CornerRadius.md)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+        .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
     }
 
     private func loadDetail() async {

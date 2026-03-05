@@ -186,7 +186,7 @@ private struct CategoryTransactionsContentView: View {
                         .frame(maxWidth: .infinity)
                         .background(Theme.Colors.cardBackground)
                         .cornerRadius(Theme.CornerRadius.md)
-                        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                        .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
                     }
                     .padding(.horizontal)
                     .padding(.top, Theme.Spacing.sm)
@@ -232,7 +232,7 @@ private struct CategoryTransactionsContentView: View {
                             }
                             .background(Theme.Colors.cardBackground)
                             .cornerRadius(Theme.CornerRadius.md)
-                            .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                            .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
                             .padding(.horizontal)
                         }
                     }

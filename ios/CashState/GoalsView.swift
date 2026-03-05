@@ -276,7 +276,7 @@ struct GoalCard: View {
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.cardBackground)
         .cornerRadius(Theme.CornerRadius.md)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+        .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
     }
 
     private var progressColor: Color {

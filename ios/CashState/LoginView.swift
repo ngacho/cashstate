@@ -722,7 +722,7 @@ struct AuthTextField: View {
         .cornerRadius(Theme.CornerRadius.md)
         .overlay(
             RoundedRectangle(cornerRadius: Theme.CornerRadius.md)
-                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                .stroke(Theme.Colors.border, lineWidth: 1)
         )
     }
 }
@@ -760,7 +760,7 @@ struct AuthSecureField: View {
         .cornerRadius(Theme.CornerRadius.md)
         .overlay(
             RoundedRectangle(cornerRadius: Theme.CornerRadius.md)
-                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                .stroke(Theme.Colors.border, lineWidth: 1)
         )
     }
 }
@@ -794,15 +794,15 @@ enum SocialProvider {
 
     var backgroundColor: Color {
         switch self {
-        case .google: return .white
-        case .apple: return .black
+        case .google: return Theme.Colors.cardBackground
+        case .apple: return Color(light: .black, dark: .white)
         }
     }
 
     var foregroundColor: Color {
         switch self {
-        case .google: return Color(hex: "2C3E50")
-        case .apple: return .white
+        case .google: return Theme.Colors.textPrimary
+        case .apple: return Color(light: .white, dark: .black)
         }
     }
 }
@@ -835,7 +835,7 @@ struct SocialSignInButton: View {
             .cornerRadius(Theme.CornerRadius.md)
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.CornerRadius.md)
-                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                    .stroke(Theme.Colors.border, lineWidth: 1)
             )
         }
     }

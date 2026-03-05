@@ -1,6 +1,7 @@
 import SwiftUI
+import UIKit
 
-/// Mint-inspired design system
+/// Mint-inspired design system with light/dark mode support
 enum Theme {
     enum Colors {
         // Mint's signature teal/turquoise
@@ -8,25 +9,32 @@ enum Theme {
         static let primaryLight = Color(hex: "3DBDB0")
         static let primaryDark = Color(hex: "008C82")
 
-        // Background colors
-        static let background = Color(hex: "F0F5F5")
-        static let cardBackground = Color.white
+        // Background colors - adaptive
+        static let background = Color(light: Color(hex: "F0F5F5"), dark: Color(hex: "1C1C1E"))
+        static let cardBackground = Color(light: .white, dark: Color(hex: "2C2C2E"))
 
-        // Text colors
-        static let textPrimary = Color(hex: "2C3E50")
-        static let textSecondary = Color(hex: "8A94A6")
+        // Text colors - adaptive
+        static let textPrimary = Color(light: Color(hex: "2C3E50"), dark: Color(hex: "F2F2F7"))
+        static let textSecondary = Color(light: Color(hex: "8A94A6"), dark: Color(hex: "8E8E93"))
         static let textOnPrimary = Color.white
 
         // Transaction colors
         static let income = Color(hex: "10B981")
         static let expense = Color(hex: "EF4444")
 
-        // Category colors (for future use)
+        // Category colors
         static let categoryBlue = Color(hex: "60A5FA")
         static let categoryPurple = Color(hex: "A78BFA")
         static let categoryPink = Color(hex: "F472B6")
         static let categoryOrange = Color(hex: "FB923C")
         static let categoryYellow = Color(hex: "FBBF24")
+
+        // Borders / dividers - adaptive
+        static let border = Color(light: Color.gray.opacity(0.2), dark: Color.gray.opacity(0.4))
+        static let divider = Color(light: Color.gray.opacity(0.15), dark: Color.gray.opacity(0.3))
+
+        // Shadow - adaptive (shadows are subtler in dark mode)
+        static let shadowColor = Color(light: Color.black.opacity(0.08), dark: Color.black.opacity(0.3))
     }
 
     enum Spacing {
@@ -45,11 +53,11 @@ enum Theme {
     }
 
     enum Shadow {
-        static func card(color: Color = Color.black.opacity(0.08)) -> (color: Color, radius: CGFloat, x: CGFloat, y: CGFloat) {
+        static func card(color: Color = Colors.shadowColor) -> (color: Color, radius: CGFloat, x: CGFloat, y: CGFloat) {
             (color, 8, 0, 2)
         }
 
-        static func cardHover(color: Color = Color.black.opacity(0.12)) -> (color: Color, radius: CGFloat, x: CGFloat, y: CGFloat) {
+        static func cardHover(color: Color = Colors.shadowColor) -> (color: Color, radius: CGFloat, x: CGFloat, y: CGFloat) {
             (color, 12, 0, 4)
         }
     }
@@ -72,5 +80,14 @@ extension Color {
             blue: Double(b) / 255,
             opacity: Double(a) / 255
         )
+    }
+
+    /// Creates an adaptive color that switches between light and dark variants
+    init(light: Color, dark: Color) {
+        self.init(uiColor: UIColor { traitCollection in
+            traitCollection.userInterfaceStyle == .dark
+                ? UIColor(dark)
+                : UIColor(light)
+        })
     }
 }

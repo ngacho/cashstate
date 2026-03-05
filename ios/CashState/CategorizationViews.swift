@@ -187,8 +187,6 @@ struct SwipeableCategorization: View {
     @State private var selectedSubcategory: BudgetSubcategory?
     @State private var showSubcategories = false
     @State private var categorizedCount = 0
-    @State private var pendingUpdates: [(transactionId: String, categoryId: String?, subcategoryId: String?)] = []
-    @State private var isSaving = false
 
     init(isPresented: Binding<Bool>, transactions: Binding<[CategorizableTransaction]>, categories: [BudgetCategory], apiClient: APIClient, allowEditingCategorized: Bool = false) {
         self._isPresented = isPresented
@@ -210,10 +208,6 @@ struct SwipeableCategorization: View {
     private var progress: Double {
         guard !transactions.isEmpty else { return 0 }
         return Double(categorizedCount) / Double(transactions.count)
-    }
-
-    private var hasUnsavedChanges: Bool {
-        selectedCategory != nil || selectedSubcategory != nil
     }
 
     var body: some View {
@@ -340,7 +334,7 @@ struct SwipeableCategorization: View {
                                                     .foregroundColor(Theme.Colors.income)
                                             }
                                             .padding(Theme.Spacing.md)
-                                            .background(Color.white.opacity(0.95))
+                                            .background(Theme.Colors.cardBackground.opacity(0.95))
                                             .cornerRadius(Theme.CornerRadius.md)
                                             .shadow(radius: 8)
                                         } else {
@@ -354,7 +348,7 @@ struct SwipeableCategorization: View {
                                                     .foregroundColor(.orange)
                                             }
                                             .padding(Theme.Spacing.md)
-                                            .background(Color.white.opacity(0.95))
+                                            .background(Theme.Colors.cardBackground.opacity(0.95))
                                             .cornerRadius(Theme.CornerRadius.md)
                                             .shadow(radius: 8)
                                         }
@@ -370,7 +364,7 @@ struct SwipeableCategorization: View {
                                                 .foregroundColor(Theme.Colors.textSecondary)
                                         }
                                         .padding(Theme.Spacing.md)
-                                        .background(Color.white.opacity(0.95))
+                                        .background(Theme.Colors.cardBackground.opacity(0.95))
                                         .cornerRadius(Theme.CornerRadius.md)
                                         .shadow(radius: 8)
                                     }
@@ -449,12 +443,6 @@ struct SwipeableCategorization: View {
                     }
                 }
             }
-            .onDisappear {
-                // Save any remaining pending updates when view is dismissed
-                Task {
-                    await savePendingUpdates()
-                }
-            }
         }
     }
 
@@ -523,18 +511,13 @@ struct SwipeableCategorization: View {
         transactions[currentIndex].categoryId = category.id
         transactions[currentIndex].subcategoryId = subcategory?.id
 
-        // Add to pending updates for batch saving
-        pendingUpdates.append((
-            transactionId: transaction.id,
-            categoryId: category.id,
-            subcategoryId: subcategory?.id
-        ))
-
-        // Batch save every 10 transactions
-        if pendingUpdates.count >= 10 {
-            Task {
-                await savePendingUpdates()
-            }
+        // Save immediately so user can leave anytime without losing work
+        Task {
+            try? await apiClient.categorizeTransaction(
+                transactionId: transaction.id,
+                categoryId: category.id,
+                subcategoryId: subcategory?.id
+            )
         }
 
         withAnimation(.spring()) {
@@ -550,29 +533,6 @@ struct SwipeableCategorization: View {
             selectedCategory = nil
             selectedSubcategory = nil
             showSubcategories = false
-        }
-    }
-
-    private func savePendingUpdates() async {
-        guard !pendingUpdates.isEmpty, !isSaving else { return }
-
-        isSaving = true
-        let updates = pendingUpdates
-        pendingUpdates = []
-
-        do {
-            let _ = try await apiClient.batchUpdateTransactions(updates)
-            // Success - updates are saved
-        } catch {
-            // On error, add them back to retry later
-            await MainActor.run {
-                pendingUpdates.append(contentsOf: updates)
-                isSaving = false
-            }
-        }
-
-        await MainActor.run {
-            isSaving = false
         }
     }
 
@@ -760,7 +720,7 @@ struct TransactionCardView: View {
         .frame(maxWidth: .infinity)
         .background(Theme.Colors.cardBackground)
         .cornerRadius(Theme.CornerRadius.lg)
-        .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 5)
+        .shadow(color: Theme.Colors.shadowColor, radius: 10, x: 0, y: 5)
     }
 }
 
@@ -862,7 +822,7 @@ struct SwipeIndicator: View {
             }
         }
         .padding(Theme.Spacing.md)
-        .background(Color.white.opacity(0.9))
+        .background(Theme.Colors.cardBackground.opacity(0.9))
         .cornerRadius(Theme.CornerRadius.md)
         .shadow(radius: 5)
     }
