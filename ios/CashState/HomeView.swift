@@ -11,6 +11,7 @@ struct HomeView: View {
     @State private var isSyncing = false
     @State private var isLoadingSnapshots = false
     @State private var showSyncSuccess = false
+    @State private var loadError: String?
     @State private var selectedTimeRange: TimeRange = .week
     @State private var selectedDate = Date()
 
@@ -193,6 +194,22 @@ struct HomeView: View {
                         ProgressView()
                             .frame(maxWidth: .infinity)
                             .padding()
+                    } else if let error = loadError {
+                        VStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 32))
+                                .foregroundColor(.orange)
+                            Text("Failed to load accounts")
+                                .font(.headline)
+                                .foregroundColor(Theme.Colors.textPrimary)
+                            Text(error)
+                                .font(.caption)
+                                .foregroundColor(Theme.Colors.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, Theme.Spacing.xl)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 40)
                     } else if accounts.isEmpty {
                         VStack(spacing: Theme.Spacing.md) {
                             Image(systemName: "creditcard.circle.fill")
@@ -290,6 +307,7 @@ struct HomeView: View {
 
     func loadAccounts() async {
         isLoading = true
+        loadError = nil
         defer { isLoading = false }
 
         do {
@@ -304,8 +322,9 @@ struct HomeView: View {
             }
             accounts = allAccounts
         } catch {
-            // Silently fail and show empty state - no accounts connected yet
-            print("Failed to load accounts: \(error)")
+            print("❌ Failed to load accounts: \(error)")
+            loadError = error.localizedDescription
+            await DiagnosticClient.shared.checkUserExists()
         }
     }
 

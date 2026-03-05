@@ -240,6 +240,6 @@ struct CategorySelectButton: View {
         includedCategories: .constant(Set(["1", "2"])),
         excludedCategories: .constant(Set(["3"])),
         isPresented: .constant(true),
-        apiClient: APIClient()
+        apiClient: APIClient.shared
     )
 }

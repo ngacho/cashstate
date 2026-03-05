@@ -3,32 +3,52 @@
 import { action, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
+import { Doc, Id } from "../_generated/dataModel";
+
+type CategoryWithSubs = Doc<"categories"> & {
+  subcategories: Doc<"subcategories">[];
+};
+
+type CategorizationResult = {
+  transactionId: string;
+  categoryId: string | null;
+  subcategoryId: string | null;
+  confidence: number;
+  reasoning: string | null;
+};
 
 export const categorize = action({
   args: {
-    userId: v.id("users"),
+    clerkId: v.string(),
     transactionIds: v.optional(v.array(v.id("simplefinTransactions"))),
     force: v.optional(v.boolean()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{
+    categorizedCount: number;
+    failedCount: number;
+    results: CategorizationResult[];
+  }> => {
+    const user = await ctx.runQuery(internal.usersHelpers._getByClerkId, { clerkId: args.clerkId });
+    if (!user) throw new Error("User not found");
+
     const openRouterKey = process.env.OPENROUTER_API_KEY;
     if (!openRouterKey) throw new Error("OPENROUTER_API_KEY not configured");
 
     // 1. Get rules and uncategorized transactions
     const [rules, transactions, categories] = await Promise.all([
       ctx.runQuery(internal.aiCategorizeHelpers._getRules, {
-        userId: args.userId,
+        userId: user._id,
       }),
       ctx.runQuery(
         internal.aiCategorizeHelpers._getUncategorizedTransactions,
         {
-          userId: args.userId,
+          userId: user._id,
           transactionIds: args.transactionIds,
           force: args.force,
         }
       ),
       ctx.runQuery(internal.aiCategorizeHelpers._getCategories, {
-        userId: args.userId,
+        userId: user._id,
       }),
     ]);
 
@@ -38,9 +58,9 @@ export const categorize = action({
 
     // 2. Apply rules first (case-insensitive substring match)
     const ruleMatches: {
-      txId: any;
-      categoryId: any;
-      subcategoryId: any;
+      txId: Id<"simplefinTransactions">;
+      categoryId: Id<"categories">;
+      subcategoryId: Id<"subcategories"> | undefined;
     }[] = [];
     const remaining: typeof transactions = [];
 
@@ -81,19 +101,13 @@ export const categorize = action({
             txId: m.txId,
             categoryId: m.categoryId,
             subcategoryId: m.subcategoryId,
-            source: "rule",
+            source: "rule" as const,
           })),
         }
       );
     }
 
-    const results: {
-      transactionId: string;
-      categoryId: string | null;
-      subcategoryId: string | null;
-      confidence: number;
-      reasoning: string | null;
-    }[] = ruleMatches.map((m) => ({
+    const results: CategorizationResult[] = ruleMatches.map((m) => ({
       transactionId: m.txId,
       categoryId: m.categoryId,
       subcategoryId: m.subcategoryId ?? null,
@@ -178,9 +192,9 @@ Respond ONLY with the JSON array, no markdown or explanation.`;
         );
 
         const aiUpdates: {
-          txId: any;
-          categoryId: any;
-          subcategoryId: any;
+          txId: Id<"simplefinTransactions">;
+          categoryId: Id<"categories">;
+          subcategoryId: Id<"subcategories"> | undefined;
           source: string;
         }[] = [];
 
@@ -213,7 +227,7 @@ Respond ONLY with the JSON array, no markdown or explanation.`;
           await ctx.runMutation(
             internal.aiCategorizeHelpers._batchUpdateCategories,
             {
-              updates: aiUpdates as any,
+              updates: aiUpdates,
             }
           );
         }
@@ -237,7 +251,7 @@ export const _categorizeBackground = internalAction({
     transactionIds: v.optional(v.array(v.id("simplefinTransactions"))),
     force: v.optional(v.boolean()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<void> => {
     const openRouterKey = process.env.OPENROUTER_API_KEY;
     if (!openRouterKey) {
       await ctx.runMutation(
@@ -286,9 +300,9 @@ export const _categorizeBackground = internalAction({
 
       // Apply rules first
       const ruleMatches: {
-        txId: any;
-        categoryId: any;
-        subcategoryId: any;
+        txId: Id<"simplefinTransactions">;
+        categoryId: Id<"categories">;
+        subcategoryId: Id<"subcategories"> | undefined;
       }[] = [];
       const remaining: typeof transactions = [];
 
@@ -329,7 +343,7 @@ export const _categorizeBackground = internalAction({
               txId: m.txId,
               categoryId: m.categoryId,
               subcategoryId: m.subcategoryId,
-              source: "rule",
+              source: "rule" as const,
             })),
           }
         );
@@ -423,9 +437,9 @@ Respond ONLY with the JSON array, no markdown or explanation.`;
         );
 
         const aiUpdates: {
-          txId: any;
-          categoryId: any;
-          subcategoryId: any;
+          txId: Id<"simplefinTransactions">;
+          categoryId: Id<"categories">;
+          subcategoryId: Id<"subcategories"> | undefined;
           source: string;
         }[] = [];
 
@@ -450,7 +464,7 @@ Respond ONLY with the JSON array, no markdown or explanation.`;
           await ctx.runMutation(
             internal.aiCategorizeHelpers._batchUpdateCategories,
             {
-              updates: aiUpdates as any,
+              updates: aiUpdates,
             }
           );
         }

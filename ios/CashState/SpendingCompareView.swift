@@ -603,5 +603,5 @@ struct MonthYearPickerSheet: View {
 }
 
 #Preview {
-    SpendingCompareView(apiClient: APIClient())
+    SpendingCompareView(apiClient: APIClient.shared)
 }

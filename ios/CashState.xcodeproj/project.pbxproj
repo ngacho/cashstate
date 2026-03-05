@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A04032232F596CBC0063ACC0 /* ConvexMobile in Frameworks */ = {isa = PBXBuildFile; productRef = A04032222F596CBC0063ACC0 /* ConvexMobile */; };
+		A04032262F5974F80063ACC0 /* ClerkConvex in Frameworks */ = {isa = PBXBuildFile; productRef = A04032252F5974F80063ACC0 /* ClerkConvex */; };
 		A0D709C22F50260C0092E027 /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = A0D709C12F50260C0092E027 /* PostHog */; };
 		A0D709C52F50264B0092E027 /* ClerkKit in Frameworks */ = {isa = PBXBuildFile; productRef = A0D709C42F50264B0092E027 /* ClerkKit */; };
 		A0D709C72F50264B0092E027 /* ClerkKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = A0D709C62F50264B0092E027 /* ClerkKitUI */; };
@@ -58,9 +60,11 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A04032262F5974F80063ACC0 /* ClerkConvex in Frameworks */,
 				A0D709C22F50260C0092E027 /* PostHog in Frameworks */,
 				A0D709C52F50264B0092E027 /* ClerkKit in Frameworks */,
 				A0D709C72F50264B0092E027 /* ClerkKitUI in Frameworks */,
+				A04032232F596CBC0063ACC0 /* ConvexMobile in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -132,6 +136,8 @@
 				A0D709C12F50260C0092E027 /* PostHog */,
 				A0D709C42F50264B0092E027 /* ClerkKit */,
 				A0D709C62F50264B0092E027 /* ClerkKitUI */,
+				A04032222F596CBC0063ACC0 /* ConvexMobile */,
+				A04032252F5974F80063ACC0 /* ClerkConvex */,
 			);
 			productName = CashState;
 			productReference = A0DDB7A42F3AE26300532C20 /* CashState.app */;
@@ -218,6 +224,8 @@
 			packageReferences = (
 				A0D709BF2F5025B70092E027 /* XCRemoteSwiftPackageReference "posthog-ios" */,
 				A0D709C32F50264B0092E027 /* XCRemoteSwiftPackageReference "clerk-ios" */,
+				A04032212F596CBC0063ACC0 /* XCRemoteSwiftPackageReference "convex-swift" */,
+				A04032242F5974F80063ACC0 /* XCRemoteSwiftPackageReference "clerk-convex-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A0DDB7A52F3AE26300532C20 /* Products */;
@@ -584,6 +592,22 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		A04032212F596CBC0063ACC0 /* XCRemoteSwiftPackageReference "convex-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/get-convex/convex-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.8.1;
+			};
+		};
+		A04032242F5974F80063ACC0 /* XCRemoteSwiftPackageReference "clerk-convex-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/clerk/clerk-convex-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.1.0;
+			};
+		};
 		A0D709BF2F5025B70092E027 /* XCRemoteSwiftPackageReference "posthog-ios" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/PostHog/posthog-ios.git";
@@ -603,6 +627,16 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		A04032222F596CBC0063ACC0 /* ConvexMobile */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A04032212F596CBC0063ACC0 /* XCRemoteSwiftPackageReference "convex-swift" */;
+			productName = ConvexMobile;
+		};
+		A04032252F5974F80063ACC0 /* ClerkConvex */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A04032242F5974F80063ACC0 /* XCRemoteSwiftPackageReference "clerk-convex-swift" */;
+			productName = ClerkConvex;
+		};
 		A0D709C12F50260C0092E027 /* PostHog */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A0D709BF2F5025B70092E027 /* XCRemoteSwiftPackageReference "posthog-ios" */;

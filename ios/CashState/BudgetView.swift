@@ -571,37 +571,39 @@ struct BudgetView: View {
 
             self.categories = result
 
-            // Load transactions for uncategorized list and month navigation flags
-            let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: selectedMonth))!
-            let startTimestamp = Int(startOfMonth.timeIntervalSince1970) * 1000
-            let startOfNextMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth)!
-            let endTimestamp = Int(startOfNextMonth.timeIntervalSince1970) * 1000
+            // Only load transactions when there's a budget to display them in
+            if self.hasBudget {
+                let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: selectedMonth))!
+                let startTimestamp = Int(startOfMonth.timeIntervalSince1970) * 1000
+                let startOfNextMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth)!
+                let endTimestamp = Int(startOfNextMonth.timeIntervalSince1970) * 1000
 
-            let txResponse = try await apiClient.listSimplefinTransactions(
-                dateFrom: startTimestamp,
-                dateTo: endTimestamp,
-                limit: 1000,
-                offset: 0,
-                accountIds: budgetAccountIds.isEmpty ? nil : budgetAccountIds
-            )
+                let txResponse = try await apiClient.listSimplefinTransactions(
+                    dateFrom: startTimestamp,
+                    dateTo: endTimestamp,
+                    limit: 1000,
+                    offset: 0,
+                    accountIds: budgetAccountIds.isEmpty ? nil : budgetAccountIds
+                )
 
-            self.uncategorizedTransactions = txResponse.items
-                .filter { tx in
-                    let hasNoCategory = tx.categoryId == nil
-                    let isExpense = tx.amount < 0
-                    return hasNoCategory && (isExpense || showIncomeInBudget)
-                }
-                .map { tx in
-                    CategorizableTransaction(
-                        id: tx.id,
-                        merchantName: tx.payee ?? tx.description ?? "",
-                        amount: tx.amount,
-                        date: Date(timeIntervalSince1970: TimeInterval(tx.postedDate)),
-                        description: tx.description ?? "",
-                        categoryId: nil,
-                        subcategoryId: nil
-                    )
-                }
+                self.uncategorizedTransactions = txResponse.items
+                    .filter { tx in
+                        let hasNoCategory = tx.categoryId == nil
+                        let isExpense = tx.amount < 0
+                        return hasNoCategory && (isExpense || showIncomeInBudget)
+                    }
+                    .map { tx in
+                        CategorizableTransaction(
+                            id: tx.id,
+                            merchantName: tx.payee ?? tx.description ?? "",
+                            amount: tx.amount,
+                            date: Date(timeIntervalSince1970: TimeInterval(tx.postedDate)),
+                            description: tx.description ?? "",
+                            categoryId: nil,
+                            subcategoryId: nil
+                        )
+                    }
+            }
 
             isLoading = false
         } catch {
@@ -2842,7 +2844,7 @@ private struct CategoryManageRow: View {
 
 // MARK: - Create Budget Sheet
 
-private struct CreateBudgetSheet: View {
+struct CreateBudgetSheet: View {
     let apiClient: APIClient
     let onCreate: (BudgetAPI) -> Void
 
@@ -3613,5 +3615,5 @@ private struct SubcategoryQuickEditSheet: View {
 }
 
 #Preview {
-    BudgetView(apiClient: APIClient())
+    BudgetView(apiClient: APIClient.shared)
 }

@@ -28,12 +28,14 @@ struct GoalsView: View {
             .navigationTitle("Goals")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: CreateGoalView(apiClient: apiClient, onCreated: { newGoal in
-                        goals.insert(newGoal, at: 0)
-                    })) {
-                        Image(systemName: "plus")
-                            .foregroundColor(Theme.Colors.primary)
+                if !goals.isEmpty {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        NavigationLink(destination: CreateGoalView(apiClient: apiClient, onCreated: { newGoal in
+                            goals.insert(newGoal, at: 0)
+                        })) {
+                            Image(systemName: "plus")
+                                .foregroundColor(Theme.Colors.primary)
+                        }
                     }
                 }
             }

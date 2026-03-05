@@ -1,7 +1,7 @@
+import ClerkKit
 import SwiftUI
 
 struct MainView: View {
-    @Binding var isAuthenticated: Bool
     let apiClient: APIClient
     @State private var selectedTab = 0
 
@@ -27,7 +27,7 @@ struct MainView: View {
                 }
                 .tag(2)
 
-            AccountsView(isAuthenticated: $isAuthenticated, apiClient: apiClient)
+            AccountsView(apiClient: apiClient)
                 .tabItem {
                     Label("Accounts", systemImage: "person.crop.circle")
                 }
@@ -727,7 +727,6 @@ struct BudgetsView: View {
 }
 
 struct AccountsView: View {
-    @Binding var isAuthenticated: Bool
     let apiClient: APIClient
     @State private var simplefinItems: [SimplefinItem] = []
     @State private var showSimplefinSetup = false
@@ -888,8 +887,7 @@ struct AccountsView: View {
                 Task {
                     Analytics.shared.track(.userLoggedOut)
                     Analytics.shared.reset()
-                    await apiClient.logout()
-                    isAuthenticated = false
+                    _ = try? await Clerk.shared.session?.revoke()
                 }
             } label: {
                 HStack {
@@ -925,11 +923,10 @@ struct AccountsView: View {
         defer { isSyncing = false }
 
         do {
-            // Get Dec 31 of previous year (beginning of current year transactions)
+            // Fetch past 6 months of transactions
             let calendar = Calendar.current
-            let currentYear = calendar.component(.year, from: Date())
-            let prevYearEnd = calendar.date(from: DateComponents(year: currentYear - 1, month: 12, day: 31))!
-            let startTimestamp = Int(prevYearEnd.timeIntervalSince1970)
+            let sixMonthsAgo = calendar.date(byAdding: .month, value: -6, to: Date())!
+            let startTimestamp = Int(sixMonthsAgo.timeIntervalSince1970)
 
             let response = try await apiClient.syncSimplefin(
                 itemId: itemId,

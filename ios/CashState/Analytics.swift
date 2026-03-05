@@ -1,8 +1,9 @@
+import ClerkKit
 import Foundation
 import PostHog
 import UIKit
 
-// MARK: - App Delegate for PostHog
+// MARK: - App Delegate for PostHog + Clerk
 
 class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_: UIApplication, didFinishLaunchingWithOptions _: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
@@ -93,6 +94,8 @@ enum AnalyticsScreen: String {
     case categoryTransactions = "Category Transactions"
     case simplefinSetup = "SimpleFin Setup"
     case login = "Login"
+    case createAccount = "Create Account"
+    case signIn = "Sign In"
     case spendingCompare = "Spending Compare"
     case addCategory = "Add Category"
     case editCategory = "Edit Category"
