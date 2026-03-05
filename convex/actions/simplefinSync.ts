@@ -3,6 +3,7 @@
 import { action } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
+import { Id } from "../_generated/dataModel";
 
 // AES-256-GCM encryption helpers
 async function getKey(envKey: string): Promise<CryptoKey> {
@@ -49,7 +50,10 @@ export const setup = action({
     setupToken: v.string(),
     institutionName: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{
+    itemId: string;
+    institutionName: string | null;
+  }> => {
     const encryptionKey = process.env.ENCRYPTION_KEY;
     if (!encryptionKey) throw new Error("ENCRYPTION_KEY not configured");
 
@@ -93,7 +97,14 @@ export const sync = action({
     startDate: v.optional(v.number()),
     forceSync: v.optional(v.boolean()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{
+    success: boolean;
+    syncJobId: string;
+    accountsSynced: number;
+    transactionsAdded: number;
+    transactionsUpdated: number;
+    errors: string[];
+  }> => {
     const encryptionKey = process.env.ENCRYPTION_KEY;
     if (!encryptionKey) throw new Error("ENCRYPTION_KEY not configured");
 
@@ -216,7 +227,7 @@ export const sync = action({
             internal.simplefinSyncHelpers._upsertTransactions,
             {
               userId: args.userId,
-              accountId: accountId as any,
+              accountId: accountId as Id<"simplefinAccounts">,
               accountName,
               transactions: txData,
             }

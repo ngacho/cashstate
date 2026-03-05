@@ -6,9 +6,8 @@ function computeProgress(
   goalType: string,
   targetAmount: number,
   accounts: {
-    accountId: string;
     allocationPercentage: number;
-    startingBalance?: number;
+    startingBalance?: number | null;
     currentBalance: number;
   }[]
 ): { currentAmount: number; progressPercent: number } {

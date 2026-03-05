@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { Id } from "./_generated/dataModel";
 import { validateUser } from "./helpers";
 
 export const list = query({
@@ -547,7 +548,7 @@ export const seedDefaults = mutation({
     ]);
 
     const createdCategories: {
-      categoryId: typeof import("./_generated/dataModel").default;
+      categoryId: Id<"categories">;
       isExpense: boolean;
     }[] = [];
 
@@ -563,7 +564,7 @@ export const seedDefaults = mutation({
       categoriesCreated++;
 
       createdCategories.push({
-        categoryId: categoryId as any,
+        categoryId,
         isExpense: !expenseCategoryNames.has(catData.name),
       });
 
@@ -601,7 +602,7 @@ export const seedDefaults = mutation({
       for (const cat of expenseCategories) {
         await ctx.db.insert("budgetLineItems", {
           budgetId,
-          categoryId: cat.categoryId as any,
+          categoryId: cat.categoryId,
           amount: budgetPerCategory,
         });
         budgetsCreated++;

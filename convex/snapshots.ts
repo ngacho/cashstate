@@ -16,13 +16,11 @@ export const list = query({
     // Get all balance history for user
     const history = await ctx.db
       .query("accountBalanceHistory")
-      .withIndex("by_userId_date", (q) => {
-        let idx = q.eq("userId", args.userId);
-        if (args.startDate) {
-          idx = idx.gte("snapshotDate", args.startDate);
-        }
-        return idx;
-      })
+      .withIndex("by_userId_date", (q) =>
+        args.startDate
+          ? q.eq("userId", args.userId).gte("snapshotDate", args.startDate)
+          : q.eq("userId", args.userId)
+      )
       .collect();
 
     // Filter by endDate
@@ -103,13 +101,11 @@ export const listForAccount = query({
 
     const history = await ctx.db
       .query("accountBalanceHistory")
-      .withIndex("by_account_date", (q) => {
-        let idx = q.eq("simplefinAccountId", args.accountId);
-        if (args.startDate) {
-          idx = idx.gte("snapshotDate", args.startDate);
-        }
-        return idx;
-      })
+      .withIndex("by_account_date", (q) =>
+        args.startDate
+          ? q.eq("simplefinAccountId", args.accountId).gte("snapshotDate", args.startDate)
+          : q.eq("simplefinAccountId", args.accountId)
+      )
       .collect();
 
     const filtered = args.endDate

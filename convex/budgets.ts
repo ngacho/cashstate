@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { Id } from "./_generated/dataModel";
 import { validateUser, getMonthDateRange } from "./helpers";
 
 export const list = query({
@@ -370,7 +371,7 @@ export const summary = query({
     const { startMs, endMs } = getMonthDateRange(args.month);
 
     // 1. Resolve active budget: check budgetMonths override → fallback to isDefault
-    let budgetId: string | null = null;
+    let budgetId: Id<"budgets"> | null = null;
     const monthOverride = await ctx.db
       .query("budgetMonths")
       .withIndex("by_userId_month", (q) =>
@@ -407,7 +408,7 @@ export const summary = query({
       };
     }
 
-    const budget = await ctx.db.get(budgetId as any);
+    const budget = await ctx.db.get(budgetId);
     if (!budget) {
       throw new Error("Budget not found");
     }

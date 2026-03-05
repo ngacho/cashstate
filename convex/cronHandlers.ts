@@ -10,13 +10,17 @@ export const dailySync = internalAction({
 
     for (const item of items) {
       try {
-        // Fetch transactions from the last 30 days
-        const thirtyDaysAgo = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
+        // Sync from last synced date or 30 days ago, whichever is more recent
+        const thirtyDaysAgoMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        const sinceMs = item.lastSyncedAt
+          ? Math.max(item.lastSyncedAt, thirtyDaysAgoMs)
+          : thirtyDaysAgoMs;
+        const startDate = Math.floor(sinceMs / 1000);
         await ctx.runAction(api.actions.simplefinSync.sync, {
           userId: item.userId,
           itemId: item._id,
           forceSync: true,
-          startDate: thirtyDaysAgo,
+          startDate,
         });
       } catch (e: any) {
         console.error(`Cron sync failed for item ${item._id}: ${e.message}`);
