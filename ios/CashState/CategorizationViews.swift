@@ -1456,7 +1456,7 @@ extension CategorizableTransaction {
         isPresented: $isPresented,
         transactions: $transactions,
         categories: BudgetCategory.mockCategories,
-        apiClient: APIClient()
+        apiClient: APIClient.shared
     )
 }
 
@@ -1468,6 +1468,6 @@ extension CategorizableTransaction {
         isPresented: $isPresented,
         transactions: $transactions,
         categories: BudgetCategory.mockCategories,
-        apiClient: APIClient()
+        apiClient: APIClient.shared
     )
 }

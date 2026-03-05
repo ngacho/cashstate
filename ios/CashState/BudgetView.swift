@@ -3613,5 +3613,5 @@ private struct SubcategoryQuickEditSheet: View {
 }
 
 #Preview {
-    BudgetView(apiClient: APIClient())
+    BudgetView(apiClient: APIClient.shared)
 }

@@ -300,6 +300,6 @@ extension Array where Element: Hashable {
         categoryId: "cat-1",
         categoryColor: .blue,
         isPresented: .constant(true),
-        apiClient: APIClient()
+        apiClient: APIClient.shared
     )
 }

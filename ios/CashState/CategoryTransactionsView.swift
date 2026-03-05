@@ -417,7 +417,7 @@ struct TransactionRowView: View {
     CategoryTransactionsView(
         category: BudgetCategory.mockCategories[0],
         subcategory: nil,
-        apiClient: APIClient(),
+        apiClient: APIClient.shared,
         selectedMonth: Date(),
         isPresented: .constant(true)
     )

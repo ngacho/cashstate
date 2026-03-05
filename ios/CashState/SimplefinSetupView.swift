@@ -114,7 +114,7 @@ struct SimplefinSetupView: View {
 
 #Preview {
     SimplefinSetupView(
-        apiClient: APIClient(),
+        apiClient: APIClient.shared,
         onSuccess: { _ in }
     )
 }

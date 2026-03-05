@@ -316,6 +316,6 @@ struct CategoryBudgetView: View {
     CategoryBudgetView(
         category: .constant(BudgetCategory.mockCategories[0]),
         isPresented: .constant(true),
-        apiClient: APIClient()
+        apiClient: APIClient.shared
     )
 }

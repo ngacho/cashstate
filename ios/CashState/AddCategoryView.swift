@@ -650,5 +650,5 @@ struct EditCategoryView: View {
 }
 
 #Preview {
-    AddCategoryView(isPresented: .constant(true), apiClient: APIClient())
+    AddCategoryView(isPresented: .constant(true), apiClient: APIClient.shared)
 }
