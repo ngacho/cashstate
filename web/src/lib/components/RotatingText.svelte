@@ -24,8 +24,8 @@
 
 	.word {
 		color: var(--accent);
-		font-family: var(--font-serif);
-		font-weight: 400;
+		font-family: var(--font-sans);
+		font-weight: 700;
 		transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 	}
 

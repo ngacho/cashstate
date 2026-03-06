@@ -55,11 +55,10 @@
 	}
 
 	h2 {
-		font-family: var(--font-sans);
-		font-size: clamp(36px, 5vw, 52px);
-		font-weight: 700;
+		font-size: clamp(32px, 5vw, 48px);
+		font-weight: 500;
 		color: var(--text-primary);
-		letter-spacing: -0.02em;
+		letter-spacing: -0.025em;
 		line-height: 1.15;
 		margin-bottom: 56px;
 	}
@@ -91,7 +90,7 @@
 		background: var(--accent);
 		color: #fff;
 		border-radius: 50%;
-		font-family: var(--font-serif);
+		font-family: var(--font-sans);
 		font-size: 20px;
 		flex-shrink: 0;
 	}
@@ -112,9 +111,9 @@
 	}
 
 	h3 {
-		font-family: var(--font-sans);
-		font-size: 20px;
+		font-size: 18px;
 		font-weight: 600;
+		letter-spacing: -0.01em;
 		color: var(--text-primary);
 		margin-bottom: 6px;
 	}

@@ -114,21 +114,21 @@
 	}
 
 	h2 {
-		font-family: var(--font-serif);
-		font-size: clamp(36px, 5vw, 52px);
-		font-weight: 400;
+		font-size: clamp(32px, 5vw, 48px);
+		font-weight: 500;
 		color: var(--text-primary);
-		letter-spacing: -0.02em;
+		letter-spacing: -0.025em;
 		line-height: 1.15;
 		margin-bottom: 20px;
 	}
 
 	.sub {
-		font-size: 17px;
+		font-size: 18px;
+		font-weight: 400;
 		color: var(--text-secondary);
 		max-width: 520px;
 		margin: 0 auto;
-		line-height: 1.7;
+		line-height: 1.6;
 	}
 
 	.carousel-wrapper {
@@ -185,10 +185,10 @@
 	}
 
 	h3 {
-		font-family: var(--font-serif);
-		font-size: 22px;
-		font-weight: 400;
+		font-size: 20px;
+		font-weight: 600;
 		color: var(--text-primary);
+		letter-spacing: -0.01em;
 		margin-bottom: 10px;
 	}
 

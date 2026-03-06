@@ -82,11 +82,10 @@
 	}
 
 	h2 {
-		font-family: var(--font-serif);
-		font-size: clamp(36px, 5vw, 52px);
-		font-weight: 400;
+		font-size: clamp(32px, 5vw, 48px);
+		font-weight: 500;
 		color: var(--text-primary);
-		letter-spacing: -0.02em;
+		letter-spacing: -0.025em;
 		line-height: 1.15;
 		margin-bottom: 48px;
 	}

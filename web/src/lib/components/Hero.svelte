@@ -68,21 +68,21 @@
 	}
 
 	h1 {
-		font-family: var(--font-serif);
-		font-size: clamp(48px, 8vw, 80px);
-		font-weight: 400;
+		font-size: clamp(48px, 8vw, 60px);
+		font-weight: 500;
 		color: var(--text-primary);
-		letter-spacing: -0.02em;
-		line-height: 1.08;
-		margin-bottom: 28px;
+		letter-spacing: -0.025em;
+		line-height: 1.1;
+		margin-bottom: 40px;
 	}
 
 	.subtitle {
-		font-size: 18px;
+		font-size: 20px;
+		font-weight: 400;
 		color: var(--text-secondary);
-		line-height: 1.7;
+		line-height: 1.6;
 		max-width: 540px;
-		margin: 0 auto 44px;
+		margin: 0 auto 48px;
 	}
 
 	.actions {

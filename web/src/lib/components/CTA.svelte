@@ -51,22 +51,22 @@
 	}
 
 	h2 {
-		font-family: var(--font-serif);
-		font-size: clamp(36px, 5vw, 52px);
-		font-weight: 400;
-		letter-spacing: -0.02em;
+		font-size: clamp(32px, 5vw, 48px);
+		font-weight: 500;
+		letter-spacing: -0.025em;
 		line-height: 1.15;
 		margin-bottom: 16px;
 	}
 
 	p {
-		font-size: 17px;
+		font-size: 18px;
+		font-weight: 400;
 		opacity: 0.6;
 		margin-bottom: 40px;
 		max-width: 420px;
 		margin-left: auto;
 		margin-right: auto;
-		line-height: 1.7;
+		line-height: 1.6;
 	}
 
 	.btn {
