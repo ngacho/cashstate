@@ -1,35 +1,38 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Poppins:wght@300;400;500;600;700&display=swap');
 
 :root {
-	--font: 'Inter', system-ui, -apple-system, sans-serif;
+	--font-sans: 'Poppins', system-ui, -apple-system, sans-serif;
+	--font-serif: 'DM Serif Display', Georgia, serif;
 	--bg: #ffffff;
-	--bg-alt: #f7f7f9;
-	--text-primary: #000000;
-	--text-secondary: rgba(0,0,0,0.6);
-	--text-muted: rgba(0,0,0,0.4);
+	--bg-alt: #f8f8fa;
+	--text-primary: #111111;
+	--text-secondary: #555555;
+	--text-muted: #999999;
 	--accent: #0D9488;
-	--accent-hover: #0F766E;
-	--border: rgba(0,0,0,0.08);
-	--nav-bg: rgba(255,255,255,0.8);
+	--accent-hover: #0B7C72;
+	--accent-light: rgba(13,148,136,0.08);
+	--border: #e8e8ec;
+	--nav-bg: rgba(255,255,255,0.85);
 	--nav-border: rgba(0,0,0,0.06);
 	--card-bg: #ffffff;
-	--card-border: rgba(0,0,0,0.08);
-	--container: 1400px;
+	--card-border: #e8e8ec;
+	--container: 1200px;
 }
 
 [data-theme="dark"] {
 	--bg: #0B0F1A;
 	--bg-alt: #111827;
 	--text-primary: #F1F5F9;
-	--text-secondary: rgba(241,245,249,0.6);
-	--text-muted: rgba(241,245,249,0.35);
+	--text-secondary: #94A3B8;
+	--text-muted: #64748B;
 	--accent: #2DD4BF;
 	--accent-hover: #14B8A6;
+	--accent-light: rgba(45,212,191,0.1);
 	--border: rgba(255,255,255,0.08);
-	--nav-bg: rgba(11,15,26,0.8);
+	--nav-bg: rgba(11,15,26,0.85);
 	--nav-border: rgba(255,255,255,0.06);
 	--card-bg: #151C2C;
-	--card-border: rgba(255,255,255,0.06);
+	--card-border: rgba(255,255,255,0.08);
 }
 
 *, *::before, *::after {
@@ -41,13 +44,16 @@
 html { scroll-behavior: smooth; }
 
 body {
-	font-family: var(--font);
+	font-family: var(--font-sans);
 	background: var(--bg);
 	color: var(--text-secondary);
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
+	font-size: 16px;
+	font-weight: 500;
+	line-height: 1.6;
 }
 
 a { color: inherit; text-decoration: none; }
-button { cursor: pointer; border: none; background: none; font-family: var(--font); }
+button { cursor: pointer; border: none; background: none; font-family: var(--font-sans); }
 img { max-width: 100%; display: block; }

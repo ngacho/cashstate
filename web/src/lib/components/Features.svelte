@@ -13,8 +13,6 @@
 	let current = $state(0);
 	let interval: ReturnType<typeof setInterval>;
 
-	const visibleCount = 3;
-
 	function goTo(i: number) {
 		if (i === current) return;
 		clearInterval(interval);
@@ -47,13 +45,14 @@
 
 <section class="features" id="features">
 	<div class="header">
-		<h2>Everything you need.<br />Nothing you don't.</h2>
+		<div class="label">Features</div>
+		<h2>Everything you need.<br />For free.</h2>
 		<p class="sub">Powerful features wrapped in an interface so intuitive, you'll wonder how you ever managed without it.</p>
 	</div>
 
 	<div class="carousel-wrapper">
 		<button class="nav-btn" onclick={prev} aria-label="Previous">
-			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
 		</button>
 
 		<div class="carousel-viewport">
@@ -64,7 +63,7 @@
 				<div
 					class="card"
 					class:active={isActive}
-					style="transform: translateX(calc({offset} * (100% + 20px))); opacity: {isVisible ? (isActive ? 1 : 0.5) : 0}; pointer-events: {isVisible ? 'auto' : 'none'};"
+					style="transform: translateX(calc({offset} * (100% + 24px))); opacity: {isVisible ? (isActive ? 1 : 0.4) : 0}; pointer-events: {isVisible ? 'auto' : 'none'};"
 					role="button"
 					tabindex="0"
 					onclick={() => goTo(i)}
@@ -80,7 +79,7 @@
 		</div>
 
 		<button class="nav-btn" onclick={next} aria-label="Next">
-			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
 		</button>
 	</div>
 
@@ -93,28 +92,43 @@
 
 <style>
 	.features {
-		padding: 100px 24px;
+		padding: 120px 24px;
 	}
 
 	.header {
 		text-align: center;
-		margin-bottom: 56px;
+		margin-bottom: 64px;
+	}
+
+	.label {
+		display: inline-block;
+		padding: 6px 16px;
+		background: var(--accent-light);
+		color: var(--accent);
+		border-radius: 100px;
+		font-size: 12px;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		margin-bottom: 24px;
 	}
 
 	h2 {
-		font-size: clamp(36px, 5vw, 56px);
-		font-weight: 700;
+		font-family: var(--font-serif);
+		font-size: clamp(36px, 5vw, 52px);
+		font-weight: 400;
 		color: var(--text-primary);
-		letter-spacing: -0.03em;
-		line-height: 1.1;
-		margin-bottom: 16px;
+		letter-spacing: -0.02em;
+		line-height: 1.15;
+		margin-bottom: 20px;
 	}
 
 	.sub {
-		font-size: 18px;
+		font-size: 17px;
 		color: var(--text-secondary);
-		max-width: 560px;
+		max-width: 520px;
 		margin: 0 auto;
+		line-height: 1.7;
 	}
 
 	.carousel-wrapper {
@@ -128,7 +142,7 @@
 	.carousel-viewport {
 		flex: 1;
 		position: relative;
-		height: 280px;
+		height: 300px;
 		overflow: hidden;
 	}
 
@@ -136,13 +150,14 @@
 		position: absolute;
 		left: 50%;
 		top: 0;
-		width: calc((100% - 40px) / 3);
-		margin-left: calc(-1 * (100% - 40px) / 6);
+		width: calc((100% - 48px) / 3);
+		margin-left: calc(-1 * (100% - 48px) / 6);
 		height: 100%;
 		background: var(--bg-alt);
+		border: 1px solid var(--border);
 		border-radius: 24px;
 		padding: 40px;
-		transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s ease;
+		transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s ease, border-color 0.3s;
 		cursor: pointer;
 		display: flex;
 		flex-direction: column;
@@ -150,18 +165,19 @@
 	}
 
 	.card.active {
-		border: 1px solid var(--accent);
+		border-color: var(--accent);
 	}
 
 	.icon-wrap {
-		width: 48px;
-		height: 48px;
-		border-radius: 14px;
-		background: var(--bg);
+		width: 56px;
+		height: 56px;
+		border-radius: 16px;
+		background: var(--card-bg);
+		border: 1px solid var(--border);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		margin-bottom: 20px;
+		margin-bottom: 24px;
 	}
 
 	.icon {
@@ -169,34 +185,36 @@
 	}
 
 	h3 {
+		font-family: var(--font-serif);
 		font-size: 22px;
-		font-weight: 600;
+		font-weight: 400;
 		color: var(--text-primary);
 		margin-bottom: 10px;
 	}
 
 	.card p {
-		font-size: 16px;
+		font-size: 15px;
 		color: var(--text-secondary);
-		line-height: 1.6;
+		line-height: 1.7;
 	}
 
 	.nav-btn {
 		flex: 0 0 auto;
-		width: 44px;
-		height: 44px;
+		width: 48px;
+		height: 48px;
 		border-radius: 50%;
 		background: var(--card-bg);
-		border: 1px solid var(--card-border);
+		border: 1px solid var(--border);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		color: var(--text-primary);
-		transition: background 0.2s, transform 0.2s;
+		color: var(--text-secondary);
+		transition: all 0.2s;
 	}
 
 	.nav-btn:hover {
-		background: var(--bg-alt);
+		color: var(--text-primary);
+		border-color: var(--text-muted);
 		transform: scale(1.05);
 	}
 
@@ -204,26 +222,26 @@
 		display: flex;
 		justify-content: center;
 		gap: 8px;
-		margin-top: 32px;
+		margin-top: 40px;
 	}
 
 	.dot {
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
-		background: var(--text-muted);
+		background: var(--border);
 		transition: all 0.3s;
 	}
 
 	.dot.active {
 		background: var(--accent);
-		width: 24px;
+		width: 28px;
 		border-radius: 4px;
 	}
 
 	@media (max-width: 640px) {
-		.features { padding: 60px 16px; }
-		.carousel-viewport { height: 200px; }
+		.features { padding: 80px 20px; }
+		.carousel-viewport { height: 240px; }
 		.nav-btn { display: none; }
 		.carousel-wrapper { gap: 0; }
 	}
