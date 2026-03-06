@@ -2,7 +2,7 @@
 	const steps = [
 		{ num: '1', title: 'Download CashState', desc: 'Install free from the App Store. Takes seconds.' },
 		{ num: '2', title: 'Connect your accounts', desc: 'Link your banks securely with read-only access via SimpleFIN.' },
-		{ num: '3', title: 'Know your state', desc: 'Net worth, budgets, goals — synced and updated automatically.' },
+		{ num: '3', title: 'Know your financial state', desc: 'Net worth, budgets, goals — synced and updated automatically.' },
 	];
 </script>
 
@@ -55,9 +55,9 @@
 	}
 
 	h2 {
-		font-family: var(--font-serif);
+		font-family: var(--font-sans);
 		font-size: clamp(36px, 5vw, 52px);
-		font-weight: 400;
+		font-weight: 700;
 		color: var(--text-primary);
 		letter-spacing: -0.02em;
 		line-height: 1.15;
@@ -112,9 +112,9 @@
 	}
 
 	h3 {
-		font-family: var(--font-serif);
+		font-family: var(--font-sans);
 		font-size: 20px;
-		font-weight: 400;
+		font-weight: 600;
 		color: var(--text-primary);
 		margin-bottom: 6px;
 	}
