@@ -1,144 +1,94 @@
 <script lang="ts">
 	const steps = [
-		{
-			number: '01',
-			title: 'Connect Your Accounts',
-			description: 'Securely link your bank accounts, credit cards, and investment accounts in seconds.',
-		},
-		{
-			number: '02',
-			title: 'AI Analyzes Your Money',
-			description: 'Our AI categorizes transactions, identifies patterns, and builds your financial picture.',
-		},
-		{
-			number: '03',
-			title: 'Know Your Cash State',
-			description: 'Get real-time insights into your net worth, spending, budgets, and progress toward goals.',
-		},
+		{ num: '1', title: 'Download CashState', desc: 'Install free from the App Store. Takes seconds.' },
+		{ num: '2', title: 'Connect your accounts', desc: 'Link your banks securely with read-only access.' },
+		{ num: '3', title: 'Know your state', desc: 'Net worth, budgets, goals — synced and updated automatically.' },
 	];
 </script>
 
-<section class="how-it-works" id="how-it-works">
+<section class="how" id="how-it-works">
 	<div class="inner">
-		<div class="section-header">
-			<span class="section-pill">How it works</span>
-			<h2>Get started in minutes</h2>
-			<p>Three simple steps to complete financial clarity.</p>
-		</div>
-
+		<h2>Three steps. That's it.</h2>
 		<div class="steps">
-			{#each steps as step, i}
+			{#each steps as step}
 				<div class="step">
-					<div class="step-number">{step.number}</div>
-					<h3>{step.title}</h3>
-					<p>{step.description}</p>
-				</div>
-				{#if i < steps.length - 1}
-					<div class="step-connector">
-						<svg width="40" height="2" viewBox="0 0 40 2">
-							<line x1="0" y1="1" x2="40" y2="1" stroke="var(--color-border)" stroke-width="2" stroke-dasharray="4 4"/>
-						</svg>
+					<span class="num">{step.num}</span>
+					<div>
+						<h3>{step.title}</h3>
+						<p>{step.desc}</p>
 					</div>
-				{/if}
+				</div>
 			{/each}
 		</div>
 	</div>
 </section>
 
 <style>
-	.how-it-works {
-		padding: 6rem 2rem;
+	.how {
+		padding: 100px 24px;
+		background: var(--bg-alt);
 	}
 
 	.inner {
-		max-width: 1000px;
+		max-width: 680px;
 		margin: 0 auto;
 	}
 
-	.section-header {
+	h2 {
+		font-size: clamp(36px, 5vw, 56px);
+		font-weight: 700;
+		color: var(--text-primary);
+		letter-spacing: -0.03em;
+		line-height: 1.1;
+		margin-bottom: 48px;
 		text-align: center;
-		margin-bottom: 4rem;
-	}
-
-	.section-pill {
-		display: inline-block;
-		padding: 0.4rem 1rem;
-		background: var(--color-accent-light);
-		color: var(--color-accent);
-		border-radius: 100px;
-		font-size: 0.85rem;
-		font-weight: 600;
-		margin-bottom: 1rem;
-	}
-
-	.section-header h2 {
-		font-size: clamp(1.8rem, 4vw, 2.5rem);
-		font-weight: 800;
-		color: var(--color-dark);
-		line-height: 1.2;
-		margin-bottom: 1rem;
-	}
-
-	.section-header p {
-		font-size: 1.1rem;
-		color: var(--color-text);
 	}
 
 	.steps {
 		display: flex;
-		align-items: flex-start;
-		justify-content: center;
-		gap: 1rem;
+		flex-direction: column;
 	}
 
 	.step {
-		flex: 1;
-		text-align: center;
-		max-width: 280px;
+		display: flex;
+		align-items: flex-start;
+		gap: 20px;
+		padding: 24px 0;
+		border-top: 1px solid var(--border);
 	}
 
-	.step-number {
-		display: inline-flex;
+	.step:last-child {
+		border-bottom: 1px solid var(--border);
+	}
+
+	.num {
+		font-size: 14px;
+		font-weight: 700;
+		color: var(--accent);
+		width: 32px;
+		height: 32px;
+		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 56px;
-		height: 56px;
-		background: var(--color-primary);
-		color: var(--color-white);
-		border-radius: 16px;
-		font-size: 1.2rem;
-		font-weight: 800;
-		margin-bottom: 1.2rem;
+		border: 2px solid var(--accent);
+		border-radius: 10px;
+		flex-shrink: 0;
 	}
 
-	.step h3 {
-		font-size: 1.1rem;
-		font-weight: 700;
-		color: var(--color-dark);
-		margin-bottom: 0.5rem;
+	h3 {
+		font-size: 17px;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin-bottom: 4px;
 	}
 
 	.step p {
-		font-size: 0.9rem;
-		color: var(--color-text);
-		line-height: 1.6;
+		font-size: 15px;
+		color: var(--text-secondary);
+		line-height: 1.5;
 	}
 
-	.step-connector {
-		display: flex;
-		align-items: center;
-		padding-top: 1.8rem;
-	}
-
-	@media (max-width: 768px) {
-		.steps {
-			flex-direction: column;
-			align-items: center;
-		}
-
-		.step-connector {
-			transform: rotate(90deg);
-			padding-top: 0;
-		}
+	@media (max-width: 640px) {
+		.how { padding: 60px 16px; }
 	}
 </style>

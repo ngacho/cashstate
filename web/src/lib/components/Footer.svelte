@@ -1,134 +1,103 @@
 <footer>
-	<div class="footer-inner">
-		<div class="footer-brand">
-			<div class="logo">
-				<span class="logo-icon">$</span>
-				<span class="logo-text">CashState</span>
+	<div class="inner">
+		<div class="top">
+			<div class="brand">
+				<span class="logo">Cash<span class="accent">State</span></span>
+				<p class="tagline">Know your state.</p>
 			</div>
-			<p>Know the state of your cash.</p>
-		</div>
 
-		<div class="footer-links">
-			<div class="link-group">
+			<div class="col">
 				<h4>Product</h4>
 				<a href="#features">Features</a>
 				<a href="#how-it-works">How it works</a>
+				<a href="/app-store">Download</a>
+			</div>
+
+			<div class="col">
+				<h4>Support</h4>
 				<a href="#faq">FAQ</a>
 			</div>
-			<div class="link-group">
-				<h4>Company</h4>
-				<a href="#about">About</a>
-				<a href="#blog">Blog</a>
-				<a href="#careers">Careers</a>
-			</div>
-			<div class="link-group">
-				<h4>Legal</h4>
-				<a href="#privacy">Privacy</a>
-				<a href="#terms">Terms</a>
-			</div>
 		</div>
-	</div>
 
-	<div class="footer-bottom">
-		<p>&copy; {new Date().getFullYear()} CashState. All rights reserved.</p>
+		<div class="bottom">
+			<p>&copy; {new Date().getFullYear()} CashState. All rights reserved.</p>
+		</div>
 	</div>
 </footer>
 
 <style>
 	footer {
-		padding: 4rem 2rem 2rem;
-		background: var(--color-background);
-		border-top: 1px solid var(--color-border);
+		padding: 64px 24px 32px;
+		border-top: 1px solid var(--border);
 	}
 
-	.footer-inner {
-		max-width: 1100px;
+	.inner {
+		max-width: var(--container);
 		margin: 0 auto;
-		display: flex;
-		justify-content: space-between;
-		gap: 3rem;
-		margin-bottom: 3rem;
 	}
 
-	.footer-brand {
-		max-width: 250px;
+	.top {
+		display: grid;
+		grid-template-columns: 2fr 1fr 1fr;
+		gap: 48px;
+		margin-bottom: 48px;
 	}
 
 	.logo {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		font-weight: 800;
-		font-size: 1.2rem;
-		color: var(--color-dark);
-		margin-bottom: 0.75rem;
+		font-size: 18px;
+		font-weight: 700;
+		color: var(--text-primary);
+		letter-spacing: -0.02em;
 	}
 
-	.logo-icon {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 32px;
-		height: 32px;
-		background: var(--color-primary);
-		color: var(--color-white);
-		border-radius: 8px;
-		font-weight: 900;
-		font-size: 1rem;
+	.accent {
+		color: var(--accent);
 	}
 
-	.footer-brand p {
-		font-size: 0.9rem;
-		color: var(--color-text-light);
+	.tagline {
+		font-size: 14px;
+		color: var(--text-muted);
+		margin-top: 8px;
 	}
 
-	.footer-links {
-		display: flex;
-		gap: 4rem;
-	}
-
-	.link-group {
+	.col {
 		display: flex;
 		flex-direction: column;
-		gap: 0.6rem;
+		gap: 12px;
 	}
 
-	.link-group h4 {
-		font-size: 0.85rem;
-		font-weight: 700;
-		color: var(--color-dark);
-		margin-bottom: 0.3rem;
+	h4 {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin-bottom: 4px;
 	}
 
-	.link-group a {
-		font-size: 0.85rem;
-		color: var(--color-text-light);
+	.col a {
+		font-size: 14px;
+		color: var(--text-secondary);
 		transition: color 0.2s;
 	}
 
-	.link-group a:hover {
-		color: var(--color-primary);
+	.col a:hover {
+		color: var(--text-primary);
 	}
 
-	.footer-bottom {
-		max-width: 1100px;
-		margin: 0 auto;
-		padding-top: 2rem;
-		border-top: 1px solid var(--color-border);
+	.bottom {
+		padding-top: 24px;
+		border-top: 1px solid var(--border);
 	}
 
-	.footer-bottom p {
-		font-size: 0.8rem;
-		color: var(--color-text-light);
+	.bottom p {
+		font-size: 13px;
+		color: var(--text-muted);
 	}
 
-	@media (max-width: 768px) {
-		.footer-inner {
-			flex-direction: column;
-		}
-
-		.footer-links {
-			gap: 2rem;
+	@media (max-width: 640px) {
+		footer { padding: 40px 16px 24px; }
+		.top {
+			grid-template-columns: 1fr;
+			gap: 32px;
 		}
 	}
 </style>

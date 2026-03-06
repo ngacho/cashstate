@@ -1,267 +1,251 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { carouselItems, carouselIndex } from '$lib/theme.svelte';
 
 	const screenshots = [
-		{ src: '/screenshots/home-view.png', alt: 'Home view with net worth and accounts' },
-		{ src: '/screenshots/account-details.PNG', alt: 'Account details with balance chart' },
-		{ src: '/screenshots/spending.PNG', alt: 'Budget overview with spending categories' },
-		{ src: '/screenshots/spending-compare.PNG', alt: 'Month-over-month spending comparison' },
-		{ src: '/screenshots/buget-set.PNG', alt: 'Budget setup with linked accounts' },
-		{ src: '/screenshots/debt-goal.PNG', alt: 'Debt payoff goal tracking' },
+		{ src: '/screenshots/home-view.png', label: 'Net Worth', wordIndex: 1 },
+		{ src: '/screenshots/account-details.PNG', label: 'Accounts', wordIndex: 0 },
+		{ src: '/screenshots/spending.PNG', label: 'Budget', wordIndex: 2 },
+		{ src: '/screenshots/spending-compare.PNG', label: 'Spending', wordIndex: 3 },
+		{ src: '/screenshots/buget-set.PNG', label: 'Categories', wordIndex: 2 },
+		{ src: '/screenshots/debt-goal.PNG', label: 'Goals', wordIndex: 4 },
 	];
 
-	let currentScreenshot = $state(0);
-	let isTransitioning = $state(false);
+	let current = $state(0);
 	let interval: ReturnType<typeof setInterval>;
 
-	function goTo(index: number) {
-		if (index === currentScreenshot || isTransitioning) return;
-		isTransitioning = true;
-		setTimeout(() => {
-			currentScreenshot = index;
-			isTransitioning = false;
-		}, 300);
+	function goTo(i: number) {
+		if (i === current) return;
+		clearInterval(interval);
+		current = i;
+		carouselIndex.value = screenshots[i].wordIndex;
+		startAutoplay();
+	}
+
+	function prev() {
+		goTo((current - 1 + screenshots.length) % screenshots.length);
+	}
+
+	function next() {
+		goTo((current + 1) % screenshots.length);
+	}
+
+	function startAutoplay() {
+		interval = setInterval(() => next(), 3500);
+	}
+
+	function getOffset(i: number): number {
+		const diff = i - current;
+		// Handle wrapping for smooth circular feel
+		if (diff > screenshots.length / 2) return diff - screenshots.length;
+		if (diff < -screenshots.length / 2) return diff + screenshots.length;
+		return diff;
 	}
 
 	onMount(() => {
-		interval = setInterval(() => {
-			const next = (currentScreenshot + 1) % screenshots.length;
-			goTo(next);
-		}, 4000);
+		carouselIndex.value = screenshots[0].wordIndex;
+		startAutoplay();
 	});
 
-	onDestroy(() => {
-		if (interval) clearInterval(interval);
-	});
+	onDestroy(() => { if (interval) clearInterval(interval); });
 </script>
 
 <section class="showcase">
-	<div class="showcase-inner">
-		<div class="phone-mockup">
-			<div class="phone-notch"></div>
-			<div class="phone-screen">
-				<img
-					src={screenshots[currentScreenshot].src}
-					alt={screenshots[currentScreenshot].alt}
-					class="screenshot"
-					class:transitioning={isTransitioning}
-				/>
+	<div class="inner">
+		<div class="carousel-wrapper">
+			<button class="nav-btn nav-prev" onclick={prev} aria-label="Previous">
+				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+			</button>
+
+			<div class="carousel-viewport">
+				{#each screenshots as s, i}
+					{@const offset = getOffset(i)}
+					{@const isVisible = Math.abs(offset) <= 1}
+					{@const isActive = offset === 0}
+					<button
+						class="phone"
+						class:active={isActive}
+						class:hidden={!isVisible}
+						style="transform: translateX(calc({offset} * (100% + 24px))) scale({isActive ? 1 : 0.85}); opacity: {isVisible ? (isActive ? 1 : 0.55) : 0}; z-index: {isActive ? 2 : 1};"
+						onclick={() => goTo(i)}
+					>
+						<img src={s.src} alt={s.label} />
+						<span class="phone-label">{s.label}</span>
+					</button>
+				{/each}
 			</div>
+
+			<button class="nav-btn nav-next" onclick={next} aria-label="Next">
+				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+			</button>
 		</div>
 
-		<div class="floating-card card-savings">
-			<div class="card-icon savings-icon">
-				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
-					<polyline points="17 6 23 6 23 12"></polyline>
-				</svg>
-			</div>
-			<div class="card-value">$2.4K</div>
-			<div class="card-label">Saved this month</div>
+		<div class="dots">
+			{#each screenshots as _, i}
+				<button class="dot" class:active={current === i} onclick={() => goTo(i)}></button>
+			{/each}
 		</div>
 
-		<div class="floating-card card-income">
-			<div class="card-icon income-icon">
-				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<line x1="12" y1="1" x2="12" y2="23"></line>
-					<path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-				</svg>
-			</div>
-			<div class="card-value">+35%</div>
-			<div class="card-label">Income growth</div>
-		</div>
+		<h2>Designed for clarity.</h2>
+		<p class="sub">Every screen crafted to help you understand your finances at a glance.</p>
 
-		<div class="floating-card card-goal">
-			<div class="card-icon goal-icon">
-				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<circle cx="12" cy="12" r="10"></circle>
-					<circle cx="12" cy="12" r="6"></circle>
-					<circle cx="12" cy="12" r="2"></circle>
-				</svg>
-			</div>
-			<div class="card-value">78%</div>
-			<div class="card-label">Goal progress</div>
-		</div>
-	</div>
-
-	<div class="carousel-dots">
-		{#each screenshots as _, i}
-			<button
-				class="dot"
-				class:active={currentScreenshot === i}
-				onclick={() => goTo(i)}
-				aria-label="Show screenshot {i + 1}"
-			></button>
-		{/each}
+		<a href="/app-store" class="btn-download">
+			Download for free
+			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+		</a>
 	</div>
 </section>
 
 <style>
 	.showcase {
-		padding: 0 2rem 6rem;
+		padding: 0 24px 100px;
+		background: var(--bg);
+	}
+
+	.inner {
+		max-width: 1100px;
+		margin: 0 auto;
 		text-align: center;
-		background: var(--color-white);
+	}
+
+	h2 {
+		font-size: clamp(36px, 5vw, 56px);
+		font-weight: 700;
+		color: var(--text-primary);
+		letter-spacing: -0.03em;
+		line-height: 1.1;
+		margin-bottom: 16px;
+	}
+
+	.sub {
+		font-size: 18px;
+		color: var(--text-secondary);
+		max-width: 500px;
+		margin: 0 auto 32px;
+	}
+
+	h2 {
+		margin-top: 48px;
+	}
+
+	.carousel-wrapper {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		margin-bottom: 32px;
+	}
+
+	.carousel-viewport {
+		flex: 1;
+		position: relative;
+		height: 580px;
 		overflow: hidden;
 	}
 
-	.showcase-inner {
-		position: relative;
-		max-width: 900px;
-		margin: 0 auto;
-		height: 580px;
-	}
-
-	.phone-mockup {
+	.phone {
 		position: absolute;
 		left: 50%;
-		top: 50%;
-		transform: translate(-50%, -50%);
-		width: 280px;
+		top: 0;
+		width: calc((100% - 48px) / 3);
+		margin-left: calc(-1 * (100% - 48px) / 6);
 		background: #000;
-		border-radius: 40px;
-		padding: 8px;
-		box-shadow:
-			0 25px 60px rgba(0, 0, 0, 0.2),
-			0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+		border-radius: 32px;
+		padding: 6px;
+		box-shadow: 0 16px 48px -12px rgba(0,0,0,0.2);
+		transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s ease, box-shadow 0.5s ease;
+		cursor: pointer;
+		text-align: center;
 	}
 
-	.phone-notch {
-		width: 120px;
-		height: 28px;
-		background: #000;
-		border-radius: 0 0 18px 18px;
-		margin: 0 auto;
-		position: relative;
-		z-index: 3;
-		margin-top: -2px;
+	.phone.active {
+		box-shadow: 0 32px 64px -16px rgba(0,0,0,0.35);
 	}
 
-	.phone-screen {
-		background: #1a1a1a;
-		border-radius: 34px;
-		overflow: hidden;
-		aspect-ratio: 9 / 19.5;
-		position: relative;
-		margin-top: -14px;
+	.phone.hidden {
+		pointer-events: none;
 	}
 
-	.screenshot {
+	.phone img {
 		width: 100%;
-		height: 100%;
+		border-radius: 27px;
+		aspect-ratio: 9 / 19.5;
 		object-fit: cover;
 		object-position: top;
-		transition: opacity 0.3s ease;
 	}
 
-	.screenshot.transitioning {
-		opacity: 0;
+	.phone-label {
+		display: block;
+		font-size: 13px;
+		font-weight: 600;
+		color: rgba(255,255,255,0.5);
+		padding: 8px 0 4px;
+		transition: color 0.3s;
 	}
 
-	.carousel-dots {
+	.phone.active .phone-label {
+		color: rgba(255,255,255,0.9);
+	}
+
+	.nav-btn {
+		flex: 0 0 auto;
+		width: 44px;
+		height: 44px;
+		border-radius: 50%;
+		background: var(--card-bg);
+		border: 1px solid var(--card-border);
 		display: flex;
+		align-items: center;
 		justify-content: center;
-		gap: 0.5rem;
-		margin-top: 1.5rem;
+		color: var(--text-primary);
+		transition: background 0.2s, transform 0.2s;
+		z-index: 2;
+	}
+
+	.nav-btn:hover {
+		background: var(--bg-alt);
+		transform: scale(1.05);
+	}
+
+	.dots {
+		display: flex;
+		gap: 8px;
+		justify-content: center;
+		margin-bottom: 32px;
 	}
 
 	.dot {
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
-		background: var(--color-border);
-		padding: 0;
+		background: var(--text-muted);
 		transition: all 0.3s;
 	}
 
 	.dot.active {
-		background: var(--color-primary);
+		background: var(--accent);
 		width: 24px;
 		border-radius: 4px;
 	}
 
-	/* Floating stat cards */
-	.floating-card {
-		position: absolute;
-		background: var(--color-card);
-		border-radius: 16px;
-		padding: 1rem 1.2rem;
-		box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
-		border: 1px solid var(--color-border);
-		text-align: left;
-		animation: float 6s ease-in-out infinite;
-	}
-
-	.card-icon {
-		width: 36px;
-		height: 36px;
-		border-radius: 10px;
-		display: flex;
+	.btn-download {
+		display: inline-flex;
 		align-items: center;
-		justify-content: center;
-		margin-bottom: 0.5rem;
+		gap: 8px;
+		padding: 14px 28px;
+		background: var(--text-primary);
+		color: var(--bg);
+		border-radius: 100px;
+		font-size: 15px;
+		font-weight: 600;
+		transition: opacity 0.2s;
 	}
 
-	.savings-icon {
-		background: var(--color-primary-light);
-		color: var(--color-primary);
-	}
+	.btn-download:hover { opacity: 0.85; }
 
-	.income-icon {
-		background: var(--color-highlight-light);
-		color: var(--color-highlight);
-	}
-
-	.goal-icon {
-		background: var(--color-accent-light);
-		color: var(--color-accent);
-	}
-
-	.card-value {
-		font-size: 1.3rem;
-		font-weight: 800;
-		color: var(--color-dark);
-	}
-
-	.card-label {
-		font-size: 0.75rem;
-		color: var(--color-text-light);
-		margin-top: 0.15rem;
-	}
-
-	.card-savings {
-		top: 8%;
-		left: 2%;
-		animation-delay: 0s;
-	}
-
-	.card-income {
-		bottom: 12%;
-		left: 5%;
-		animation-delay: -2s;
-	}
-
-	.card-goal {
-		top: 15%;
-		right: 2%;
-		animation-delay: -4s;
-	}
-
-	@keyframes float {
-		0%, 100% { transform: translateY(0px); }
-		50% { transform: translateY(-12px); }
-	}
-
-	@media (max-width: 768px) {
-		.showcase-inner {
-			height: 500px;
-		}
-
-		.floating-card {
-			display: none;
-		}
-
-		.phone-mockup {
-			width: 240px;
-		}
+	@media (max-width: 640px) {
+		.showcase { padding: 60px 16px; }
+		.carousel-viewport { height: 440px; }
+		.nav-btn { display: none; }
+		.carousel-wrapper { gap: 0; }
 	}
 </style>
