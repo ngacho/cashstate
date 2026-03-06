@@ -159,6 +159,7 @@ export default defineSchema({
   categorizationJobs: defineTable({
     userId: v.id("users"),
     status: v.string(), // "running" | "completed" | "failed"
+    month: v.optional(v.string()), // "YYYY-MM" for scoping to a specific month
     totalTransactions: v.number(),
     categorizedCount: v.number(),
     failedCount: v.number(),

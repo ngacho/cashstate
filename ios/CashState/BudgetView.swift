@@ -13,6 +13,7 @@ struct BudgetView: View {
     // AI categorization (fire-and-forget)
     @State private var aiCategorizationQueued = false
     @State private var aiCategorizationError: String?
+    @State private var activeJob: CategorizationJob?
 
     // Budget account scoping
     @State private var budgetAccountIds: [String] = []
@@ -21,6 +22,9 @@ struct BudgetView: View {
     @State private var isLoading = true
     @State private var loadError: String?
     @State private var loadTask: Task<Void, Never>?
+
+    // Toast
+    @State private var toast: Toast?
 
     // Tab selection (Budget vs Compare)
     @State private var budgetTab = 0
@@ -184,10 +188,13 @@ struct BudgetView: View {
             // Reload data when the selected month changes (skip initial load)
             if oldValue != newValue {
                 Analytics.shared.track(.budgetMonthNavigated)
-                isLoading = true  // Show loading state immediately
+                aiCategorizationQueued = false
+                aiCategorizationError = nil
+                isLoading = true
                 reloadData()
             }
         }
+        .toast($toast)
     }
 
     private var budgetContentView: some View {
@@ -251,23 +258,30 @@ struct BudgetView: View {
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.top, Theme.Spacing.sm)
 
-                    // Uncategorized Transactions Card
-                    if !uncategorizedTransactions.isEmpty {
-                        if aiCategorizationQueued {
-                            // Brief confirmation that job was queued
-                            HStack(spacing: Theme.Spacing.sm) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(Theme.Colors.income)
-                                Text("AI categorization queued — pull to refresh to see results")
+                    // Active categorization job banner (hide if it's for the current month)
+                    if let job = activeJob, job.month != selectedMonthString {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("AI categorization in progress for \(formatJobMonth(job.month))")
                                     .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(Theme.Colors.textPrimary)
+                                Text("\(job.categorizedCount) of \(job.totalTransactions) done — pull to refresh")
+                                    .font(.caption2)
                                     .foregroundColor(Theme.Colors.textSecondary)
                             }
-                            .padding(Theme.Spacing.md)
-                            .background(Theme.Colors.income.opacity(0.08))
-                            .cornerRadius(Theme.CornerRadius.sm)
-                            .padding(.horizontal, Theme.Spacing.md)
+                            Spacer()
                         }
+                        .padding(Theme.Spacing.md)
+                        .background(Theme.Colors.primary.opacity(0.08))
+                        .cornerRadius(Theme.CornerRadius.sm)
+                        .padding(.horizontal, Theme.Spacing.md)
+                    }
 
+                    // Uncategorized Transactions Card
+                    if !uncategorizedTransactions.isEmpty {
                         UncategorizedTransactionsCard(
                             uncategorizedCount: uncategorizedTransactions.count,
                             showManualCategorization: $showManualCategorization,
@@ -609,6 +623,9 @@ struct BudgetView: View {
                     }
             }
 
+            // Check for active categorization job
+            activeJob = try? await apiClient.getActiveCategorizationJob()
+
             isLoading = false
         } catch {
             loadError = error.localizedDescription
@@ -620,6 +637,20 @@ struct BudgetView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMMM yyyy"
         return formatter.string(from: selectedMonth)
+    }
+
+    private var selectedMonthString: String? {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.year, .month], from: selectedMonth)
+        guard let y = components.year, let m = components.month else { return nil }
+        return "\(y)-\(String(format: "%02d", m))"
+    }
+
+    private func formatJobMonth(_ month: String?) -> String {
+        guard let month = month, month.count >= 7 else { return "unknown" }
+        let parts = month.split(separator: "-")
+        guard parts.count == 2, let m = Int(parts[1]), let y = Int(parts[0]) else { return month }
+        return String(format: "%02d/%02d", m, y % 100)
     }
 
     private var daysRemainingText: String? {
@@ -662,12 +693,18 @@ struct BudgetView: View {
 
         do {
             let transactionIds = uncategorizedTransactions.map { $0.id }
+            let calendar = Calendar.current
+            let components = calendar.dateComponents([.year, .month], from: selectedMonth)
+            let monthString = components.year.flatMap { y in components.month.map { m in "\(y)-\(String(format: "%02d", m))" } }
             _ = try await apiClient.startCategorizationJob(
                 transactionIds: transactionIds,
-                force: false
+                force: false,
+                month: monthString
             )
             aiCategorizationQueued = true
+            toast = Toast(style: .success, message: "AI categorization queued -- pull to refresh for results")
         } catch {
+            toast = Toast(style: .error, message: "Failed to queue categorization")
             aiCategorizationError = "Failed to queue categorization: \(error.localizedDescription)"
         }
     }

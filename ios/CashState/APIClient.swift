@@ -413,14 +413,19 @@ class APIClient {
 
     // MARK: - Categorization Jobs
 
-    func startCategorizationJob(transactionIds: [String]? = nil, force: Bool = false) async throws -> CategorizationJobStartResponse {
+    func startCategorizationJob(transactionIds: [String]? = nil, force: Bool = false, month: String? = nil) async throws -> CategorizationJobStartResponse {
         var args: [String: ConvexEncodable?] = ["force": force]
         if let ids = transactionIds { args["transactionIds"] = ids as [ConvexEncodable?] }
+        if let month = month { args["month"] = month }
         return try await convexClient.mutation("categorizationJobs:start", with: try await withClerkId(args))
     }
 
     func getCategorizationJobStatus(jobId: String) async throws -> CategorizationJob {
         return try await query("categorizationJobs:getStatus", with: ["jobId": jobId])
+    }
+
+    func getActiveCategorizationJob() async throws -> CategorizationJob? {
+        return try await query("categorizationJobs:getActiveJob", with: nil)
     }
 }
 

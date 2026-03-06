@@ -5,7 +5,7 @@ struct MainView: View {
     let apiClient: APIClient
     @State private var selectedTab = 0
 
-    private let tabNames = ["Overview", "Budget", "Goals", "Accounts"]
+
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -34,9 +34,6 @@ struct MainView: View {
                 .tag(3)
         }
         .tint(Theme.Colors.primary)
-        .onChange(of: selectedTab) { _, newValue in
-            Analytics.shared.track(.tabSwitched, properties: ["tab": tabNames[newValue]])
-        }
     }
 }
 

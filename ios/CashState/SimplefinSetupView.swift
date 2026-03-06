@@ -5,7 +5,7 @@ struct SimplefinSetupView: View {
     @State private var setupToken = ""
     @State private var institutionName = ""
     @State private var isLoading = false
-    @State private var errorMessage: String?
+    @State private var toast: Toast?
 
     let apiClient: APIClient
     let onSuccess: (String) -> Void  // Pass item_id to trigger sync
@@ -27,17 +27,6 @@ struct SimplefinSetupView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .font(.system(.body, design: .monospaced))
-                }
-
-                if let errorMessage = errorMessage {
-                    Section {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.red)
-                            Text(errorMessage)
-                                .foregroundColor(.red)
-                        }
-                    }
                 }
 
                 Section {
@@ -70,12 +59,13 @@ struct SimplefinSetupView: View {
                     }
                 }
             }
+            .toast($toast)
         }
     }
 
     private func setupSimplefin() {
         isLoading = true
-        errorMessage = nil
+        toast = nil
         Analytics.shared.track(.simplefinSetupStarted)
 
         Task {
@@ -99,9 +89,9 @@ struct SimplefinSetupView: View {
                 await MainActor.run {
                     isLoading = false
                     if let apiError = error as? APIError {
-                        errorMessage = apiError.localizedDescription
+                        toast = Toast(style: .error, message: apiError.localizedDescription)
                     } else {
-                        errorMessage = error.localizedDescription
+                        toast = Toast(style: .error, message: error.localizedDescription)
                     }
                     if Config.debugMode {
                         print("❌ SimpleFin setup failed: \(error)")

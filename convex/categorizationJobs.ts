@@ -6,6 +6,7 @@ export const start = userMutation({
   args: {
     transactionIds: v.optional(v.array(v.id("simplefinTransactions"))),
     force: v.optional(v.boolean()),
+    month: v.optional(v.string()), // "YYYY-MM" to scope the job to a month
   },
   handler: async (ctx, args) => {
     // Count uncategorized transactions to determine job size
@@ -26,6 +27,7 @@ export const start = userMutation({
     const jobId = await ctx.db.insert("categorizationJobs", {
       userId: ctx.user._id,
       status: "running",
+      month: args.month,
       totalTransactions,
       categorizedCount: 0,
       failedCount: 0,
@@ -44,6 +46,23 @@ export const start = userMutation({
     );
 
     return { jobId };
+  },
+});
+
+export const getActiveJob = userQuery({
+  args: {},
+  handler: async (ctx) => {
+    const jobs = await ctx.db
+      .query("categorizationJobs")
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("userId"), ctx.user._id),
+          q.eq(q.field("status"), "running")
+        )
+      )
+      .order("desc")
+      .first();
+    return jobs;
   },
 });
 

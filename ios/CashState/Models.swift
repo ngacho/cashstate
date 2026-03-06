@@ -350,6 +350,7 @@ struct CategorizationJob: Codable, Identifiable {
     let id: String
     let userId: String
     let status: String // "running" | "completed" | "failed"
+    let month: String? // "YYYY-MM"
     let totalTransactions: Int
     let categorizedCount: Int
     let failedCount: Int
@@ -360,6 +361,7 @@ struct CategorizationJob: Codable, Identifiable {
         case id = "_id"
         case userId
         case status
+        case month
         case totalTransactions
         case categorizedCount
         case failedCount

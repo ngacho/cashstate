@@ -22,7 +22,6 @@ enum AnalyticsEvent: String {
 
     // Navigation
     case screenViewed = "screen_viewed"
-    case tabSwitched = "tab_switched"
 
     // Banks
     case simplefinSetupStarted = "simplefin_setup_started"

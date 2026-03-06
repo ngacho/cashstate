@@ -7,7 +7,7 @@ struct GoalDetailView: View {
 
     @State private var detail: GoalDetail?
     @State private var isLoading = false
-    @State private var error: String?
+    @State private var toast: Toast?
     @State private var selectedGranularity = "month"
     @State private var selectedRange = "1M"
     @Environment(\.dismiss) private var dismiss
@@ -30,15 +30,12 @@ struct GoalDetailView: View {
 
                     // Accounts section
                     accountsSection(detail: detail)
-                } else if let error = error {
-                    Text(error)
-                        .foregroundColor(Theme.Colors.expense)
-                        .padding()
                 }
             }
             .padding(Theme.Spacing.md)
         }
         .background(Theme.Colors.background)
+        .toast($toast)
         .navigationTitle(detail?.name ?? "Goal")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -382,7 +379,7 @@ struct GoalDetailView: View {
                 granularity: granularityMap[selectedRange] ?? "day"
             )
         } catch {
-            self.error = error.localizedDescription
+            toast = Toast(style: .error, message: error.localizedDescription)
         }
     }
 

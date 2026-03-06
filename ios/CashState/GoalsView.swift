@@ -4,7 +4,8 @@ struct GoalsView: View {
     let apiClient: APIClient
     @State private var goals: [Goal] = []
     @State private var isLoading = false
-    @State private var error: String?
+    @State private var fetchError: String?
+    @State private var toast: Toast?
     @State private var hasLoaded = false
 
     var body: some View {
@@ -15,7 +16,7 @@ struct GoalsView: View {
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Theme.Colors.background)
-                } else if let errorMessage = error, goals.isEmpty {
+                } else if let errorMessage = fetchError, goals.isEmpty {
                     // Got a response but it was an error and we have no cached goals
                     fetchErrorState(message: errorMessage)
                 } else if goals.isEmpty {
@@ -49,14 +50,7 @@ struct GoalsView: View {
             .onAppear {
                 Analytics.shared.screen(.goals)
             }
-            .alert("Error", isPresented: Binding(
-                get: { error != nil && !goals.isEmpty },
-                set: { if !$0 { error = nil } }
-            )) {
-                Button("OK") { error = nil }
-            } message: {
-                Text(error ?? "")
-            }
+            .toast($toast)
         }
     }
 
@@ -121,7 +115,7 @@ struct GoalsView: View {
     }
 
     private var fetchErrorState: some View {
-        fetchErrorState(message: error ?? "Unable to load goals")
+        fetchErrorState(message: fetchError ?? "Unable to load goals")
     }
 
     private func fetchErrorState(message: String) -> some View {
@@ -170,9 +164,13 @@ struct GoalsView: View {
         }
         do {
             goals = try await apiClient.fetchGoals()
-            error = nil
+            fetchError = nil
         } catch {
-            self.error = error.localizedDescription
+            if goals.isEmpty {
+                fetchError = error.localizedDescription
+            } else {
+                toast = Toast(style: .error, message: error.localizedDescription)
+            }
         }
     }
 
@@ -182,7 +180,7 @@ struct GoalsView: View {
             goals.removeAll { $0.id == goal.id }
             Analytics.shared.track(.goalDeleted, properties: ["goal_type": goal.goalType.rawValue])
         } catch {
-            self.error = error.localizedDescription
+            toast = Toast(style: .error, message: error.localizedDescription)
         }
     }
 }

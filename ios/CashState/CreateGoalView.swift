@@ -14,7 +14,7 @@ struct CreateGoalView: View {
     @State private var selectedAllocations: [String: Double] = [:]  // account_id -> %
     @State private var isLoading = false
     @State private var isSaving = false
-    @State private var error: String?
+    @State private var toast: Toast?
     @State private var accountAllocations: [String: Double] = [:]  // existing allocation per account
 
     @Environment(\.dismiss) private var dismiss
@@ -31,13 +31,23 @@ struct CreateGoalView: View {
         }
     }
 
-    private var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty
-        && targetAmountDouble != nil
-        && (targetAmountDouble ?? 0) > 0
-        && !selectedAllocations.isEmpty
-        && selectedAllocations.values.allSatisfy { $0 > 0 }
+    private var validationErrors: [String] {
+        var errors: [String] = []
+        if name.trimmingCharacters(in: .whitespaces).isEmpty {
+            errors.append("Goal name is required")
+        }
+        if targetAmountDouble == nil || (targetAmountDouble ?? 0) <= 0 {
+            errors.append("Enter a valid target amount")
+        }
+        if selectedAllocations.isEmpty {
+            errors.append("Select at least one account")
+        } else if !selectedAllocations.values.allSatisfy({ $0 > 0 }) {
+            errors.append("All selected accounts must have an allocation greater than 0")
+        }
+        return errors
     }
+
+    private var isValid: Bool { validationErrors.isEmpty }
 
     var body: some View {
         ScrollView {
@@ -203,18 +213,15 @@ struct CreateGoalView: View {
                     }
                 }
 
-                if let error = error {
-                    Text(error)
-                        .font(.subheadline)
-                        .foregroundColor(Theme.Colors.expense)
-                        .padding(Theme.Spacing.sm)
-                        .background(Theme.Colors.expense.opacity(0.1))
-                        .cornerRadius(Theme.CornerRadius.sm)
-                }
-
                 // Create button
                 Button {
-                    Task { await createGoal() }
+                    if isValid {
+                        Task { await createGoal() }
+                    } else {
+                        withAnimation {
+                            toast = Toast(style: .error, message: validationErrors.first ?? "Please fix errors")
+                        }
+                    }
                 } label: {
                     Group {
                         if isSaving {
@@ -231,7 +238,7 @@ struct CreateGoalView: View {
                     .foregroundColor(.white)
                     .cornerRadius(Theme.CornerRadius.md)
                 }
-                .disabled(!isValid || isSaving)
+                .disabled(isSaving)
 
                 Spacer(minLength: Theme.Spacing.xl)
             }
@@ -246,6 +253,7 @@ struct CreateGoalView: View {
         .onAppear {
             Analytics.shared.screen(.createGoal)
         }
+        .toast($toast)
     }
 
     private func loadAccounts() async {
@@ -261,7 +269,7 @@ struct CreateGoalView: View {
             }
             accounts = allAccounts
         } catch {
-            self.error = "Failed to load accounts: \(error.localizedDescription)"
+            toast = Toast(style: .error, message: "Failed to load accounts: \(error.localizedDescription)")
         }
     }
 
@@ -269,7 +277,6 @@ struct CreateGoalView: View {
         guard let amount = targetAmountDouble else { return }
         isSaving = true
         defer { isSaving = false }
-        error = nil
 
         let accountRequests = selectedAllocations.compactMap { (accountId, pct) -> GoalAccountRequest? in
             guard pct > 0 else { return nil }
@@ -293,9 +300,9 @@ struct CreateGoalView: View {
             onCreated(goal)
             dismiss()
         } catch let err as APIError {
-            error = err.localizedDescription
+            toast = Toast(style: .error, message: err.localizedDescription)
         } catch {
-            self.error = error.localizedDescription
+            toast = Toast(style: .error, message: error.localizedDescription)
         }
     }
 

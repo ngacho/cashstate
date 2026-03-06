@@ -15,7 +15,7 @@ struct EditGoalView: View {
     @State private var showDatePicker = false
     @State private var isLoading = false
     @State private var isSaving = false
-    @State private var error: String?
+    @State private var toast: Toast?
 
     @Environment(\.dismiss) private var dismiss
 
@@ -225,15 +225,6 @@ struct EditGoalView: View {
                     }
                 }
 
-                if let error = error {
-                    Text(error)
-                        .font(.subheadline)
-                        .foregroundColor(Theme.Colors.expense)
-                        .padding(Theme.Spacing.sm)
-                        .background(Theme.Colors.expense.opacity(0.1))
-                        .cornerRadius(Theme.CornerRadius.sm)
-                }
-
                 // Save button
                 Button {
                     Task { await saveChanges() }
@@ -258,6 +249,7 @@ struct EditGoalView: View {
             .padding(Theme.Spacing.md)
         }
         .background(Theme.Colors.background)
+        .toast($toast)
         .navigationTitle("Edit Goal")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -280,14 +272,14 @@ struct EditGoalView: View {
             }
             accounts = allAccounts
         } catch {
-            self.error = "Failed to load accounts: \(error.localizedDescription)"
+            self.toast = Toast(style: .error, message: "Failed to load accounts: \(error.localizedDescription)")
         }
     }
 
     private func saveChanges() async {
         isSaving = true
         defer { isSaving = false }
-        error = nil
+        toast = nil
 
         let accountRequests: [GoalAccountRequest] = selectedAllocations.compactMap { (accountId, pct) in
             guard pct > 0 else { return nil }
@@ -312,9 +304,9 @@ struct EditGoalView: View {
             onUpdated(updated)
             dismiss()
         } catch let err as APIError {
-            error = err.localizedDescription
+            toast = Toast(style: .error, message: err.localizedDescription)
         } catch {
-            self.error = error.localizedDescription
+            self.toast = Toast(style: .error, message: error.localizedDescription)
         }
     }
 
