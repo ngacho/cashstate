@@ -204,8 +204,8 @@
 	}
 
 	.svg-wrap {
-		width: 64px;
-		height: 64px;
+		width: 40px;
+		height: 40px;
 		margin-bottom: 20px;
 		flex-shrink: 0;
 		animation: svg-pulse 3s ease-in-out infinite;
