@@ -28,10 +28,16 @@
 		},
 	];
 
-	let open = $state<number | null>(null);
+	let openSet = $state<Set<number>>(new Set());
 
 	function toggle(i: number) {
-		open = open === i ? null : i;
+		const next = new Set(openSet);
+		if (next.has(i)) {
+			next.delete(i);
+		} else {
+			next.add(i);
+		}
+		openSet = next;
 	}
 </script>
 
@@ -41,16 +47,16 @@
 		<h2>Questions & answers.</h2>
 		<div class="list">
 			{#each faqs as faq, i}
-				<button class="item" class:open={open === i} onclick={() => toggle(i)}>
+				<button class="item" class:open={openSet.has(i)} onclick={() => toggle(i)}>
 					<div class="q">
 						<span class="q-text">{faq.question}</span>
-						<span class="icon" class:rotated={open === i}>
+						<span class="icon" class:rotated={openSet.has(i)}>
 							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
 						</span>
 					</div>
-					{#if open === i}
+					<div class="answer-wrap" class:expanded={openSet.has(i)}>
 						<p class="a">{faq.answer}</p>
-					{/if}
+					</div>
 				</button>
 			{/each}
 		</div>
@@ -131,6 +137,23 @@
 
 	.icon.rotated {
 		transform: rotate(180deg);
+	}
+
+	.answer-wrap {
+		display: grid;
+		grid-template-rows: 0fr;
+		transition: grid-template-rows 0.35s ease, opacity 0.35s ease;
+		opacity: 0;
+		overflow: hidden;
+	}
+
+	.answer-wrap.expanded {
+		grid-template-rows: 1fr;
+		opacity: 1;
+	}
+
+	.answer-wrap > .a {
+		min-height: 0;
 	}
 
 	.a {
