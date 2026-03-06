@@ -82,7 +82,7 @@
 
 		<div class="dots">
 			{#each screenshots as _, i}
-				<button class="dot" class:active={current === i} onclick={() => goTo(i)}></button>
+				<button class="dot" class:active={current === i} onclick={() => goTo(i)} aria-label="Go to slide {i + 1}"></button>
 			{/each}
 		</div>
 
