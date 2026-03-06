@@ -5,7 +5,7 @@
 <section class="hero" id="hero">
 	<div class="inner">
 		<h1>
-			Know the state<br />of your <RotatingText />.
+			Know the state<br />of your<br /><RotatingText />.
 		</h1>
 		<p class="subtitle">
 			The effortless way to track spending, set budgets, and reach your financial goals.
