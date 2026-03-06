@@ -110,11 +110,6 @@
 		</button>
 	</div>
 
-	<div class="dots">
-		{#each features as _, i}
-			<button class="dot" class:active={current === i} onclick={() => goTo(i)} aria-label="Go to slide {i + 1}"></button>
-		{/each}
-	</div>
 </section>
 
 <style>
@@ -255,28 +250,7 @@
 		transform: scale(1.05);
 	}
 
-	.dots {
-		display: flex;
-		justify-content: center;
-		gap: 8px;
-		margin-top: 40px;
-	}
-
-	.dot {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		background: var(--border);
-		transition: all 0.3s;
-	}
-
-	.dot.active {
-		background: var(--accent);
-		width: 28px;
-		border-radius: 4px;
-	}
-
-	@media (max-width: 640px) {
+@media (max-width: 640px) {
 		.features { padding: 80px 20px; }
 		.carousel-viewport { height: 280px; }
 		.nav-btn { display: none; }
