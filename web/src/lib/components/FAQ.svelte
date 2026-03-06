@@ -37,13 +37,16 @@
 
 <section class="faq" id="faq">
 	<div class="inner">
+		<div class="label">FAQ</div>
 		<h2>Questions & answers.</h2>
 		<div class="list">
 			{#each faqs as faq, i}
 				<button class="item" class:open={open === i} onclick={() => toggle(i)}>
 					<div class="q">
-						<span>{faq.question}</span>
-						<span class="icon">{open === i ? '\u2212' : '+'}</span>
+						<span class="q-text">{faq.question}</span>
+						<span class="icon" class:rotated={open === i}>
+							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+						</span>
 					</div>
 					{#if open === i}
 						<p class="a">{faq.answer}</p>
@@ -56,34 +59,50 @@
 
 <style>
 	.faq {
-		padding: 100px 24px;
+		padding: 120px 24px;
 	}
 
 	.inner {
-		max-width: 680px;
+		max-width: 640px;
 		margin: 0 auto;
+		text-align: center;
+	}
+
+	.label {
+		display: inline-block;
+		padding: 6px 16px;
+		background: var(--accent-light);
+		color: var(--accent);
+		border-radius: 100px;
+		font-size: 12px;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		margin-bottom: 24px;
 	}
 
 	h2 {
-		font-size: clamp(36px, 5vw, 56px);
-		font-weight: 700;
+		font-family: var(--font-serif);
+		font-size: clamp(36px, 5vw, 52px);
+		font-weight: 400;
 		color: var(--text-primary);
-		letter-spacing: -0.03em;
-		line-height: 1.1;
+		letter-spacing: -0.02em;
+		line-height: 1.15;
 		margin-bottom: 48px;
-		text-align: center;
 	}
 
 	.list {
 		display: flex;
 		flex-direction: column;
+		text-align: left;
 	}
 
 	.item {
 		text-align: left;
 		width: 100%;
-		padding: 20px 0;
+		padding: 24px 0;
 		border-top: 1px solid var(--border);
+		transition: padding 0.2s;
 	}
 
 	.item:last-child {
@@ -94,28 +113,37 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
+		gap: 16px;
+	}
+
+	.q-text {
 		font-size: 16px;
 		font-weight: 600;
 		color: var(--text-primary);
+		line-height: 1.4;
 	}
 
 	.icon {
-		font-size: 18px;
-		color: var(--text-muted);
 		flex-shrink: 0;
-		width: 24px;
-		text-align: center;
+		color: var(--text-muted);
+		transition: transform 0.3s ease;
+		display: flex;
+	}
+
+	.icon.rotated {
+		transform: rotate(180deg);
 	}
 
 	.a {
 		font-size: 15px;
 		color: var(--text-secondary);
-		line-height: 1.7;
-		margin-top: 12px;
-		padding-right: 32px;
+		line-height: 1.8;
+		margin-top: 16px;
+		padding-right: 40px;
 	}
 
 	@media (max-width: 640px) {
-		.faq { padding: 60px 16px; }
+		.faq { padding: 80px 20px; }
+		.a { padding-right: 0; }
 	}
 </style>

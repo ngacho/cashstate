@@ -32,7 +32,7 @@
 	}
 
 	.inner {
-		max-width: var(--container);
+		max-width: 900px;
 		margin: 0 auto;
 	}
 
@@ -44,10 +44,10 @@
 	}
 
 	.logo {
-		font-size: 18px;
-		font-weight: 700;
+		font-family: var(--font-serif);
+		font-size: 22px;
+		font-weight: 400;
 		color: var(--text-primary);
-		letter-spacing: -0.02em;
 	}
 
 	.accent {
@@ -57,19 +57,22 @@
 	.tagline {
 		font-size: 14px;
 		color: var(--text-muted);
-		margin-top: 8px;
+		margin-top: 10px;
+		line-height: 1.6;
 	}
 
 	.col {
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
+		gap: 14px;
 	}
 
 	h4 {
-		font-size: 13px;
+		font-size: 12px;
 		font-weight: 600;
-		color: var(--text-primary);
+		color: var(--text-muted);
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
 		margin-bottom: 4px;
 	}
 
@@ -94,10 +97,10 @@
 	}
 
 	@media (max-width: 640px) {
-		footer { padding: 40px 16px 24px; }
+		footer { padding: 48px 20px 28px; }
 		.top {
 			grid-template-columns: 1fr;
-			gap: 32px;
+			gap: 36px;
 		}
 	}
 </style>

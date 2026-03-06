@@ -10,7 +10,7 @@
 			setTimeout(() => {
 				displayIndex = carouselIndex.value;
 				isAnimating = false;
-			}, 250);
+			}, 500);
 		}
 	});
 </script>
@@ -19,21 +19,17 @@
 
 <style>
 	.wrap {
-		display: inline-block;
-		overflow: hidden;
-		vertical-align: bottom;
-		min-width: 60px;
+		display: inline;
 	}
 
 	.word {
-		display: inline-block;
 		color: var(--accent);
-		font-weight: 700;
-		transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+		font-family: var(--font-serif);
+		font-weight: 400;
+		transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 	}
 
 	.word.out {
 		opacity: 0;
-		transform: translateY(100%);
 	}
 </style>
