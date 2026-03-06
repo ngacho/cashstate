@@ -1,49 +1,39 @@
 <script lang="ts">
-	import { carouselItems } from '$lib/theme';
-	import { onMount, onDestroy } from 'svelte';
+	import { carouselItems, carouselIndex } from '$lib/theme.svelte';
 
-	let currentIndex = $state(0);
 	let isAnimating = $state(false);
-	let interval: ReturnType<typeof setInterval>;
+	let displayIndex = $state(carouselIndex.value);
 
-	onMount(() => {
-		interval = setInterval(() => {
+	$effect(() => {
+		if (carouselIndex.value !== displayIndex) {
 			isAnimating = true;
 			setTimeout(() => {
-				currentIndex = (currentIndex + 1) % carouselItems.length;
+				displayIndex = carouselIndex.value;
 				isAnimating = false;
-			}, 400);
-		}, 3000);
-	});
-
-	onDestroy(() => {
-		if (interval) clearInterval(interval);
+			}, 250);
+		}
 	});
 </script>
 
-<span class="rotating-wrapper">
-	<span class="rotating-text" class:animating={isAnimating}>
-		{carouselItems[currentIndex]}
-	</span>
-</span>
+<span class="wrap"><span class="word" class:out={isAnimating}>{carouselItems[displayIndex]}</span></span>
 
 <style>
-	.rotating-wrapper {
+	.wrap {
 		display: inline-block;
-		position: relative;
-		min-width: 200px;
+		overflow: hidden;
+		vertical-align: bottom;
+		min-width: 60px;
 	}
 
-	.rotating-text {
+	.word {
 		display: inline-block;
-		color: var(--color-primary);
-		transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-		opacity: 1;
-		transform: translateY(0);
+		color: var(--accent);
+		font-weight: 700;
+		transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 	}
 
-	.rotating-text.animating {
+	.word.out {
 		opacity: 0;
-		transform: translateY(20px);
+		transform: translateY(100%);
 	}
 </style>

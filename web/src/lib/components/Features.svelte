@@ -1,178 +1,230 @@
 <script lang="ts">
+	import { onMount, onDestroy } from 'svelte';
+
 	const features = [
-		{
-			icon: 'chart',
-			title: 'Real-time Net Worth',
-			description: 'Track all your accounts in one place and watch your net worth grow over time.',
-			color: 'var(--color-primary)',
-			bg: 'var(--color-primary-light)',
-		},
-		{
-			icon: 'target',
-			title: 'Financial Goals',
-			description: 'Set savings goals and track your progress with smart milestones and projections.',
-			color: 'var(--color-accent)',
-			bg: 'var(--color-accent-light)',
-		},
-		{
-			icon: 'wallet',
-			title: 'Smart Budgets',
-			description: 'AI-powered budgets that adapt to your spending patterns and help you save more.',
-			color: 'var(--color-highlight)',
-			bg: 'var(--color-highlight-light)',
-		},
-		{
-			icon: 'zap',
-			title: 'AI Categorization',
-			description: 'Transactions are automatically categorized using intelligent pattern recognition.',
-			color: 'var(--color-primary)',
-			bg: 'var(--color-primary-light)',
-		},
-		{
-			icon: 'shield',
-			title: 'Bank-Level Security',
-			description: 'Your data is encrypted end-to-end. We never store your bank credentials.',
-			color: 'var(--color-accent)',
-			bg: 'var(--color-accent-light)',
-		},
-		{
-			icon: 'sync',
-			title: 'Auto Sync',
-			description: 'Connect your bank accounts and transactions sync automatically every day.',
-			color: 'var(--color-highlight)',
-			bg: 'var(--color-highlight-light)',
-		},
+		{ icon: '📊', title: 'Net Worth Tracking', desc: 'All your accounts. One number. Updated automatically.' },
+		{ icon: '💡', title: 'Smart Budgets', desc: 'AI-powered budgets that adapt to how you spend.' },
+		{ icon: '🎯', title: 'Goal Progress', desc: 'Debt payoff, savings targets — tracked visually.' },
+		{ icon: '🏷️', title: 'AI Categorization', desc: 'Transactions sorted intelligently. No manual work.' },
+		{ icon: '📈', title: 'Spending Insights', desc: 'Month-over-month. Category by category.' },
+		{ icon: '🔒', title: 'Read-Only Security', desc: 'Nobody can touch your money. Ever.' },
 	];
+
+	let current = $state(0);
+	let interval: ReturnType<typeof setInterval>;
+
+	const visibleCount = 3;
+
+	function goTo(i: number) {
+		if (i === current) return;
+		clearInterval(interval);
+		current = i;
+		startAutoplay();
+	}
+
+	function prev() {
+		goTo((current - 1 + features.length) % features.length);
+	}
+
+	function next() {
+		goTo((current + 1) % features.length);
+	}
+
+	function getOffset(i: number): number {
+		let diff = i - current;
+		if (diff > features.length / 2) diff -= features.length;
+		if (diff < -features.length / 2) diff += features.length;
+		return diff;
+	}
+
+	function startAutoplay() {
+		interval = setInterval(() => next(), 3000);
+	}
+
+	onMount(() => { startAutoplay(); });
+	onDestroy(() => { if (interval) clearInterval(interval); });
 </script>
 
 <section class="features" id="features">
-	<div class="features-inner">
-		<div class="section-header">
-			<span class="section-pill">Features</span>
-			<h2>Everything you need to<br/>master your finances</h2>
-			<p>Powerful tools that give you complete visibility and control over your money.</p>
-		</div>
+	<div class="header">
+		<h2>Everything you need.<br />Nothing you don't.</h2>
+		<p class="sub">Powerful features wrapped in an interface so intuitive, you'll wonder how you ever managed without it.</p>
+	</div>
 
-		<div class="features-grid">
-			{#each features as feature}
-				<div class="feature-card">
-					<div class="feature-icon" style="background: {feature.bg}; color: {feature.color};">
-						{#if feature.icon === 'chart'}
-							<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-						{:else if feature.icon === 'target'}
-							<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
-						{:else if feature.icon === 'wallet'}
-							<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
-						{:else if feature.icon === 'zap'}
-							<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-						{:else if feature.icon === 'shield'}
-							<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-						{:else if feature.icon === 'sync'}
-							<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-						{/if}
+	<div class="carousel-wrapper">
+		<button class="nav-btn" onclick={prev} aria-label="Previous">
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+		</button>
+
+		<div class="carousel-viewport">
+			{#each features as f, i}
+				{@const offset = getOffset(i)}
+				{@const isVisible = Math.abs(offset) <= 1}
+				{@const isActive = offset === 0}
+				<div
+					class="card"
+					class:active={isActive}
+					style="transform: translateX(calc({offset} * (100% + 20px))); opacity: {isVisible ? (isActive ? 1 : 0.5) : 0}; pointer-events: {isVisible ? 'auto' : 'none'};"
+					role="button"
+					tabindex="0"
+					onclick={() => goTo(i)}
+					onkeydown={(e) => { if (e.key === 'Enter') goTo(i); }}
+				>
+					<div class="icon-wrap">
+						<span class="icon">{f.icon}</span>
 					</div>
-					<h3>{feature.title}</h3>
-					<p>{feature.description}</p>
+					<h3>{f.title}</h3>
+					<p>{f.desc}</p>
 				</div>
 			{/each}
 		</div>
+
+		<button class="nav-btn" onclick={next} aria-label="Next">
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+		</button>
+	</div>
+
+	<div class="dots">
+		{#each features as _, i}
+			<button class="dot" class:active={current === i} onclick={() => goTo(i)}></button>
+		{/each}
 	</div>
 </section>
 
 <style>
 	.features {
-		padding: 6rem 2rem;
-		background: var(--color-background);
+		padding: 100px 24px;
 	}
 
-	.features-inner {
+	.header {
+		text-align: center;
+		margin-bottom: 56px;
+	}
+
+	h2 {
+		font-size: clamp(36px, 5vw, 56px);
+		font-weight: 700;
+		color: var(--text-primary);
+		letter-spacing: -0.03em;
+		line-height: 1.1;
+		margin-bottom: 16px;
+	}
+
+	.sub {
+		font-size: 18px;
+		color: var(--text-secondary);
+		max-width: 560px;
+		margin: 0 auto;
+	}
+
+	.carousel-wrapper {
+		display: flex;
+		align-items: center;
+		gap: 16px;
 		max-width: 1100px;
 		margin: 0 auto;
 	}
 
-	.section-header {
-		text-align: center;
-		margin-bottom: 4rem;
+	.carousel-viewport {
+		flex: 1;
+		position: relative;
+		height: 280px;
+		overflow: hidden;
 	}
 
-	.section-pill {
-		display: inline-block;
-		padding: 0.4rem 1rem;
-		background: var(--color-primary-light);
-		color: var(--color-primary);
-		border-radius: 100px;
-		font-size: 0.85rem;
-		font-weight: 600;
-		margin-bottom: 1rem;
+	.card {
+		position: absolute;
+		left: 50%;
+		top: 0;
+		width: calc((100% - 40px) / 3);
+		margin-left: calc(-1 * (100% - 40px) / 6);
+		height: 100%;
+		background: var(--bg-alt);
+		border-radius: 24px;
+		padding: 40px;
+		transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s ease;
+		cursor: pointer;
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-start;
 	}
 
-	.section-header h2 {
-		font-size: clamp(1.8rem, 4vw, 2.5rem);
-		font-weight: 800;
-		color: var(--color-dark);
-		line-height: 1.2;
-		margin-bottom: 1rem;
+	.card.active {
+		border: 1px solid var(--accent);
 	}
 
-	.section-header p {
-		font-size: 1.1rem;
-		color: var(--color-text);
-		max-width: 500px;
-		margin: 0 auto;
-	}
-
-	.features-grid {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 1.5rem;
-	}
-
-	.feature-card {
-		background: var(--color-card);
-		border-radius: 20px;
-		padding: 2rem;
-		border: 1px solid var(--color-border);
-		transition: all 0.3s ease;
-	}
-
-	.feature-card:hover {
-		transform: translateY(-4px);
-		box-shadow: 0 12px 40px var(--color-shadow);
-		border-color: var(--color-primary);
-	}
-
-	.feature-icon {
+	.icon-wrap {
 		width: 48px;
 		height: 48px;
 		border-radius: 14px;
+		background: var(--bg);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		margin-bottom: 1.2rem;
+		margin-bottom: 20px;
 	}
 
-	.feature-card h3 {
-		font-size: 1.1rem;
-		font-weight: 700;
-		color: var(--color-dark);
-		margin-bottom: 0.5rem;
+	.icon {
+		font-size: 24px;
 	}
 
-	.feature-card p {
-		font-size: 0.9rem;
-		color: var(--color-text);
+	h3 {
+		font-size: 22px;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin-bottom: 10px;
+	}
+
+	.card p {
+		font-size: 16px;
+		color: var(--text-secondary);
 		line-height: 1.6;
 	}
 
-	@media (max-width: 768px) {
-		.features-grid {
-			grid-template-columns: 1fr;
-		}
+	.nav-btn {
+		flex: 0 0 auto;
+		width: 44px;
+		height: 44px;
+		border-radius: 50%;
+		background: var(--card-bg);
+		border: 1px solid var(--card-border);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: var(--text-primary);
+		transition: background 0.2s, transform 0.2s;
 	}
 
-	@media (min-width: 769px) and (max-width: 1024px) {
-		.features-grid {
-			grid-template-columns: repeat(2, 1fr);
-		}
+	.nav-btn:hover {
+		background: var(--bg-alt);
+		transform: scale(1.05);
+	}
+
+	.dots {
+		display: flex;
+		justify-content: center;
+		gap: 8px;
+		margin-top: 32px;
+	}
+
+	.dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--text-muted);
+		transition: all 0.3s;
+	}
+
+	.dot.active {
+		background: var(--accent);
+		width: 24px;
+		border-radius: 4px;
+	}
+
+	@media (max-width: 640px) {
+		.features { padding: 60px 16px; }
+		.carousel-viewport { height: 200px; }
+		.nav-btn { display: none; }
+		.carousel-wrapper { gap: 0; }
 	}
 </style>
