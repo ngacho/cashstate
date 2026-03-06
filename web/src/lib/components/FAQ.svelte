@@ -127,7 +127,7 @@
 	}
 
 	.faq-item {
-		background: var(--color-white);
+		background: var(--color-card);
 		border: 1px solid var(--color-border);
 		border-radius: 16px;
 		padding: 0;

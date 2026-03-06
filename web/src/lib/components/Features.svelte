@@ -128,7 +128,7 @@
 	}
 
 	.feature-card {
-		background: var(--color-white);
+		background: var(--color-card);
 		border-radius: 20px;
 		padding: 2rem;
 		border: 1px solid var(--color-border);
@@ -137,7 +137,8 @@
 
 	.feature-card:hover {
 		transform: translateY(-4px);
-		box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+		box-shadow: 0 12px 40px var(--color-shadow);
+		border-color: var(--color-primary);
 	}
 
 	.feature-icon {

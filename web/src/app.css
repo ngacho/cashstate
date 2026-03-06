@@ -1,21 +1,45 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
 :root {
+	--font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+[data-theme="light"] {
 	--color-primary: #0D9488;
 	--color-primary-dark: #0F766E;
-	--color-primary-light: #CCFBF1;
+	--color-primary-light: rgba(13, 148, 136, 0.1);
 	--color-accent: #EC4899;
-	--color-accent-light: #FDF2F8;
+	--color-accent-light: rgba(236, 72, 153, 0.1);
 	--color-highlight: #EAB308;
-	--color-highlight-light: #FEF9C3;
+	--color-highlight-light: rgba(234, 179, 8, 0.1);
 	--color-dark: #0F172A;
 	--color-text: #475569;
 	--color-text-light: #94A3B8;
 	--color-white: #FFFFFF;
-	--color-background: #FAFAFA;
+	--color-background: #F8FAFC;
+	--color-card: #FFFFFF;
 	--color-border: #E2E8F0;
+	--color-nav-bg: rgba(255, 255, 255, 0.9);
+	--color-shadow: rgba(0, 0, 0, 0.08);
+}
 
-	--font-family: 'Inter', system-ui, -apple-system, sans-serif;
+[data-theme="dark"] {
+	--color-primary: #2DD4BF;
+	--color-primary-dark: #14B8A6;
+	--color-primary-light: rgba(45, 212, 191, 0.1);
+	--color-accent: #F472B6;
+	--color-accent-light: rgba(244, 114, 182, 0.1);
+	--color-highlight: #FACC15;
+	--color-highlight-light: rgba(250, 204, 21, 0.1);
+	--color-dark: #F1F5F9;
+	--color-text: #94A3B8;
+	--color-text-light: #64748B;
+	--color-white: #0B1120;
+	--color-background: #0F172A;
+	--color-card: #1E293B;
+	--color-border: #1E293B;
+	--color-nav-bg: rgba(11, 17, 32, 0.9);
+	--color-shadow: rgba(0, 0, 0, 0.3);
 }
 
 *, *::before, *::after {
@@ -35,6 +59,7 @@ body {
 	line-height: 1.6;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
+	transition: background-color 0.3s, color 0.3s;
 }
 
 a {

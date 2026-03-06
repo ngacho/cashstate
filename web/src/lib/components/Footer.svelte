@@ -71,7 +71,7 @@
 		width: 32px;
 		height: 32px;
 		background: var(--color-primary);
-		color: white;
+		color: var(--color-white);
 		border-radius: 8px;
 		font-weight: 900;
 		font-size: 1rem;

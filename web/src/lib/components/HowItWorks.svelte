@@ -104,7 +104,7 @@
 		width: 56px;
 		height: 56px;
 		background: var(--color-primary);
-		color: white;
+		color: var(--color-white);
 		border-radius: 16px;
 		font-size: 1.2rem;
 		font-weight: 800;

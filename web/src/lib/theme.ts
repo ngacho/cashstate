@@ -22,9 +22,9 @@ export const theme = {
 } as const;
 
 export const carouselItems = [
-	'the state of your cash',
-	'your net worth',
-	'financial goals',
-	'your budget',
-	'your spending',
+	'Cash',
+	'Net Worth',
+	'Budget',
+	'Spending',
+	'Goals',
 ] as const;
