@@ -29,8 +29,17 @@ export const _calculateSnapshot = internalMutation({
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .collect();
 
+    console.log(
+      `[_calculateSnapshot] userId=${args.userId}, date=${today}, ${accounts.length} accounts`
+    );
+
     for (const account of accounts) {
-      if (account.balance === undefined) continue;
+      if (account.balance === undefined) {
+        console.log(
+          `[_calculateSnapshot] Skipping "${account.name}" (${account._id}) — no balance`
+        );
+        continue;
+      }
 
       const existing = await ctx.db
         .query("accountBalanceHistory")
@@ -43,8 +52,16 @@ export const _calculateSnapshot = internalMutation({
         .first();
 
       if (existing) {
+        const changed = existing.balance !== account.balance;
+        console.log(
+          `[_calculateSnapshot] "${account.name}": ${changed ? "UPDATED" : "unchanged"} ` +
+          `balance=${account.balance}${changed ? ` (was ${existing.balance})` : ""}`
+        );
         await ctx.db.patch(existing._id, { balance: account.balance });
       } else {
+        console.log(
+          `[_calculateSnapshot] "${account.name}": NEW snapshot, balance=${account.balance}`
+        );
         await ctx.db.insert("accountBalanceHistory", {
           userId: args.userId,
           simplefinAccountId: account._id,

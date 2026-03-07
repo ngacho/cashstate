@@ -105,6 +105,12 @@ export const _upsertTransactions = internalMutation({
   handler: async (ctx, args) => {
     let added = 0;
     let updated = 0;
+    let skippedIdentical = 0;
+
+    console.log(
+      `[_upsertTransactions] Processing ${args.transactions.length} transactions ` +
+      `for account="${args.accountName}" (${args.accountId})`
+    );
 
     for (const tx of args.transactions) {
       const existing = await ctx.db
@@ -115,6 +121,24 @@ export const _upsertTransactions = internalMutation({
         .first();
 
       if (existing) {
+        // Check if anything actually changed
+        const changes: string[] = [];
+        if (existing.amount !== tx.amount) changes.push(`amount: ${existing.amount} -> ${tx.amount}`);
+        if (existing.currency !== tx.currency) changes.push(`currency: ${existing.currency} -> ${tx.currency}`);
+        if (existing.date !== tx.date) changes.push(`date: ${new Date(existing.date).toISOString()} -> ${new Date(tx.date).toISOString()}`);
+        if (existing.transactedAt !== tx.transactedAt) changes.push(`transactedAt: ${existing.transactedAt} -> ${tx.transactedAt}`);
+        if (existing.description !== tx.description) changes.push(`desc: "${existing.description}" -> "${tx.description}"`);
+        if (existing.payee !== tx.payee) changes.push(`payee: "${existing.payee}" -> "${tx.payee}"`);
+        if (existing.pending !== tx.pending) changes.push(`pending: ${existing.pending} -> ${tx.pending}`);
+
+        if (changes.length > 0) {
+          console.log(
+            `[_upsertTransactions] UPDATING tx=${tx.simplefinTxId}: ${changes.join(", ")}`
+          );
+        } else {
+          skippedIdentical++;
+        }
+
         await ctx.db.patch(existing._id, {
           amount: tx.amount,
           currency: tx.currency,
@@ -126,6 +150,11 @@ export const _upsertTransactions = internalMutation({
         });
         updated++;
       } else {
+        console.log(
+          `[_upsertTransactions] ADDING new tx=${tx.simplefinTxId}, ` +
+          `amount=${tx.amount}, date=${new Date(tx.date).toISOString()}, ` +
+          `desc="${tx.description}", payee="${tx.payee}", pending=${tx.pending}`
+        );
         await ctx.db.insert("simplefinTransactions", {
           userId: args.userId,
           accountId: args.accountId,
@@ -142,6 +171,11 @@ export const _upsertTransactions = internalMutation({
         added++;
       }
     }
+
+    console.log(
+      `[_upsertTransactions] Done for "${args.accountName}": ` +
+      `added=${added}, updated=${updated} (${skippedIdentical} identical, ${updated - skippedIdentical} changed)`
+    );
 
     return { added, updated };
   },

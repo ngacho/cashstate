@@ -345,6 +345,11 @@ export const _syncInternal = internalAction({
       const qs = params.toString();
       if (qs) apiUrl += `?${qs}`;
 
+      console.log(
+        `[_syncInternal] Fetching SimpleFin API for item=${args.itemId}, ` +
+        `startDate=${args.startDate ? new Date(args.startDate * 1000).toISOString() : "none"}`
+      );
+
       // Fetch from SimpleFin
       const response = await fetch(apiUrl, {
         headers: { Authorization: authHeader },
@@ -362,6 +367,8 @@ export const _syncInternal = internalAction({
 
       // Process accounts
       const sfAccounts = data.accounts || [];
+      console.log(`[_syncInternal] SimpleFin returned ${sfAccounts.length} accounts`);
+
       const accountData = sfAccounts.map((acc: any) => ({
         simplefinAccountId: acc.id,
         name: acc.name || "Unknown Account",
@@ -393,6 +400,12 @@ export const _syncInternal = internalAction({
         const accountName = sfAccount.name || "Unknown Account";
         const sfTransactions = sfAccount.transactions || [];
 
+        console.log(
+          `[_syncInternal] Account "${accountName}" (sfId=${sfAccount.id}): ` +
+          `${sfTransactions.length} transactions from SimpleFin, ` +
+          `balance=${sfAccount.balance}`
+        );
+
         if (sfTransactions.length === 0) continue;
 
         const txData = sfTransactions.map((tx: any) => ({
@@ -408,6 +421,20 @@ export const _syncInternal = internalAction({
           pending: tx.pending === true,
         }));
 
+        // Log a sample of transactions for debugging
+        const sampleSize = Math.min(5, txData.length);
+        for (let j = 0; j < sampleSize; j++) {
+          const t = txData[j];
+          console.log(
+            `[_syncInternal]   tx[${j}]: id=${t.simplefinTxId}, amount=${t.amount}, ` +
+            `date=${new Date(t.date).toISOString()}, pending=${t.pending}, ` +
+            `desc="${t.description}", payee="${t.payee}"`
+          );
+        }
+        if (txData.length > sampleSize) {
+          console.log(`[_syncInternal]   ... and ${txData.length - sampleSize} more transactions`);
+        }
+
         try {
           const result = await ctx.runMutation(
             internal.simplefinSyncHelpers._upsertTransactions,
@@ -420,10 +447,18 @@ export const _syncInternal = internalAction({
           );
           totalTxAdded += result.added;
           totalTxUpdated += result.updated;
+          console.log(
+            `[_syncInternal] Account "${accountName}": added=${result.added}, updated=${result.updated}`
+          );
         } catch (e: any) {
-          console.error(`Sync error for account ${accountName}: ${e.message}`);
+          console.error(`[_syncInternal] Error for account "${accountName}": ${e.message}`);
         }
       }
+
+      console.log(
+        `[_syncInternal] Sync complete for item=${args.itemId}: ` +
+        `accounts=${totalAccountsSynced}, txAdded=${totalTxAdded}, txUpdated=${totalTxUpdated}`
+      );
 
       // Update sync job
       await ctx.runMutation(internal.simplefinSyncHelpers._updateSyncJob, {
@@ -444,6 +479,7 @@ export const _syncInternal = internalAction({
         }
       );
     } catch (e: any) {
+      console.error(`[_syncInternal] FAILED for item=${args.itemId}: ${e.message}`);
       await ctx.runMutation(internal.simplefinSyncHelpers._updateSyncJob, {
         id: syncJobId,
         status: "failed",
