@@ -8,6 +8,23 @@ declare global {
 		// interface PageState {}
 		// interface Platform {}
 	}
+
+	interface Window {
+		turnstile: {
+			render: (
+				selector: string,
+				options: {
+					sitekey: string;
+					callback: (token: string) => void;
+					'expired-callback'?: () => void;
+					theme?: 'light' | 'dark' | 'auto';
+					size?: 'normal' | 'compact' | 'invisible';
+				}
+			) => string;
+			reset: (widgetId?: string) => void;
+			remove: (widgetId?: string) => void;
+		};
+	}
 }
 
 export {};

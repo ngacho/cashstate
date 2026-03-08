@@ -1,16 +1,87 @@
+<script lang="ts">
+	import { browser } from '$app/environment';
+	import { onMount } from 'svelte';
+
+	let email = $state('');
+	let submitted = $state(false);
+	let submitting = $state(false);
+	let error = $state('');
+	let turnstileToken = $state('');
+
+	onMount(() => {
+		if (browser && window.turnstile) {
+			window.turnstile.render('#turnstile-waitlist', {
+				sitekey: import.meta.env.VITE_PUBLIC_TURNSTILE_SITE_KEY,
+				callback: (token: string) => {
+					turnstileToken = token;
+				},
+				'expired-callback': () => {
+					turnstileToken = '';
+				},
+				theme: 'auto',
+				size: 'invisible'
+			});
+		}
+	});
+
+	async function handleJoin(e: Event) {
+		e.preventDefault();
+		if (submitting) return;
+
+		error = '';
+		submitting = true;
+
+		try {
+			const res = await fetch('/api/waitlist', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ email, source: 'web', turnstileToken })
+			});
+
+			if (res.ok) {
+				submitted = true;
+			} else {
+				const data = await res.json();
+				error = data.error || 'Something went wrong. Try again.';
+			}
+		} catch {
+			error = 'Network error. Please try again.';
+		} finally {
+			submitting = false;
+		}
+	}
+</script>
+
 <section class="cta" id="get-started">
 	<div class="inner">
 		<div class="card">
 			<div class="card-glow"></div>
 			<div class="card-content">
-				<h2>Get started today.</h2>
-				<p>Join thousands of people taking control of their finances. Free forever.</p>
-				<a href="/app-store" class="btn" aria-label="Download on the App Store">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-						<path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
-					</svg>
-					Download for free
-				</a>
+				{#if submitted}
+					<h2>You're on the list.</h2>
+					<p>We'll let you know when CashState is ready for you.</p>
+				{:else}
+					<h2>Get early access.</h2>
+					<p>Join the waitlist and be the first to know when CashState launches.</p>
+					<form onsubmit={handleJoin} class="waitlist-form">
+						<div class="input-group">
+							<input
+								type="email"
+								bind:value={email}
+								placeholder="Enter your email"
+								required
+								disabled={submitting}
+							/>
+							<button type="submit" class="btn" disabled={submitting}>
+								{submitting ? 'Joining...' : 'Join waitlist'}
+							</button>
+						</div>
+						{#if error}
+							<p class="error">{error}</p>
+						{/if}
+						<div id="turnstile-waitlist"></div>
+					</form>
+				{/if}
 			</div>
 		</div>
 	</div>
@@ -69,27 +140,89 @@
 		line-height: 1.6;
 	}
 
+	.waitlist-form {
+		max-width: 480px;
+		margin: 0 auto;
+	}
+
+	.input-group {
+		display: flex;
+		gap: 8px;
+		background: var(--bg);
+		border-radius: 100px;
+		padding: 6px;
+	}
+
+	input {
+		flex: 1;
+		padding: 12px 20px;
+		background: transparent;
+		border: none;
+		color: var(--text-primary);
+		font-size: 15px;
+		font-family: var(--font-sans);
+		outline: none;
+		min-width: 0;
+	}
+
+	input::placeholder {
+		color: var(--text-muted);
+	}
+
 	.btn {
 		display: inline-flex;
 		align-items: center;
 		gap: 8px;
-		padding: 16px 32px;
-		background: var(--bg);
-		color: var(--text-primary);
+		padding: 12px 24px;
+		background: var(--text-primary);
+		color: var(--bg);
 		border-radius: 100px;
-		font-size: 15px;
+		font-size: 14px;
 		font-weight: 600;
 		transition: opacity 0.2s, transform 0.2s;
+		white-space: nowrap;
+		cursor: pointer;
+		border: none;
+		font-family: var(--font-sans);
 	}
 
-	.btn:hover {
-		opacity: 0.9;
+	.btn:hover:not(:disabled) {
+		opacity: 0.85;
 		transform: translateY(-1px);
+	}
+
+	.btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.error {
+		color: #f87171;
+		font-size: 14px;
+		margin-top: 12px;
+		margin-bottom: 0;
+		opacity: 1;
+	}
+
+	#turnstile-waitlist {
+		display: flex;
+		justify-content: center;
+		margin-top: 8px;
 	}
 
 	@media (max-width: 640px) {
 		.cta { padding: 40px 20px 80px; }
 		.card-content { padding: 56px 28px; }
 		.card { border-radius: 24px; }
+		.input-group {
+			flex-direction: column;
+			border-radius: 16px;
+			padding: 8px;
+		}
+		.btn {
+			border-radius: 12px;
+			justify-content: center;
+			padding: 14px 24px;
+		}
 	}
 </style>

@@ -16,6 +16,7 @@
 			<div class="col">
 				<h4>Support</h4>
 				<a href="#faq">FAQ</a>
+				<a href="/feedback">Feedback</a>
 			</div>
 		</div>
 
