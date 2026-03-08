@@ -24,12 +24,16 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		return json({ error: 'Email is required' }, { status: 400 });
 	}
 
-	await appendRow('waitlist', [
-		new Date().toISOString(),
-		email.trim().toLowerCase(),
-		name?.trim() ?? '',
-		source ?? 'web'
-	]);
+	try {
+		await appendRow('waitlist', [
+			new Date().toISOString(),
+			email.trim().toLowerCase(),
+			name?.trim() ?? '',
+			source ?? 'web'
+		]);
+	} catch {
+		return json({ error: 'Failed to save. Please try again.' }, { status: 500 });
+	}
 
 	return json({ status: 'joined' });
 };

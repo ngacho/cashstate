@@ -27,13 +27,17 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const validTypes = ['bug', 'feature', 'general'] as const;
 	const feedbackType = validTypes.includes(type) ? type : 'general';
 
-	await appendRow('feedback', [
-		new Date().toISOString(),
-		email?.trim() ?? '',
-		feedbackType,
-		message.trim(),
-		source ?? 'web'
-	]);
+	try {
+		await appendRow('feedback', [
+			new Date().toISOString(),
+			email?.trim() ?? '',
+			feedbackType,
+			message.trim(),
+			source ?? 'web'
+		]);
+	} catch {
+		return json({ error: 'Failed to save. Please try again.' }, { status: 500 });
+	}
 
 	return json({ status: 'submitted' });
 };

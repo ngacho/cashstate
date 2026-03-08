@@ -73,7 +73,12 @@
 								disabled={submitting}
 							/>
 							<button type="submit" class="btn" disabled={submitting}>
-								{submitting ? 'Joining...' : 'Join waitlist'}
+								{#if submitting}
+									<span class="spinner"></span>
+									Joining...
+								{:else}
+									Join waitlist
+								{/if}
 							</button>
 						</div>
 						{#if error}
@@ -202,6 +207,19 @@
 		margin-top: 12px;
 		margin-bottom: 0;
 		opacity: 1;
+	}
+
+	.spinner {
+		width: 14px;
+		height: 14px;
+		border: 2px solid transparent;
+		border-top-color: currentColor;
+		border-radius: 50%;
+		animation: spin 0.6s linear infinite;
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
 	}
 
 	#turnstile-waitlist {

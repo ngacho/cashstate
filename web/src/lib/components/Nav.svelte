@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import appStoreLight from '$lib/assets/Download-AppStore.png';
-	import appStoreDark from '$lib/assets/Download-AppStoreDark.png';
+
 
 	let dark = $state(true);
 	let activeHash = $state('#hero');
@@ -87,9 +86,8 @@
 			{/if}
 		</button>
 
-		<a href="/app-store" class="download-btn desktop-only" aria-label="Download on the App Store">
-			<img class="badge-light" src={appStoreLight} alt="Download on the App Store" />
-			<img class="badge-dark" src={appStoreDark} alt="Download on the App Store" />
+		<a href="#get-started" class="waitlist-btn desktop-only" onclick={() => handleClick('#get-started')}>
+			Join waitlist
 		</a>
 
 		<button class="hamburger" onclick={toggleMenu} aria-label="Toggle menu" class:open={menuOpen}>
@@ -112,9 +110,8 @@
 				</a>
 			{/each}
 			<div class="mobile-divider"></div>
-			<a href="/app-store" class="download-btn mobile-download" aria-label="Download on the App Store">
-				<img class="badge-light" src={appStoreLight} alt="Download on the App Store" />
-				<img class="badge-dark" src={appStoreDark} alt="Download on the App Store" />
+			<a href="#get-started" class="waitlist-btn" onclick={() => handleClick('#get-started')}>
+				Join waitlist
 			</a>
 		</div>
 	{/if}
@@ -214,29 +211,24 @@
 		color: var(--text-primary);
 	}
 
-	.download-btn {
+	.waitlist-btn {
 		display: inline-flex;
 		align-items: center;
 		flex-shrink: 0;
-		border: 1px solid var(--border);
-		border-radius: 8px;
-		transition: transform 0.2s;
+		padding: 8px 20px;
+		background: var(--text-primary);
+		color: var(--bg);
+		border-radius: 100px;
+		font-size: 13px;
+		font-weight: 600;
+		transition: opacity 0.2s, transform 0.2s;
+		white-space: nowrap;
 	}
 
-	.download-btn:hover {
+	.waitlist-btn:hover {
+		opacity: 0.85;
 		transform: translateY(-1px);
 	}
-
-	.download-btn img {
-		height: 32px;
-		width: auto;
-	}
-
-	.badge-dark { display: none; }
-	.badge-light { display: block; }
-
-	:global([data-theme="dark"]) .badge-dark { display: block; }
-	:global([data-theme="dark"]) .badge-light { display: none; }
 
 	/* Hamburger button - hidden on desktop */
 	.hamburger {
@@ -361,13 +353,10 @@
 			margin: 4px 0;
 		}
 
-		.mobile-download {
+		.mobile-menu .waitlist-btn {
 			align-self: center;
 			margin-top: 4px;
-		}
-
-		.mobile-download img {
-			height: 36px;
+			text-align: center;
 		}
 	}
 </style>
