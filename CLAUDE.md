@@ -32,3 +32,5 @@ User storage by default should be handled by webhook
 convex functions depend on jwt for auth
 
 Webhook works well and it always has created the user
+
+We are deploying @web via cloudflare on merge on main. Everything we add should be added with this configuration!
