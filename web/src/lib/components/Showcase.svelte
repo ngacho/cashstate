@@ -221,6 +221,12 @@
 		border-radius: 4px;
 	}
 
+	@media (max-width: 1024px) {
+		.phone-label {
+			display: none;
+		}
+	}
+
 	@media (max-width: 640px) {
 		.showcase { padding: 20px 16px 60px; }
 		.carousel-viewport { height: 520px; }
@@ -235,10 +241,6 @@
 
 		.phone img {
 			border-radius: 24px;
-		}
-
-		.phone-label {
-			display: none;
 		}
 
 		h2 { margin-top: 36px; }
