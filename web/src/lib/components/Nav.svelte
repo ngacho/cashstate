@@ -1,7 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-
-
 	let dark = $state(true);
 	let activeHash = $state('#hero');
 	let menuOpen = $state(false);

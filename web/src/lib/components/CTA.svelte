@@ -104,8 +104,9 @@
 
 	.card {
 		position: relative;
-		background: var(--text-primary);
-		color: var(--bg);
+		background: var(--card-bg);
+		color: var(--text-primary);
+		border: 1px solid var(--card-border);
 		border-radius: 32px;
 		overflow: hidden;
 	}
@@ -116,7 +117,7 @@
 		right: -20%;
 		width: 400px;
 		height: 400px;
-		background: radial-gradient(circle, rgba(45,212,191,0.15) 0%, transparent 70%);
+		background: radial-gradient(circle, rgba(45,212,191,0.1) 0%, transparent 70%);
 		pointer-events: none;
 	}
 
@@ -137,7 +138,7 @@
 	p {
 		font-size: 18px;
 		font-weight: 400;
-		opacity: 0.6;
+		color: var(--text-secondary);
 		margin-bottom: 40px;
 		max-width: 420px;
 		margin-left: auto;
@@ -154,6 +155,7 @@
 		display: flex;
 		gap: 8px;
 		background: var(--bg);
+		border: 1px solid var(--border);
 		border-radius: 100px;
 		padding: 6px;
 	}

@@ -2,19 +2,19 @@
 
 :root {
 	--font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-	--bg: #ffffff;
-	--bg-alt: #f8f8fa;
-	--text-primary: #111111;
-	--text-secondary: #555555;
-	--text-muted: #999999;
+	--bg: #FAFAFA;
+	--bg-alt: #f9fafb;
+	--text-primary: #1a1a1a;
+	--text-secondary: #6b7280;
+	--text-muted: #9ca3af;
 	--accent: #0D9488;
 	--accent-hover: #0B7C72;
-	--accent-light: rgba(13,148,136,0.08);
-	--border: #e8e8ec;
+	--accent-light: rgba(13,148,136,0.06);
+	--border: #e5e7eb;
 	--nav-bg: rgba(255,255,255,0.85);
-	--nav-border: rgba(0,0,0,0.06);
-	--card-bg: #ffffff;
-	--card-border: #e8e8ec;
+	--nav-border: rgba(0,0,0,0.04);
+	--card-bg: #EFEFEF;
+	--card-border: #e5e7eb;
 	--container: 1200px;
 }
 
