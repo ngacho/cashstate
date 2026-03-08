@@ -237,6 +237,10 @@
 			border-radius: 24px;
 		}
 
+		.phone-label {
+			display: none;
+		}
+
 		h2 { margin-top: 36px; }
 
 		.sub {
