@@ -14,6 +14,7 @@
 				api_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com',
 				capture_pageview: true,
 				capture_pageleave: true,
+				disable_session_recording: true,
 			});
 		}
 
