@@ -250,10 +250,47 @@
 		transform: scale(1.05);
 	}
 
-@media (max-width: 640px) {
-		.features { padding: 80px 20px; }
-		.carousel-viewport { height: 280px; }
+@media (max-width: 1024px) {
+		.carousel-viewport { height: 300px; }
+
+		.card {
+			width: 50%;
+			margin-left: -25%;
+			padding: 28px;
+		}
+
+		.lottie-wrap {
+			width: 60px;
+			height: 60px;
+			margin-bottom: 16px;
+		}
+
+		h3 { font-size: 18px; }
+		.card p { font-size: 14px; line-height: 1.6; }
+	}
+
+	@media (max-width: 640px) {
+		.features { padding: 60px 16px; }
+		.header { margin-bottom: 40px; }
+		.carousel-viewport { height: 300px; }
 		.nav-btn { display: none; }
 		.carousel-wrapper { gap: 0; }
+
+		.card {
+			width: 85%;
+			margin-left: -42.5%;
+			padding: 24px;
+			border-radius: 20px;
+		}
+
+		.lottie-wrap {
+			width: 60px;
+			height: 60px;
+			margin-bottom: 16px;
+		}
+
+		h3 { font-size: 18px; }
+		.card p { font-size: 14px; }
+		.sub { font-size: 16px; }
 	}
 </style>
