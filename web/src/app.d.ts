@@ -18,7 +18,7 @@ declare global {
 					callback: (token: string) => void;
 					'expired-callback'?: () => void;
 					theme?: 'light' | 'dark' | 'auto';
-					size?: 'normal' | 'compact' | 'invisible';
+					size?: 'normal' | 'compact' | 'flexible';
 				}
 			) => string;
 			reset: (widgetId?: string) => void;

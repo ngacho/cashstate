@@ -8,27 +8,49 @@
 	let error = $state('');
 	let turnstileToken = $state('');
 
+	function renderTurnstile() {
+		if (!window.turnstile) return;
+		const el = document.getElementById('turnstile-waitlist');
+		if (!el) return;
+		window.turnstile.render('#turnstile-waitlist', {
+			sitekey: import.meta.env.VITE_PUBLIC_TURNSTILE_SITE_KEY,
+			callback: (token: string) => {
+				turnstileToken = token;
+			},
+			'expired-callback': () => {
+				turnstileToken = '';
+			},
+			theme: 'auto'
+		});
+	}
+
 	onMount(() => {
-		if (browser && window.turnstile) {
-			window.turnstile.render('#turnstile-waitlist', {
-				sitekey: import.meta.env.VITE_PUBLIC_TURNSTILE_SITE_KEY,
-				callback: (token: string) => {
-					turnstileToken = token;
-				},
-				'expired-callback': () => {
-					turnstileToken = '';
-				},
-				theme: 'auto',
-				size: 'invisible'
-			});
+		if (!browser) return;
+		if (window.turnstile) {
+			renderTurnstile();
+		} else {
+			// Turnstile script hasn't loaded yet — poll until ready
+			const interval = setInterval(() => {
+				if (window.turnstile) {
+					clearInterval(interval);
+					renderTurnstile();
+				}
+			}, 200);
+			return () => clearInterval(interval);
 		}
 	});
 
-	async function handleJoin(e: Event) {
+	async function handleJoin(e: SubmitEvent) {
 		e.preventDefault();
 		if (submitting) return;
 
 		error = '';
+
+		if (!email.trim()) {
+			error = 'Please enter your email.';
+			return;
+		}
+
 		submitting = true;
 
 		try {
@@ -41,8 +63,14 @@
 			if (res.ok) {
 				submitted = true;
 			} else {
-				const data = await res.json();
-				error = data.error || 'Something went wrong. Try again.';
+				let msg = 'Something went wrong. Try again.';
+				try {
+					const data = await res.json();
+					msg = data.error || msg;
+				} catch {
+					// response wasn't JSON
+				}
+				error = msg;
 			}
 		} catch {
 			error = 'Network error. Please try again.';
@@ -64,6 +92,9 @@
 					<h2>Get early access.</h2>
 					<p>Join the waitlist and be the first to know when CashState launches.</p>
 					<form onsubmit={handleJoin} class="waitlist-form">
+						{#if error}
+							<p class="error">{error}</p>
+						{/if}
 						<div class="input-group">
 							<input
 								type="email"
@@ -81,9 +112,6 @@
 								{/if}
 							</button>
 						</div>
-						{#if error}
-							<p class="error">{error}</p>
-						{/if}
 						<div id="turnstile-waitlist"></div>
 					</form>
 				{/if}
@@ -206,8 +234,8 @@
 	.error {
 		color: #f87171;
 		font-size: 14px;
-		margin-top: 12px;
-		margin-bottom: 0;
+		margin-top: 0;
+		margin-bottom: 12px;
 		opacity: 1;
 	}
 

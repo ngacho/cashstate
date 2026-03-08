@@ -10,19 +10,34 @@
 	let error = $state('');
 	let turnstileToken = $state('');
 
+	function renderTurnstile() {
+		if (!window.turnstile) return;
+		const el = document.getElementById('turnstile-feedback');
+		if (!el) return;
+		window.turnstile.render('#turnstile-feedback', {
+			sitekey: import.meta.env.VITE_PUBLIC_TURNSTILE_SITE_KEY,
+			callback: (token: string) => {
+				turnstileToken = token;
+			},
+			'expired-callback': () => {
+				turnstileToken = '';
+			},
+			theme: 'auto'
+		});
+	}
+
 	onMount(() => {
-		if (browser && window.turnstile) {
-			window.turnstile.render('#turnstile-feedback', {
-				sitekey: import.meta.env.VITE_PUBLIC_TURNSTILE_SITE_KEY,
-				callback: (token: string) => {
-					turnstileToken = token;
-				},
-				'expired-callback': () => {
-					turnstileToken = '';
-				},
-				theme: 'auto',
-				size: 'invisible'
-			});
+		if (!browser) return;
+		if (window.turnstile) {
+			renderTurnstile();
+		} else {
+			const interval = setInterval(() => {
+				if (window.turnstile) {
+					clearInterval(interval);
+					renderTurnstile();
+				}
+			}, 200);
+			return () => clearInterval(interval);
 		}
 	});
 
