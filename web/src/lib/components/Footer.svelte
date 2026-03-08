@@ -10,7 +10,8 @@
 				<h4>Product</h4>
 				<a href="#features">Features</a>
 				<a href="#how-it-works">How it works</a>
-				<a href="/app-store">Download</a>
+				<!-- TODO: restore Download link when live -->
+				<a href="#get-started">Join waitlist</a>
 			</div>
 
 			<div class="col">

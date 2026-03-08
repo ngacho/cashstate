@@ -1,7 +1,5 @@
 <script lang="ts">
 	import RotatingText from './RotatingText.svelte';
-	import appStoreLight from '$lib/assets/Download-AppStore.png';
-	import appStoreDark from '$lib/assets/Download-AppStoreDark.png';
 </script>
 
 <section class="hero" id="hero">
@@ -13,10 +11,10 @@
 			The effortless way to track spending, set budgets, and reach your financial goals.
 			Beautiful, powerful, and completely free.
 		</p>
+		<!-- TODO: restore App Store badge when live -->
 		<div class="actions">
-			<a href="/app-store" class="store-badge" aria-label="Download on the App Store">
-				<img class="badge-light" src={appStoreLight} alt="Download on the App Store" />
-				<img class="badge-dark" src={appStoreDark} alt="Download on the App Store" />
+			<a href="#get-started" class="btn-primary">
+				Join the waitlist
 			</a>
 			<a href="#features" class="btn-secondary">
 				See features
@@ -92,27 +90,22 @@
 		flex-wrap: wrap;
 	}
 
-	.store-badge {
-		display: inline-block;
-		border: 1px solid var(--border);
-		border-radius: 12px;
-		transition: transform 0.2s;
+	.btn-primary {
+		display: inline-flex;
+		align-items: center;
+		padding: 14px 28px;
+		background: var(--text-primary);
+		color: var(--bg);
+		border-radius: 100px;
+		font-size: 15px;
+		font-weight: 600;
+		transition: opacity 0.2s, transform 0.2s;
 	}
 
-	.store-badge:hover {
-		transform: translateY(-2px);
+	.btn-primary:hover {
+		opacity: 0.85;
+		transform: translateY(-1px);
 	}
-
-	.store-badge img {
-		height: 48px;
-		width: auto;
-	}
-
-	.badge-dark { display: none; }
-	.badge-light { display: block; }
-
-	:global([data-theme="dark"]) .badge-dark { display: block; }
-	:global([data-theme="dark"]) .badge-light { display: none; }
 
 	.btn-secondary {
 		display: inline-flex;
