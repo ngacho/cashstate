@@ -5,6 +5,7 @@
 
 	let dark = $state(true);
 	let activeHash = $state('#hero');
+	let menuOpen = $state(false);
 
 	const links = [
 		{ href: '#hero', label: 'Home' },
@@ -21,6 +22,11 @@
 
 	function handleClick(href: string) {
 		activeHash = href;
+		menuOpen = false;
+	}
+
+	function toggleMenu() {
+		menuOpen = !menuOpen;
 	}
 
 	onMount(() => {
@@ -54,16 +60,22 @@
 
 <nav>
 	<div class="pill">
-		{#each links as link}
-			<a
-				href={link.href}
-				class="nav-link"
-				class:active={activeHash === link.href}
-				onclick={() => handleClick(link.href)}
-			>
-				{link.label}
-			</a>
-		{/each}
+		<a href="#hero" class="logo" onclick={() => handleClick('#hero')}>
+			<img src="/logo.png" alt="CashState" class="logo-img" />
+		</a>
+
+		<div class="desktop-links">
+			{#each links as link}
+				<a
+					href={link.href}
+					class="nav-link"
+					class:active={activeHash === link.href}
+					onclick={() => handleClick(link.href)}
+				>
+					{link.label}
+				</a>
+			{/each}
+		</div>
 
 		<div class="divider"></div>
 
@@ -75,11 +87,37 @@
 			{/if}
 		</button>
 
-		<a href="/app-store" class="download-btn" aria-label="Download on the App Store">
+		<a href="/app-store" class="download-btn desktop-only" aria-label="Download on the App Store">
 			<img class="badge-light" src={appStoreLight} alt="Download on the App Store" />
 			<img class="badge-dark" src={appStoreDark} alt="Download on the App Store" />
 		</a>
+
+		<button class="hamburger" onclick={toggleMenu} aria-label="Toggle menu" class:open={menuOpen}>
+			<span></span>
+			<span></span>
+			<span></span>
+		</button>
 	</div>
+
+	{#if menuOpen}
+		<div class="mobile-menu">
+			{#each links as link}
+				<a
+					href={link.href}
+					class="mobile-link"
+					class:active={activeHash === link.href}
+					onclick={() => handleClick(link.href)}
+				>
+					{link.label}
+				</a>
+			{/each}
+			<div class="mobile-divider"></div>
+			<a href="/app-store" class="download-btn mobile-download" aria-label="Download on the App Store">
+				<img class="badge-light" src={appStoreLight} alt="Download on the App Store" />
+				<img class="badge-dark" src={appStoreDark} alt="Download on the App Store" />
+			</a>
+		</div>
+	{/if}
 </nav>
 
 <style>
@@ -90,7 +128,8 @@
 		right: 0;
 		z-index: 100;
 		display: flex;
-		justify-content: center;
+		flex-direction: column;
+		align-items: center;
 		padding: 0 24px;
 		pointer-events: none;
 	}
@@ -107,6 +146,27 @@
 		border: 1px solid var(--nav-border);
 		box-shadow: 0 4px 24px rgba(0,0,0,0.08);
 		pointer-events: auto;
+	}
+
+	.logo {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 4px 12px;
+		text-decoration: none;
+		flex-shrink: 0;
+	}
+
+	.logo-img {
+		width: 28px;
+		height: 28px;
+		object-fit: contain;
+	}
+
+	.desktop-links {
+		display: flex;
+		align-items: center;
+		gap: 4px;
 	}
 
 	.nav-link {
@@ -178,26 +238,136 @@
 	:global([data-theme="dark"]) .badge-dark { display: block; }
 	:global([data-theme="dark"]) .badge-light { display: none; }
 
+	/* Hamburger button - hidden on desktop */
+	.hamburger {
+		display: none;
+		flex-direction: column;
+		justify-content: center;
+		align-items: center;
+		gap: 4px;
+		width: 36px;
+		height: 36px;
+		background: none;
+		border: none;
+		cursor: pointer;
+		padding: 6px;
+		flex-shrink: 0;
+	}
+
+	.hamburger span {
+		display: block;
+		width: 18px;
+		height: 2px;
+		background: var(--text-primary);
+		border-radius: 2px;
+		transition: all 0.3s ease;
+		transform-origin: center;
+	}
+
+	.hamburger.open span:nth-child(1) {
+		transform: rotate(45deg) translate(3px, 3px);
+	}
+
+	.hamburger.open span:nth-child(2) {
+		opacity: 0;
+	}
+
+	.hamburger.open span:nth-child(3) {
+		transform: rotate(-45deg) translate(3px, -3px);
+	}
+
+	/* Mobile dropdown menu */
+	.mobile-menu {
+		display: none;
+	}
+
 	@media (max-width: 640px) {
+		nav {
+			padding: 0 12px;
+		}
+
 		.pill {
-			gap: 2px;
-			padding: 4px;
+			width: 100%;
+			gap: 0;
+			padding: 4px 4px 4px 6px;
 		}
 
-		.nav-link {
-			font-size: 13px;
-			padding: 8px 12px;
+		.logo {
+			padding: 4px 8px;
+			margin-right: auto;
 		}
 
-		.divider { display: none; }
+		.logo-img {
+			width: 28px;
+			height: 28px;
+		}
+
+		.desktop-links {
+			display: none;
+		}
+
+		.desktop-only {
+			display: none;
+		}
+
+		.divider {
+			display: none;
+		}
+
+		.hamburger {
+			display: flex;
+		}
 
 		.theme-btn {
 			width: 32px;
 			height: 32px;
 		}
 
-		.download-btn img {
-			height: 28px;
+		.mobile-menu {
+			display: flex;
+			flex-direction: column;
+			align-items: stretch;
+			gap: 4px;
+			margin-top: 8px;
+			padding: 12px;
+			border-radius: 20px;
+			background: var(--nav-bg);
+			backdrop-filter: blur(20px);
+			-webkit-backdrop-filter: blur(20px);
+			border: 1px solid var(--nav-border);
+			box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+			pointer-events: auto;
+			width: 100%;
+		}
+
+		.mobile-link {
+			font-size: 15px;
+			font-weight: 500;
+			color: var(--text-muted);
+			padding: 12px 16px;
+			border-radius: 12px;
+			transition: all 0.2s ease;
+		}
+
+		.mobile-link.active {
+			background: var(--card-bg);
+			color: var(--text-primary);
+			font-weight: 600;
+		}
+
+		.mobile-divider {
+			height: 1px;
+			background: var(--border);
+			margin: 4px 0;
+		}
+
+		.mobile-download {
+			align-self: center;
+			margin-top: 4px;
+		}
+
+		.mobile-download img {
+			height: 36px;
 		}
 	}
 </style>

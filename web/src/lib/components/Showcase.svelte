@@ -222,9 +222,26 @@
 	}
 
 	@media (max-width: 640px) {
-		.showcase { padding: 20px 20px 80px; }
-		.carousel-viewport { height: 440px; }
+		.showcase { padding: 20px 16px 60px; }
+		.carousel-viewport { height: 520px; }
 		.nav-btn { display: none; }
 		.carousel-wrapper { gap: 0; }
+
+		.phone {
+			width: 65%;
+			margin-left: -32.5%;
+			border-radius: 28px;
+		}
+
+		.phone img {
+			border-radius: 24px;
+		}
+
+		h2 { margin-top: 36px; }
+
+		.sub {
+			font-size: 16px;
+			padding: 0 8px;
+		}
 	}
 </style>
