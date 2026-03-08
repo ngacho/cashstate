@@ -27,7 +27,7 @@ struct GoalsView: View {
                 }
             }
             .navigationTitle("Goals")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 if !goals.isEmpty {
                     ToolbarItem(placement: .navigationBarTrailing) {

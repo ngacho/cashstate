@@ -107,7 +107,7 @@ struct BudgetView: View {
                 }
             }
             .navigationTitle("Budget")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.large)
             .navigationDestination(for: CategoryTransactionsDestination.self) { destination in
                 CategoryTransactionsNavigableView(
                     category: destination.category,
@@ -1951,7 +1951,7 @@ private struct BudgetEditView: View {
                             .cornerRadius(10)
                         } else if linkedAccounts.isEmpty {
                             Text(allAccounts.isEmpty
-                                 ? "No bank accounts connected. Add one from the Overview tab."
+                                 ? "No bank accounts connected. Add one from the Home tab."
                                  : "No accounts linked. Tap \"Add Account\" to link accounts to this budget.")
                                 .font(.system(size: 12))
                                 .foregroundColor(Theme.Colors.textSecondary)
@@ -3284,7 +3284,7 @@ struct NewBudgetView: View {
                             .font(.system(size: 13))
                             .padding(.top, 1)
                         Text(allAccounts.isEmpty
-                             ? "No bank accounts connected yet. You can add them later from the Overview tab."
+                             ? "No bank accounts connected yet. You can add them later from the Home tab."
                              : "Link bank accounts to track spending for this budget. Tap \"Add Account\" to get started.")
                             .font(.system(size: 12))
                             .foregroundColor(Theme.Colors.textSecondary)

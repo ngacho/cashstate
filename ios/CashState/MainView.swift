@@ -11,7 +11,7 @@ struct MainView: View {
         TabView(selection: $selectedTab) {
             HomeView(apiClient: apiClient)
                 .tabItem {
-                    Label("Overview", systemImage: "house.fill")
+                    Label("Home", systemImage: "house.fill")
                 }
                 .tag(0)
 
@@ -746,7 +746,7 @@ struct AccountsView: View {
             }
             .background(Theme.Colors.background)
             .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.large)
             .refreshable {
                 Analytics.shared.track(.pullToRefresh, properties: ["screen": "accounts"])
                 await loadSimplefinItems()

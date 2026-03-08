@@ -98,37 +98,11 @@ struct HomeView: View {
                     // Mint-style Hero Card
                     VStack(spacing: Theme.Spacing.md) {
                         // Header
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Net Worth")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(Theme.Colors.textOnPrimary.opacity(0.9))
-                            }
-                            Spacer()
-                            // Sync button in header
-                            if isSyncing {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                    .scaleEffect(0.8)
-                                    .frame(width: 36, height: 36)
-                                    .background(Color.white.opacity(0.2))
-                                    .clipShape(Circle())
-                            } else {
-                                Button(action: {
-                                    Analytics.shared.track(.accountSyncStarted, properties: ["source": "home_header"])
-                                    Task { await resyncAllAccounts() }
-                                }) {
-                                    Image(systemName: "arrow.triangle.2.circlepath")
-                                        .font(.system(size: 15, weight: .semibold))
-                                        .foregroundColor(Theme.Colors.textOnPrimary)
-                                        .frame(width: 36, height: 36)
-                                        .background(Color.white.opacity(0.2))
-                                        .clipShape(Circle())
-                                }
-                                .disabled(simplefinItems.isEmpty)
-                            }
-                        }
+                        Text("Net Worth")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(Theme.Colors.textOnPrimary.opacity(0.9))
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
                         // Balance
                         Text("$\(String(format: "%.2f", totalBalance))")
@@ -270,7 +244,25 @@ struct HomeView: View {
                 .padding(.vertical, Theme.Spacing.sm)
             }
             .background(Theme.Colors.background)
-            .navigationBarHidden(true)
+            .navigationTitle("Home")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if isSyncing {
+                        ProgressView()
+                            .tint(Theme.Colors.primary)
+                    } else {
+                        Button {
+                            Analytics.shared.track(.accountSyncStarted, properties: ["source": "home_toolbar"])
+                            Task { await resyncAllAccounts() }
+                        } label: {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .foregroundColor(Theme.Colors.primary)
+                        }
+                        .disabled(simplefinItems.isEmpty)
+                    }
+                }
+            }
             .refreshable {
                 Analytics.shared.track(.pullToRefresh, properties: ["screen": "home"])
                 await loadAccounts()
