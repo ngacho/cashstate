@@ -1,6 +1,5 @@
 import AuthenticationServices
 import ClerkKit
-import ClerkKitUI
 import ConvexMobile
 import SwiftUI
 
@@ -56,13 +55,13 @@ struct LoginView: View {
 
 struct CreateAccountView: View {
     @Binding var authMode: AuthMode
-    @State private var authViewIsPresented = false
 
     @State private var firstName = ""
     @State private var lastName = ""
     @State private var email = ""
     @State private var password = ""
     @State private var isLoading = false
+    @State private var isSocialLoading = false
     @State private var errorMessage = ""
     @State private var showError = false
 
@@ -102,15 +101,16 @@ struct CreateAccountView: View {
 
                 // Social Sign In Buttons
                 VStack(spacing: Theme.Spacing.sm) {
-                    SocialSignInButton(provider: .google) {
-                        authViewIsPresented = true
+                    SocialSignInButton(provider: .google, isLoading: isSocialLoading) {
+                        Task { await socialSignIn(provider: .google) }
                     }
 
-                    SocialSignInButton(provider: .apple) {
-                        authViewIsPresented = true
+                    SocialSignInButton(provider: .apple, isLoading: isSocialLoading) {
+                        Task { await socialSignInWithApple() }
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
+                .disabled(isSocialLoading)
 
                 // Divider
                 HStack {
@@ -215,9 +215,6 @@ struct CreateAccountView: View {
         } message: {
             Text(errorMessage)
         }
-        .sheet(isPresented: $authViewIsPresented) {
-            AuthView()
-        }
     }
 
     private func submit() {
@@ -246,17 +243,41 @@ struct CreateAccountView: View {
             isLoading = false
         }
     }
+
+    private func socialSignIn(provider: OAuthProvider) async {
+        isSocialLoading = true
+        do {
+            _ = try await Clerk.shared.auth.signInWithOAuth(provider: provider)
+            Analytics.shared.track(.userLoggedIn)
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+        isSocialLoading = false
+    }
+
+    private func socialSignInWithApple() async {
+        isSocialLoading = true
+        do {
+            _ = try await Clerk.shared.auth.signInWithApple()
+            Analytics.shared.track(.userLoggedIn)
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+        isSocialLoading = false
+    }
 }
 
 // MARK: - Sign In View
 
 struct SignInView: View {
     @Binding var authMode: AuthMode
-    @State private var authViewIsPresented = false
 
     @State private var email = ""
     @State private var password = ""
     @State private var isLoading = false
+    @State private var isSocialLoading = false
     @State private var errorMessage = ""
     @State private var showError = false
 
@@ -293,15 +314,16 @@ struct SignInView: View {
 
                 // Social Sign In Buttons
                 VStack(spacing: Theme.Spacing.sm) {
-                    SocialSignInButton(provider: .google) {
-                        authViewIsPresented = true
+                    SocialSignInButton(provider: .google, isLoading: isSocialLoading) {
+                        Task { await socialSignIn(provider: .google) }
                     }
 
-                    SocialSignInButton(provider: .apple) {
-                        authViewIsPresented = true
+                    SocialSignInButton(provider: .apple, isLoading: isSocialLoading) {
+                        Task { await socialSignInWithApple() }
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
+                .disabled(isSocialLoading)
 
                 // Divider
                 HStack {
@@ -382,9 +404,6 @@ struct SignInView: View {
         } message: {
             Text(errorMessage)
         }
-        .sheet(isPresented: $authViewIsPresented) {
-            AuthView()
-        }
     }
 
     private func submit() {
@@ -414,6 +433,30 @@ struct SignInView: View {
             }
             isLoading = false
         }
+    }
+
+    private func socialSignIn(provider: OAuthProvider) async {
+        isSocialLoading = true
+        do {
+            _ = try await Clerk.shared.auth.signInWithOAuth(provider: provider)
+            Analytics.shared.track(.userLoggedIn)
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+        isSocialLoading = false
+    }
+
+    private func socialSignInWithApple() async {
+        isSocialLoading = true
+        do {
+            _ = try await Clerk.shared.auth.signInWithApple()
+            Analytics.shared.track(.userLoggedIn)
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+        isSocialLoading = false
     }
 }
 
@@ -809,12 +852,17 @@ enum SocialProvider {
 
 struct SocialSignInButton: View {
     let provider: SocialProvider
+    var isLoading: Bool = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: Theme.Spacing.sm) {
-                if let assetIcon = provider.assetIcon {
+                if isLoading {
+                    ProgressView()
+                        .tint(provider.foregroundColor)
+                        .frame(width: 20, height: 20)
+                } else if let assetIcon = provider.assetIcon {
                     Image(assetIcon)
                         .resizable()
                         .scaledToFit()
@@ -838,5 +886,6 @@ struct SocialSignInButton: View {
                     .stroke(Theme.Colors.border, lineWidth: 1)
             )
         }
+        .disabled(isLoading)
     }
 }
