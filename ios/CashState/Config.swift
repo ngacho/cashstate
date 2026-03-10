@@ -7,8 +7,7 @@ enum Config {
     /// Your Convex deployment URL
     /// Find it at: https://dashboard.convex.dev → your project → Settings
     /// Example: "https://your-deployment.convex.cloud"
-    // TODO: Replace with production Convex deployment URL
-    static let convexURL = "https://grandiose-ram-851.convex.cloud"
+    static let convexURL = "https://flexible-bison-651.convex.cloud"
 
     // MARK: - PostHog
 
@@ -18,12 +17,11 @@ enum Config {
     // MARK: - Clerk
 
     /// Your Clerk Publishable Key
-    /// Find it at: https://dashboard.clerk.com → Production → API Keys
-    // TODO: Replace with production Clerk publishable key (pk_live_...)
-    static let clerkPublishableKey = "pk_live_Y2xlcmsuY2FzaHN0YXRlLmFwcCQ"
+    /// Find it at: https://dashboard.clerk.com → API Keys
+    static let clerkPublishableKey = "pk_test_Zmx5aW5nLXJhY2Nvb24tNzIuY2xlcmsuYWNjb3VudHMuZGV2JA"
 
     // MARK: - App
 
-    static let debugMode = false
+    static let debugMode = true
     static let requestTimeout: TimeInterval = 30
 }
