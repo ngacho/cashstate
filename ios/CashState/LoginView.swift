@@ -57,6 +57,7 @@ struct LoginView: View {
 struct CreateAccountView: View {
     @Binding var authMode: AuthMode
     @State private var authViewIsPresented = false
+    @State private var isAppleLoading = false
 
     @State private var firstName = ""
     @State private var lastName = ""
@@ -87,9 +88,10 @@ struct CreateAccountView: View {
 
                 // Header
                 VStack(spacing: Theme.Spacing.xs) {
-                    Image(systemName: "dollarsign.circle.fill")
-                        .font(.system(size: 64))
-                        .foregroundColor(Theme.Colors.primary)
+                    Image("cashstate-logo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 80, height: 80)
 
                     Text("Create Account")
                         .font(.system(size: 28, weight: .bold))
@@ -107,7 +109,7 @@ struct CreateAccountView: View {
                     }
 
                     SocialSignInButton(provider: .apple) {
-                        authViewIsPresented = true
+                        signInWithApple()
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
@@ -220,6 +222,21 @@ struct CreateAccountView: View {
         }
     }
 
+    private func signInWithApple() {
+        isAppleLoading = true
+
+        Task {
+            do {
+                try await Clerk.shared.auth.signInWithApple()
+                Analytics.shared.track(.userLoggedIn)
+            } catch {
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+            isAppleLoading = false
+        }
+    }
+
     private func submit() {
         focusedField = nil
         isLoading = true
@@ -253,6 +270,7 @@ struct CreateAccountView: View {
 struct SignInView: View {
     @Binding var authMode: AuthMode
     @State private var authViewIsPresented = false
+    @State private var isAppleLoading = false
 
     @State private var email = ""
     @State private var password = ""
@@ -278,9 +296,10 @@ struct SignInView: View {
 
                 // Header
                 VStack(spacing: Theme.Spacing.xs) {
-                    Image(systemName: "dollarsign.circle.fill")
-                        .font(.system(size: 64))
-                        .foregroundColor(Theme.Colors.primary)
+                    Image("cashstate-logo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 80, height: 80)
 
                     Text("Welcome Back")
                         .font(.system(size: 28, weight: .bold))
@@ -298,7 +317,7 @@ struct SignInView: View {
                     }
 
                     SocialSignInButton(provider: .apple) {
-                        authViewIsPresented = true
+                        signInWithApple()
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
@@ -384,6 +403,21 @@ struct SignInView: View {
         }
         .sheet(isPresented: $authViewIsPresented) {
             AuthView()
+        }
+    }
+
+    private func signInWithApple() {
+        isAppleLoading = true
+
+        Task {
+            do {
+                try await Clerk.shared.auth.signInWithApple()
+                Analytics.shared.track(.userLoggedIn)
+            } catch {
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+            isAppleLoading = false
         }
     }
 

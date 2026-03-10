@@ -48,7 +48,8 @@ def claim_access_url(setup_token: str) -> str:
         sys.exit(1)
 
     access_url = resp.text.strip()
-    print(f"[claim] Got access URL (length={len(access_url)})")
+    print(f"[claim] Got access URL: {access_url}")
+    print(f"\n*** SAVE THIS ACCESS URL — the token is now spent and cannot be reused ***\n")
     return access_url
 
 
