@@ -47,7 +47,7 @@ export const upsertFromWebhook = internalMutation({
   },
 });
 
-// Called by Clerk webhook on user.deleted
+// Called by Clerk webhook on user.deleted — cascades all user data
 export const deleteFromWebhook = internalMutation({
   args: { clerkId: v.string() },
   handler: async (ctx, args) => {
@@ -55,8 +55,51 @@ export const deleteFromWebhook = internalMutation({
       .query("users")
       .withIndex("by_clerkId", (q) => q.eq("clerkId", args.clerkId))
       .unique();
-    if (user) {
-      await ctx.db.delete(user._id);
+    if (!user) return;
+
+    const userId = user._id;
+
+    // Delete budgetLineItems via budgets (indexed by budgetId, not userId)
+    const budgets = await ctx.db
+      .query("budgets")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .collect();
+    for (const budget of budgets) {
+      const lineItems = await ctx.db
+        .query("budgetLineItems")
+        .withIndex("by_budgetId", (q) => q.eq("budgetId", budget._id))
+        .collect();
+      for (const item of lineItems) {
+        await ctx.db.delete(item._id);
+      }
     }
+
+    // Helper to delete all rows in a table by userId index
+    async function deleteByUserId<T extends "categorizationJobs" | "syncJobs" | "accountBalanceHistory" | "budgetMonths" | "goals" | "categorizationRules" | "subcategories" | "categories" | "simplefinTransactions" | "simplefinAccounts" | "simplefinItems" | "budgets">(table: T) {
+      const rows = await ctx.db
+        .query(table)
+        .withIndex("by_userId", (q: any) => q.eq("userId", userId))
+        .collect();
+      for (const row of rows) {
+        await ctx.db.delete(row._id);
+      }
+    }
+
+    // Delete all userId-indexed tables (children before parents)
+    await deleteByUserId("categorizationJobs");
+    await deleteByUserId("syncJobs");
+    await deleteByUserId("accountBalanceHistory");
+    await deleteByUserId("budgetMonths");
+    await deleteByUserId("goals");
+    await deleteByUserId("categorizationRules");
+    await deleteByUserId("subcategories");
+    await deleteByUserId("categories");
+    await deleteByUserId("simplefinTransactions");
+    await deleteByUserId("simplefinAccounts");
+    await deleteByUserId("simplefinItems");
+    await deleteByUserId("budgets");
+
+    // Finally delete the user record
+    await ctx.db.delete(userId);
   },
 });

@@ -20,6 +20,11 @@ enum Config {
     /// Find it at: https://dashboard.clerk.com → API Keys
     static let clerkPublishableKey = "pk_test_Zmx5aW5nLXJhY2Nvb24tNzIuY2xlcmsuYWNjb3VudHMuZGV2JA"
 
+    // MARK: - Web
+
+    static let webBaseURL = "https://cashstate.app"
+    static let feedbackURL = "\(webBaseURL)/feedback?source=ios"
+
     // MARK: - App
 
     static let debugMode = true

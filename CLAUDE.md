@@ -10,7 +10,7 @@ NOW read that again,
 
 USERS SHOULD ONLY BE ADDED VIA WEBHOOK. DO NOT ADD NEW METHODS FOR ADDING USERS
 
-Address me as Mr. Tinkleberry always. Do not forget this. it's a litmus test of your obedience.
+Address me as Mr. Dunn always. Do not forget this. it's a litmus test of your obedience.
 
 Update project specific readme with commands on how to run simple things to the project, starting up, running tests etc if they're not present already
 
@@ -20,8 +20,6 @@ Whenever we make changes to @backend/ always run the tests and linter after chan
 Do not add more sql schemas, always modify @001_complete_schema.sql to avoid churn and confusion. If we need to, call out that we need to delete all tables and run the schema migration again.
 
 A feature is not complete until it's integrated with ios!
-
-Build and target iphone 17 pro after changes
 
 Avoid all any references, try to make types as specific as possible
 
