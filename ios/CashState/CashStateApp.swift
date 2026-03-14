@@ -42,6 +42,7 @@ struct CashStateApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(Clerk.shared)
                 .preferredColorScheme(selectedAppearance.colorScheme)
         }
     }

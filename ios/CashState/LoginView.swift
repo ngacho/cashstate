@@ -1,6 +1,5 @@
 import AuthenticationServices
 import ClerkKit
-import ClerkKitUI
 import ConvexMobile
 import SwiftUI
 
@@ -56,7 +55,7 @@ struct LoginView: View {
 
 struct CreateAccountView: View {
     @Binding var authMode: AuthMode
-    @State private var authViewIsPresented = false
+    @State private var isGoogleLoading = false
     @State private var isAppleLoading = false
 
     @State private var firstName = ""
@@ -105,12 +104,14 @@ struct CreateAccountView: View {
                 // Social Sign In Buttons
                 VStack(spacing: Theme.Spacing.sm) {
                     SocialSignInButton(provider: .google) {
-                        authViewIsPresented = true
+                        signInWithGoogle()
                     }
+                    .disabled(isGoogleLoading)
 
                     SocialSignInButton(provider: .apple) {
                         signInWithApple()
                     }
+                    .disabled(isAppleLoading)
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
 
@@ -217,8 +218,23 @@ struct CreateAccountView: View {
         } message: {
             Text(errorMessage)
         }
-        .sheet(isPresented: $authViewIsPresented) {
-            AuthView()
+    }
+
+    private func signInWithGoogle() {
+        isGoogleLoading = true
+
+        Task {
+            do {
+                _ = try await Clerk.shared.auth.signInWithOAuth(
+                    provider: .google,
+                    prefersEphemeralWebBrowserSession: false
+                )
+                Analytics.shared.track(.userLoggedIn)
+            } catch {
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+            isGoogleLoading = false
         }
     }
 
@@ -269,7 +285,7 @@ struct CreateAccountView: View {
 
 struct SignInView: View {
     @Binding var authMode: AuthMode
-    @State private var authViewIsPresented = false
+    @State private var isGoogleLoading = false
     @State private var isAppleLoading = false
 
     @State private var email = ""
@@ -313,12 +329,14 @@ struct SignInView: View {
                 // Social Sign In Buttons
                 VStack(spacing: Theme.Spacing.sm) {
                     SocialSignInButton(provider: .google) {
-                        authViewIsPresented = true
+                        signInWithGoogle()
                     }
+                    .disabled(isGoogleLoading)
 
                     SocialSignInButton(provider: .apple) {
                         signInWithApple()
                     }
+                    .disabled(isAppleLoading)
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
 
@@ -401,8 +419,23 @@ struct SignInView: View {
         } message: {
             Text(errorMessage)
         }
-        .sheet(isPresented: $authViewIsPresented) {
-            AuthView()
+    }
+
+    private func signInWithGoogle() {
+        isGoogleLoading = true
+
+        Task {
+            do {
+                _ = try await Clerk.shared.auth.signInWithOAuth(
+                    provider: .google,
+                    prefersEphemeralWebBrowserSession: false
+                )
+                Analytics.shared.track(.userLoggedIn)
+            } catch {
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+            isGoogleLoading = false
         }
     }
 
