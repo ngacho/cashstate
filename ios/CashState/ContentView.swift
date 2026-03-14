@@ -5,6 +5,7 @@ enum AppState: Equatable {
     case loading
     case signedOut
     case checkingUser
+    case onboarding
     case signedIn
 }
 
@@ -32,6 +33,10 @@ struct ContentView: View {
                 }
             case .signedOut:
                 LoginView()
+            case .onboarding:
+                OnboardingView {
+                    appState = .signedIn
+                }
             case .signedIn:
                 MainView(apiClient: apiClient)
             }
@@ -51,10 +56,9 @@ struct ContentView: View {
 
     /// Wait for Clerk to finish loading, then route.
     private func waitForClerkAndRoute() async {
-        // Poll until Clerk is loaded (usually <1s)
         while !Clerk.shared.isLoaded {
             if Task.isCancelled { return }
-            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            try? await Task.sleep(nanoseconds: 100_000_000)
         }
         await route()
     }
@@ -71,21 +75,24 @@ struct ContentView: View {
             return
         }
 
-        // Session exists — verify user is in our DB
         appState = .checkingUser
         let exists = await checkUserExists()
 
         if exists {
-            appState = .signedIn
+            let hasSimplefin = await checkHasSimplefinItems()
+            if hasSimplefin {
+                appState = .signedIn
+            } else {
+                appState = .onboarding
+            }
         } else {
-            // User not in DB after retries — sign out
             print("[ContentView] User not found in DB after retries, signing out")
             try? await Clerk.shared.auth.signOut()
             appState = .signedOut
         }
     }
 
-    /// Check if the user exists in Convex. Returns true if found.
+    /// Check if the user exists in Convex.
     private func checkUserExists() async -> Bool {
         guard let clerkId = await Clerk.shared.user?.id else {
             return false
@@ -120,6 +127,18 @@ struct ContentView: View {
         }
 
         return false
+    }
+
+    /// Check if the user has any SimpleFin connections.
+    private func checkHasSimplefinItems() async -> Bool {
+        do {
+            let items = try await apiClient.listSimplefinItems()
+            return !items.isEmpty
+        } catch {
+            print("[ContentView] Failed to check SimpleFin items: \(error)")
+            // On error, skip onboarding to avoid blocking the user
+            return true
+        }
     }
 }
 
