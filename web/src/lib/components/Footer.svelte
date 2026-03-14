@@ -15,6 +15,12 @@
 			</div>
 
 			<div class="col">
+				<h4>Guides</h4>
+				<a href="/guides/setup-simplefin">Set up SimpleFin</a>
+				<a href="/guides/add-accounts">Add bank accounts</a>
+			</div>
+
+			<div class="col">
 				<h4>Support</h4>
 				<a href="#faq">FAQ</a>
 				<a href="/feedback">Feedback</a>
@@ -40,7 +46,7 @@
 
 	.top {
 		display: grid;
-		grid-template-columns: 2fr 1fr 1fr;
+		grid-template-columns: 2fr 1fr 1fr 1fr;
 		gap: 48px;
 		margin-bottom: 48px;
 	}

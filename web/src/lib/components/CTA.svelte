@@ -114,6 +114,10 @@
 						</div>
 						<div id="turnstile-waitlist"></div>
 					</form>
+					<a href="/guides/setup-simplefin" class="setup-link">
+						Need help setting up SimpleFin?
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><polyline points="12 5 19 12 12 19"/></svg>
+					</a>
 				{/if}
 			</div>
 		</div>
@@ -256,6 +260,21 @@
 		display: flex;
 		justify-content: center;
 		margin-top: 8px;
+	}
+
+	.setup-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 24px;
+		font-size: 14px;
+		color: var(--accent);
+		font-weight: 500;
+		transition: opacity 0.2s;
+	}
+
+	.setup-link:hover {
+		opacity: 0.75;
 	}
 
 	@media (max-width: 640px) {
