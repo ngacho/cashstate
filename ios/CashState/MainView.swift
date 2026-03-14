@@ -920,7 +920,7 @@ struct AccountsView: View {
                 Task {
                     Analytics.shared.track(.userLoggedOut)
                     Analytics.shared.reset()
-                    _ = try? await Clerk.shared.session?.revoke()
+                    try? await Clerk.shared.auth.signOut()
                 }
             } label: {
                 HStack {

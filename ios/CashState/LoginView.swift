@@ -5,11 +5,26 @@ import SwiftUI
 
 // MARK: - Auth Mode
 
-enum AuthMode {
+enum AuthMode: Equatable {
     case createAccount
     case signIn
     case verifyEmail
     case signInVerify
+    case completeProfile(SignUp)
+
+    static func == (lhs: AuthMode, rhs: AuthMode) -> Bool {
+        switch (lhs, rhs) {
+        case (.createAccount, .createAccount),
+             (.signIn, .signIn),
+             (.verifyEmail, .verifyEmail),
+             (.signInVerify, .signInVerify):
+            return true
+        case (.completeProfile(let a), .completeProfile(let b)):
+            return a.id == b.id
+        default:
+            return false
+        }
+    }
 }
 
 // MARK: - Login View (Auth Router)
@@ -39,6 +54,12 @@ struct LoginView: View {
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             case .signInVerify:
                 SignInVerifyView(
+                    authMode: $authMode
+                )
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            case .completeProfile(let signUp):
+                CompleteProfileView(
+                    signUp: signUp,
                     authMode: $authMode
                 )
                 .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -225,11 +246,20 @@ struct CreateAccountView: View {
 
         Task {
             do {
-                _ = try await Clerk.shared.auth.signInWithOAuth(
+                let result = try await Clerk.shared.auth.signInWithOAuth(
                     provider: .google,
                     prefersEphemeralWebBrowserSession: false
                 )
-                Analytics.shared.track(.userLoggedIn)
+                switch result {
+                case .signIn:
+                    Analytics.shared.track(.userLoggedIn)
+                case .signUp(let signUp):
+                    if signUp.status == .complete {
+                        Analytics.shared.track(.userRegistered)
+                    } else {
+                        authMode = .completeProfile(signUp)
+                    }
+                }
             } catch {
                 errorMessage = error.localizedDescription
                 showError = true
@@ -243,9 +273,24 @@ struct CreateAccountView: View {
 
         Task {
             do {
-                try await Clerk.shared.auth.signInWithApple()
-                Analytics.shared.track(.userLoggedIn)
+                print("🍎 [Apple] Starting Sign in with Apple...")
+                let result = try await Clerk.shared.auth.signInWithApple()
+                print("🍎 [Apple] Result: \(result)")
+                switch result {
+                case .signIn:
+                    print("🍎 [Apple] Sign in complete")
+                    Analytics.shared.track(.userLoggedIn)
+                case .signUp(let signUp):
+                    if signUp.status == .complete {
+                        print("🍎 [Apple] Sign up complete")
+                        Analytics.shared.track(.userRegistered)
+                    } else {
+                        print("🍎 [Apple] Sign up missing requirements: \(signUp.missingFields)")
+                        authMode = .completeProfile(signUp)
+                    }
+                }
             } catch {
+                print("🍎 [Apple] ERROR: \(error)")
                 errorMessage = error.localizedDescription
                 showError = true
             }
@@ -426,11 +471,20 @@ struct SignInView: View {
 
         Task {
             do {
-                _ = try await Clerk.shared.auth.signInWithOAuth(
+                let result = try await Clerk.shared.auth.signInWithOAuth(
                     provider: .google,
                     prefersEphemeralWebBrowserSession: false
                 )
-                Analytics.shared.track(.userLoggedIn)
+                switch result {
+                case .signIn:
+                    Analytics.shared.track(.userLoggedIn)
+                case .signUp(let signUp):
+                    if signUp.status == .complete {
+                        Analytics.shared.track(.userRegistered)
+                    } else {
+                        authMode = .completeProfile(signUp)
+                    }
+                }
             } catch {
                 errorMessage = error.localizedDescription
                 showError = true
@@ -444,9 +498,24 @@ struct SignInView: View {
 
         Task {
             do {
-                try await Clerk.shared.auth.signInWithApple()
-                Analytics.shared.track(.userLoggedIn)
+                print("🍎 [Apple] Starting Sign in with Apple...")
+                let result = try await Clerk.shared.auth.signInWithApple()
+                print("🍎 [Apple] Result: \(result)")
+                switch result {
+                case .signIn:
+                    print("🍎 [Apple] Sign in complete")
+                    Analytics.shared.track(.userLoggedIn)
+                case .signUp(let signUp):
+                    if signUp.status == .complete {
+                        print("🍎 [Apple] Sign up complete")
+                        Analytics.shared.track(.userRegistered)
+                    } else {
+                        print("🍎 [Apple] Sign up missing requirements: \(signUp.missingFields)")
+                        authMode = .completeProfile(signUp)
+                    }
+                }
             } catch {
+                print("🍎 [Apple] ERROR: \(error)")
                 errorMessage = error.localizedDescription
                 showError = true
             }
@@ -746,6 +815,148 @@ struct VerifyEmailView: View {
                 showError = true
             }
             isResending = false
+        }
+    }
+}
+
+// MARK: - Complete Profile View (OAuth missing fields)
+
+struct CompleteProfileView: View {
+    let signUp: SignUp
+    @Binding var authMode: AuthMode
+
+    @State private var firstName = ""
+    @State private var lastName = ""
+    @State private var isLoading = false
+    @State private var errorMessage = ""
+    @State private var showError = false
+
+    @FocusState private var focusedField: Field?
+
+    enum Field {
+        case firstName, lastName
+    }
+
+    private var isFormValid: Bool {
+        !firstName.trimmingCharacters(in: .whitespaces).isEmpty
+            && !lastName.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: Theme.Spacing.lg) {
+                Spacer()
+                    .frame(height: 60)
+
+                VStack(spacing: Theme.Spacing.xs) {
+                    Image(systemName: "person.crop.circle.badge.plus")
+                        .font(.system(size: 64))
+                        .foregroundColor(Theme.Colors.primary)
+
+                    Text("Complete Your Profile")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundColor(Theme.Colors.textPrimary)
+
+                    Text("We just need your name to finish setting up")
+                        .font(.subheadline)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                VStack(spacing: Theme.Spacing.sm) {
+                    AuthTextField(
+                        placeholder: "First name",
+                        text: $firstName,
+                        icon: "person",
+                        keyboardType: .default,
+                        textContentType: .givenName
+                    )
+                    .focused($focusedField, equals: .firstName)
+                    .submitLabel(.next)
+                    .onSubmit { focusedField = .lastName }
+
+                    AuthTextField(
+                        placeholder: "Last name",
+                        text: $lastName,
+                        icon: "person",
+                        keyboardType: .default,
+                        textContentType: .familyName
+                    )
+                    .focused($focusedField, equals: .lastName)
+                    .submitLabel(.go)
+                    .onSubmit { if isFormValid { submit() } }
+                }
+                .padding(.horizontal, Theme.Spacing.lg)
+
+                Button(action: submit) {
+                    if isLoading {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Text("Continue")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .background(isFormValid ? Theme.Colors.primary : Theme.Colors.primary.opacity(0.5))
+                .foregroundColor(.white)
+                .cornerRadius(Theme.CornerRadius.md)
+                .disabled(isLoading || !isFormValid)
+                .padding(.horizontal, Theme.Spacing.lg)
+
+                Button(action: { authMode = .createAccount }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                        Text("Back")
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(Theme.Colors.textSecondary)
+                }
+
+                Spacer()
+                    .frame(height: 20)
+            }
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .alert("Error", isPresented: $showError) {
+            Button("OK") {}
+        } message: {
+            Text(errorMessage)
+        }
+        .onAppear {
+            focusedField = .firstName
+        }
+    }
+
+    private func submit() {
+        focusedField = nil
+        isLoading = true
+
+        Task {
+            do {
+                print("📝 [Profile] Updating sign up with name: \(firstName) \(lastName)")
+                let updated = try await signUp.update(
+                    firstName: firstName,
+                    lastName: lastName
+                )
+                print("📝 [Profile] Updated status: \(updated.status)")
+                print("📝 [Profile] Session: \(String(describing: Clerk.shared.session))")
+
+                if updated.status == .complete {
+                    print("📝 [Profile] Sign up complete!")
+                    Analytics.shared.track(.userRegistered)
+                } else {
+                    print("📝 [Profile] Still missing: \(updated.missingFields)")
+                    errorMessage = "Additional information required. Please try again."
+                    showError = true
+                }
+            } catch {
+                print("📝 [Profile] ERROR: \(error)")
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+            isLoading = false
         }
     }
 }

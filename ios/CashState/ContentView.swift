@@ -80,7 +80,7 @@ struct ContentView: View {
 
         // User not found after retries — sign out
         print("[ContentView] User not found in DB after retries, signing out")
-        try? await Clerk.shared.session?.revoke()
+        try? await Clerk.shared.auth.signOut()
         isCheckingUser = false
         userExists = false
     }
