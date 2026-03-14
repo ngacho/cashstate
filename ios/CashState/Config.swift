@@ -1,13 +1,13 @@
 import Foundation
 
-/// App configuration - UPDATE THESE VALUES
 enum Config {
     // MARK: - Convex
 
-    /// Your Convex deployment URL
-    /// Find it at: https://dashboard.convex.dev → your project → Settings
-    /// Example: "https://your-deployment.convex.cloud"
+    #if DEBUG
     static let convexURL = "https://flexible-bison-651.convex.cloud"
+    #else
+    static let convexURL = "https://grandiose-ram-851.convex.cloud"
+    #endif
 
     // MARK: - PostHog
 
@@ -16,9 +16,11 @@ enum Config {
 
     // MARK: - Clerk
 
-    /// Your Clerk Publishable Key
-    /// Find it at: https://dashboard.clerk.com → API Keys
+    #if DEBUG
     static let clerkPublishableKey = "pk_test_Zmx5aW5nLXJhY2Nvb24tNzIuY2xlcmsuYWNjb3VudHMuZGV2JA"
+    #else
+    static let clerkPublishableKey = "pk_live_Y2xlcmsuY2FzaHN0YXRlLmFwcCQ"
+    #endif
 
     // MARK: - Web
 
@@ -27,6 +29,10 @@ enum Config {
 
     // MARK: - App
 
+    #if DEBUG
     static let debugMode = true
+    #else
+    static let debugMode = false
+    #endif
     static let requestTimeout: TimeInterval = 30
 }
