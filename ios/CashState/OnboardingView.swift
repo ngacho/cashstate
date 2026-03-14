@@ -12,16 +12,16 @@ struct OnboardingView: View {
             Theme.Colors.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
+                // Pages
                 TabView(selection: $currentPage) {
                     welcomePage.tag(0)
                     whySimplefinPage.tag(1)
                     getStartedPage.tag(2)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
-                .animation(.easeInOut(duration: 0.3), value: currentPage)
 
-                // Page indicator + navigation
-                VStack(spacing: Theme.Spacing.lg) {
+                // Fixed bottom area — always present, content changes per page
+                VStack(spacing: Theme.Spacing.md) {
                     // Page dots
                     HStack(spacing: 8) {
                         ForEach(0..<pageCount, id: \.self) { index in
@@ -31,30 +31,95 @@ struct OnboardingView: View {
                         }
                     }
 
-                    if currentPage < pageCount - 1 {
-                        Button {
-                            currentPage += 1
-                        } label: {
-                            Text("Next")
-                                .font(.system(size: 17, weight: .semibold))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 50)
-                                .background(Theme.Colors.primary)
-                                .foregroundColor(.white)
-                                .cornerRadius(Theme.CornerRadius.md)
-                        }
-                        .padding(.horizontal, Theme.Spacing.lg)
-
-                        Button {
-                            onComplete()
-                        } label: {
-                            Text("Skip")
-                                .font(.subheadline)
-                                .foregroundColor(Theme.Colors.textSecondary)
+                    // Buttons — swapped based on page
+                    Group {
+                        if currentPage < pageCount - 1 {
+                            nextAndSkipButtons
+                        } else {
+                            getStartedButtons
                         }
                     }
                 }
-                .padding(.bottom, 50)
+                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.bottom, 40)
+                .animation(.none, value: currentPage)
+            }
+        }
+        .sheet(isPresented: $showSimplefinWebView) {
+            SimplefinBridgeWebView()
+        }
+    }
+
+    // MARK: - Bottom Button Sets
+
+    private var nextAndSkipButtons: some View {
+        VStack(spacing: Theme.Spacing.sm) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    currentPage += 1
+                }
+            } label: {
+                Text("Next")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(Theme.Colors.primary)
+                    .foregroundColor(.white)
+                    .cornerRadius(Theme.CornerRadius.md)
+            }
+
+            Button {
+                onComplete()
+            } label: {
+                Text("Skip")
+                    .font(.subheadline)
+                    .foregroundColor(Theme.Colors.textSecondary)
+                    .frame(height: 30)
+            }
+        }
+    }
+
+    private var getStartedButtons: some View {
+        VStack(spacing: Theme.Spacing.sm) {
+            Button {
+                showSimplefinWebView = true
+            } label: {
+                HStack(spacing: Theme.Spacing.xs) {
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Get a SimpleFin Key")
+                        .font(.system(size: 17, weight: .semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .background(Theme.Colors.primary)
+                .foregroundColor(.white)
+                .cornerRadius(Theme.CornerRadius.md)
+            }
+
+            Button {
+                onComplete()
+            } label: {
+                Text("I already have a key")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(Theme.Colors.cardBackground)
+                    .foregroundColor(Theme.Colors.textPrimary)
+                    .cornerRadius(Theme.CornerRadius.md)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.CornerRadius.md)
+                            .stroke(Theme.Colors.border, lineWidth: 1)
+                    )
+            }
+
+            Button {
+                onComplete()
+            } label: {
+                Text("I'll do this later")
+                    .font(.subheadline)
+                    .foregroundColor(Theme.Colors.textSecondary)
+                    .frame(height: 30)
             }
         }
     }
@@ -84,7 +149,6 @@ struct OnboardingView: View {
             }
             .padding(.horizontal, Theme.Spacing.xl)
 
-            // Feature highlights
             VStack(spacing: Theme.Spacing.md) {
                 featureRow(icon: "building.columns", text: "Aggregate all your bank accounts")
                 featureRow(icon: "chart.pie", text: "Auto-categorize your spending")
@@ -93,7 +157,6 @@ struct OnboardingView: View {
             .padding(.horizontal, Theme.Spacing.xl)
             .padding(.top, Theme.Spacing.md)
 
-            Spacer()
             Spacer()
         }
     }
@@ -153,7 +216,6 @@ struct OnboardingView: View {
             .padding(.top, Theme.Spacing.sm)
 
             Spacer()
-            Spacer()
         }
     }
 
@@ -195,54 +257,6 @@ struct OnboardingView: View {
             .padding(.top, Theme.Spacing.sm)
 
             Spacer()
-
-            // CTAs
-            VStack(spacing: Theme.Spacing.sm) {
-                Button {
-                    showSimplefinWebView = true
-                } label: {
-                    HStack(spacing: Theme.Spacing.xs) {
-                        Image(systemName: "arrow.up.right")
-                            .font(.system(size: 14, weight: .semibold))
-                        Text("Get a SimpleFin Key")
-                            .font(.system(size: 17, weight: .semibold))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-                    .background(Theme.Colors.primary)
-                    .foregroundColor(.white)
-                    .cornerRadius(Theme.CornerRadius.md)
-                }
-
-                Button {
-                    onComplete()
-                } label: {
-                    Text("I already have a key")
-                        .font(.system(size: 17, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(Theme.Colors.cardBackground)
-                        .foregroundColor(Theme.Colors.textPrimary)
-                        .cornerRadius(Theme.CornerRadius.md)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Theme.CornerRadius.md)
-                                .stroke(Theme.Colors.border, lineWidth: 1)
-                        )
-                }
-
-                Button {
-                    onComplete()
-                } label: {
-                    Text("I'll do this later")
-                        .font(.subheadline)
-                        .foregroundColor(Theme.Colors.textSecondary)
-                }
-            }
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.bottom, 50)
-            .sheet(isPresented: $showSimplefinWebView) {
-                SimplefinBridgeWebView()
-            }
         }
     }
 
