@@ -2,6 +2,7 @@ import SwiftUI
 
 struct OnboardingView: View {
     @State private var currentPage = 0
+    @State private var showSimplefinWebView = false
     let onComplete: () -> Void
 
     private let pageCount = 3
@@ -198,9 +199,7 @@ struct OnboardingView: View {
             // CTAs
             VStack(spacing: Theme.Spacing.sm) {
                 Button {
-                    if let url = URL(string: "https://simplefin.org") {
-                        UIApplication.shared.open(url)
-                    }
+                    showSimplefinWebView = true
                 } label: {
                     HStack(spacing: Theme.Spacing.xs) {
                         Image(systemName: "arrow.up.right")
@@ -241,6 +240,9 @@ struct OnboardingView: View {
             }
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.bottom, 50)
+            .sheet(isPresented: $showSimplefinWebView) {
+                SimplefinBridgeWebView()
+            }
         }
     }
 
