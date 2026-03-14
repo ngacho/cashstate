@@ -34,7 +34,7 @@ struct ContentView: View {
             case .signedOut:
                 LoginView()
             case .onboarding:
-                OnboardingView {
+                OnboardingView(apiClient: apiClient) {
                     appState = .signedIn
                 }
             case .signedIn:

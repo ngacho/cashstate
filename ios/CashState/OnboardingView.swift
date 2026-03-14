@@ -3,6 +3,8 @@ import SwiftUI
 struct OnboardingView: View {
     @State private var currentPage = 0
     @State private var showSimplefinWebView = false
+    @State private var showSimplefinSetup = false
+    let apiClient: APIClient
     let onComplete: () -> Void
 
     private let pageCount = 3
@@ -47,6 +49,11 @@ struct OnboardingView: View {
         }
         .sheet(isPresented: $showSimplefinWebView) {
             SimplefinBridgeWebView()
+        }
+        .sheet(isPresented: $showSimplefinSetup) {
+            SimplefinSetupView(apiClient: apiClient) { _ in
+                onComplete()
+            }
         }
     }
 
@@ -98,7 +105,7 @@ struct OnboardingView: View {
             }
 
             Button {
-                onComplete()
+                showSimplefinSetup = true
             } label: {
                 Text("I already have a key")
                     .font(.system(size: 17, weight: .semibold))
