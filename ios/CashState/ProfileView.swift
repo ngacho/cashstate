@@ -56,26 +56,23 @@ struct ProfileView: View {
                 .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
                 .padding(.horizontal, Theme.Spacing.md)
 
-                // Save button — only visible when changes exist
-                if hasChanges {
-                    Button(action: save) {
-                        if isSaving {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Text("Save Changes")
-                                .font(.system(size: 17, weight: .semibold))
-                        }
+                // Save button
+                Button(action: save) {
+                    if isSaving {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Text("Save Changes")
+                            .font(.system(size: 17, weight: .semibold))
                     }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-                    .background(canSave ? Theme.Colors.primary : Theme.Colors.primary.opacity(0.5))
-                    .foregroundColor(.white)
-                    .cornerRadius(Theme.CornerRadius.md)
-                    .disabled(!canSave)
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .background(canSave ? Theme.Colors.primary : Theme.Colors.primary.opacity(0.3))
+                .foregroundColor(.white)
+                .cornerRadius(Theme.CornerRadius.md)
+                .disabled(!canSave)
+                .padding(.horizontal, Theme.Spacing.md)
 
                 // Delete account
                 VStack(spacing: 0) {
@@ -106,7 +103,6 @@ struct ProfileView: View {
                 Spacer()
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: hasChanges)
         .scrollDismissesKeyboard(.interactively)
         .background(Theme.Colors.background)
         .navigationTitle("Profile")
