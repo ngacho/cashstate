@@ -4,10 +4,12 @@ struct OnboardingView: View {
     @State private var currentPage = 0
     @State private var showSimplefinWebView = false
     @State private var showSimplefinSetup = false
+    @State private var showSetupGuide = false
     let apiClient: APIClient
     let onComplete: () -> Void
 
     private let pageCount = 3
+    private let setupGuideURL = URL(string: "\(Config.webBaseURL)/guides/setup-simplefin")!
 
     var body: some View {
         ZStack {
@@ -53,6 +55,18 @@ struct OnboardingView: View {
         .sheet(isPresented: $showSimplefinSetup) {
             SimplefinSetupView(apiClient: apiClient) { _ in
                 onComplete()
+            }
+        }
+        .sheet(isPresented: $showSetupGuide) {
+            NavigationView {
+                WebView(url: setupGuideURL)
+                    .navigationTitle("Setup Guide")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { showSetupGuide = false }
+                        }
+                    }
             }
         }
     }
@@ -189,7 +203,7 @@ struct OnboardingView: View {
                     .foregroundColor(Theme.Colors.textPrimary)
                     .multilineTextAlignment(.center)
 
-                Text("CashState uses SimpleFin to securely connect to your banks. SimpleFin is a trusted, privacy-first service that gives you control of your financial data.")
+                Text("CashState uses SimpleFin to securely connect to your banks. It's a one-time setup that takes just a couple of minutes — after that, everything syncs automatically.")
                     .font(.body)
                     .foregroundColor(Theme.Colors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -242,12 +256,12 @@ struct OnboardingView: View {
             }
 
             VStack(spacing: Theme.Spacing.sm) {
-                Text("Ready to get started?")
+                Text("One-time setup")
                     .font(.system(size: 28, weight: .bold))
                     .foregroundColor(Theme.Colors.textPrimary)
                     .multilineTextAlignment(.center)
 
-                Text("Get your SimpleFin access key, then connect your banks in CashState. It only takes a couple of minutes.")
+                Text("Connect SimpleFin once and you're done. Your accounts and transactions will sync automatically from then on.")
                     .font(.body)
                     .foregroundColor(Theme.Colors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -261,6 +275,19 @@ struct OnboardingView: View {
                 stepRow(number: "3", text: "Paste your access key in CashState")
             }
             .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.top, Theme.Spacing.sm)
+
+            Button {
+                showSetupGuide = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "questionmark.circle")
+                        .font(.system(size: 14))
+                    Text("Need help? View our step-by-step guide")
+                        .font(.system(size: 14, weight: .medium))
+                }
+                .foregroundColor(Theme.Colors.primary)
+            }
             .padding(.top, Theme.Spacing.sm)
 
             Spacer()
