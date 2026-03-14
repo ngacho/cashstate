@@ -1,74 +1,115 @@
 import ClerkKit
 import SwiftUI
 
+enum AppState: Equatable {
+    case loading
+    case signedOut
+    case checkingUser
+    case signedIn
+}
+
 struct ContentView: View {
     private let apiClient = APIClient.shared
 
-    @State private var isCheckingUser = true
-    @State private var userExists = false
+    @State private var appState: AppState = .loading
 
     var body: some View {
         Group {
-            if Clerk.shared.session != nil {
-                if isCheckingUser {
-                    ZStack {
-                        Theme.Colors.background.ignoresSafeArea()
-                        VStack(spacing: Theme.Spacing.md) {
-                            ProgressView()
-                            Text("Loading...")
-                                .font(.subheadline)
-                                .foregroundColor(Theme.Colors.textSecondary)
-                        }
+            switch appState {
+            case .loading, .checkingUser:
+                ZStack {
+                    Theme.Colors.background.ignoresSafeArea()
+                    VStack(spacing: Theme.Spacing.md) {
+                        Image("cashstate-logo")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 80, height: 80)
+                        ProgressView()
+                        Text(appState == .loading ? "Starting up..." : "Loading your data...")
+                            .font(.subheadline)
+                            .foregroundColor(Theme.Colors.textSecondary)
                     }
-                    .task {
-                        await checkUserExists()
-                    }
-                } else if userExists {
-                    MainView(apiClient: apiClient)
-                } else {
-                    LoginView()
                 }
-            } else {
+            case .signedOut:
                 LoginView()
+            case .signedIn:
+                MainView(apiClient: apiClient)
             }
         }
-        .onChange(of: Clerk.shared.session != nil) { _, hasSession in
-            if hasSession {
-                isCheckingUser = true
-                userExists = false
-                Task { await checkUserExists() }
-            } else {
-                isCheckingUser = true
-                userExists = false
+        .task {
+            await waitForClerkAndRoute()
+        }
+        .onChange(of: Clerk.shared.isLoaded) { _, loaded in
+            if loaded {
+                Task { await route() }
             }
+        }
+        .onChange(of: Clerk.shared.session != nil) { _, _ in
+            Task { await route() }
         }
     }
 
-    private func checkUserExists() async {
-        guard let clerkId = await Clerk.shared.user?.id else {
-            isCheckingUser = false
-            userExists = false
+    /// Wait for Clerk to finish loading, then route.
+    private func waitForClerkAndRoute() async {
+        // Poll until Clerk is loaded (usually <1s)
+        while !Clerk.shared.isLoaded {
+            if Task.isCancelled { return }
+            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        }
+        await route()
+    }
+
+    /// Decide which screen to show based on current Clerk state.
+    private func route() async {
+        guard Clerk.shared.isLoaded else {
+            appState = .loading
             return
+        }
+
+        guard Clerk.shared.session != nil else {
+            appState = .signedOut
+            return
+        }
+
+        // Session exists — verify user is in our DB
+        appState = .checkingUser
+        let exists = await checkUserExists()
+
+        if exists {
+            appState = .signedIn
+        } else {
+            // User not in DB after retries — sign out
+            print("[ContentView] User not found in DB after retries, signing out")
+            try? await Clerk.shared.auth.signOut()
+            appState = .signedOut
+        }
+    }
+
+    /// Check if the user exists in Convex. Returns true if found.
+    private func checkUserExists() async -> Bool {
+        guard let clerkId = await Clerk.shared.user?.id else {
+            return false
         }
 
         let convexSiteURL = Config.convexURL
             .replacingOccurrences(of: ".convex.cloud", with: ".convex.site")
 
         guard let url = URL(string: "\(convexSiteURL)/user-exists?clerkId=\(clerkId)") else {
-            isCheckingUser = false
-            userExists = false
-            return
+            return false
         }
 
-        // Retry a few times since the webhook may not have fired yet
         for attempt in 1...5 {
+            if Task.isCancelled { return false }
+
             do {
                 let (data, _) = try await URLSession.shared.data(from: url)
                 if let json = try? JSONDecoder().decode(UserExistsResponse.self, from: data), json.exists {
-                    isCheckingUser = false
-                    userExists = true
-                    return
+                    return true
                 }
+            } catch is CancellationError {
+                return false
+            } catch let error as NSError where error.code == NSURLErrorCancelled {
+                return false
             } catch {
                 print("[ContentView] User check attempt \(attempt) failed: \(error)")
             }
@@ -78,11 +119,7 @@ struct ContentView: View {
             }
         }
 
-        // User not found after retries — sign out
-        print("[ContentView] User not found in DB after retries, signing out")
-        try? await Clerk.shared.auth.signOut()
-        isCheckingUser = false
-        userExists = false
+        return false
     }
 }
 
