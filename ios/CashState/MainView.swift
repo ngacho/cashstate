@@ -29,7 +29,7 @@ struct MainView: View {
 
             AccountsView(apiClient: apiClient)
                 .tabItem {
-                    Label("Accounts", systemImage: "person.crop.circle")
+                    Label("Settings", systemImage: "gearshape")
                 }
                 .tag(3)
         }
@@ -732,16 +732,13 @@ struct AccountsView: View {
     @State private var syncErrorMessage: String?
     @State private var showSyncError = false
     @State private var showFeedback = false
-    @State private var showDeleteConfirmation = false
-    @State private var isDeletingAccount = false
-    @State private var showDeleteError = false
-    @State private var deleteErrorMessage = ""
     @AppStorage("appearanceMode") private var appearanceMode: String = AppearanceMode.system.rawValue
 
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: Theme.Spacing.lg) {
+                    profileCard
                     connectionSection
                     appearanceSection
                     feedbackSection
@@ -948,6 +945,60 @@ struct AccountsView: View {
         }
     }
 
+    private var profileCard: some View {
+        NavigationLink(destination: ProfileView()) {
+            HStack(spacing: Theme.Spacing.md) {
+                // Initials avatar
+                ZStack {
+                    Circle()
+                        .fill(Theme.Colors.primary.opacity(0.15))
+                        .frame(width: 56, height: 56)
+                    Text(userInitials)
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundColor(Theme.Colors.primary)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(userName)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Theme.Colors.textPrimary)
+                    Text("Account & Profile")
+                        .font(.subheadline)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(Theme.Colors.textSecondary)
+            }
+            .padding(Theme.Spacing.md)
+            .background(Theme.Colors.cardBackground)
+            .cornerRadius(Theme.CornerRadius.md)
+            .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+    }
+
+    private var userName: String {
+        let first = Clerk.shared.user?.firstName ?? ""
+        let last = Clerk.shared.user?.lastName ?? ""
+        let full = "\(first) \(last)".trimmingCharacters(in: .whitespaces)
+        return full.isEmpty ? "CashState User" : full
+    }
+
+    private var userEmail: String {
+        Clerk.shared.user?.primaryEmailAddress?.emailAddress ?? ""
+    }
+
+    private var userInitials: String {
+        let first = Clerk.shared.user?.firstName?.prefix(1) ?? ""
+        let last = Clerk.shared.user?.lastName?.prefix(1) ?? ""
+        let initials = "\(first)\(last)".uppercased()
+        return initials.isEmpty ? "?" : initials
+    }
+
     private var signOutSection: some View {
         VStack(spacing: 0) {
             Button {
@@ -968,61 +1019,10 @@ struct AccountsView: View {
                 .background(Theme.Colors.cardBackground)
                 .contentShape(Rectangle())
             }
-
-            Divider()
-                .padding(.leading, Theme.Spacing.md)
-
-            Button {
-                showDeleteConfirmation = true
-            } label: {
-                HStack {
-                    Image(systemName: "trash")
-                        .foregroundColor(Theme.Colors.expense)
-                    Text("Delete Account")
-                        .foregroundColor(Theme.Colors.expense)
-                    Spacer()
-                    if isDeletingAccount {
-                        ProgressView()
-                            .tint(Theme.Colors.expense)
-                    }
-                }
-                .padding(Theme.Spacing.md)
-                .background(Theme.Colors.cardBackground)
-                .contentShape(Rectangle())
-            }
-            .disabled(isDeletingAccount)
         }
         .cornerRadius(Theme.CornerRadius.md)
         .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
         .padding(.horizontal, Theme.Spacing.md)
-        .alert("Delete Account", isPresented: $showDeleteConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive) {
-                deleteAccount()
-            }
-        } message: {
-            Text("This will permanently delete your account and all your data. This action cannot be undone.")
-        }
-        .alert("Error", isPresented: $showDeleteError) {
-            Button("OK") {}
-        } message: {
-            Text(deleteErrorMessage)
-        }
-    }
-
-    private func deleteAccount() {
-        isDeletingAccount = true
-        Task {
-            do {
-                Analytics.shared.track(.userLoggedOut)
-                Analytics.shared.reset()
-                try await Clerk.shared.user?.delete()
-            } catch {
-                deleteErrorMessage = error.localizedDescription
-                showDeleteError = true
-            }
-            isDeletingAccount = false
-        }
     }
 
     private func loadSimplefinItems() async {
