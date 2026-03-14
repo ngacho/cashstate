@@ -22,6 +22,11 @@ enum Config {
     // TODO: Replace with production Clerk publishable key (pk_live_...)
     static let clerkPublishableKey = "pk_live_Y2xlcmsuY2FzaHN0YXRlLmFwcCQ"
 
+    // MARK: - Web
+
+    static let webBaseURL = "https://cashstate.app"
+    static let feedbackURL = "\(webBaseURL)/feedback?source=ios"
+
     // MARK: - App
 
     static let debugMode = false

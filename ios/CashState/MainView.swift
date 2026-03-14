@@ -731,6 +731,11 @@ struct AccountsView: View {
     @State private var isSyncing = false
     @State private var syncErrorMessage: String?
     @State private var showSyncError = false
+    @State private var showFeedback = false
+    @State private var showDeleteConfirmation = false
+    @State private var isDeletingAccount = false
+    @State private var showDeleteError = false
+    @State private var deleteErrorMessage = ""
     @AppStorage("appearanceMode") private var appearanceMode: String = AppearanceMode.system.rawValue
 
     var body: some View {
@@ -739,6 +744,7 @@ struct AccountsView: View {
                 VStack(spacing: Theme.Spacing.lg) {
                     connectionSection
                     appearanceSection
+                    feedbackSection
                     signOutSection
                     Spacer()
                 }
@@ -914,6 +920,34 @@ struct AccountsView: View {
         .padding(.horizontal, Theme.Spacing.md)
     }
 
+    private var feedbackSection: some View {
+        VStack(spacing: 0) {
+            Button {
+                showFeedback = true
+            } label: {
+                HStack {
+                    Image(systemName: "bubble.left.and.text.bubble.right")
+                        .foregroundColor(Theme.Colors.primary)
+                    Text("Send Feedback")
+                        .foregroundColor(Theme.Colors.textPrimary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                }
+                .padding(Theme.Spacing.md)
+                .background(Theme.Colors.cardBackground)
+                .contentShape(Rectangle())
+            }
+        }
+        .cornerRadius(Theme.CornerRadius.md)
+        .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
+        .padding(.horizontal, Theme.Spacing.md)
+        .sheet(isPresented: $showFeedback) {
+            FeedbackWebView()
+        }
+    }
+
     private var signOutSection: some View {
         VStack(spacing: 0) {
             Button {
@@ -934,10 +968,61 @@ struct AccountsView: View {
                 .background(Theme.Colors.cardBackground)
                 .contentShape(Rectangle())
             }
+
+            Divider()
+                .padding(.leading, Theme.Spacing.md)
+
+            Button {
+                showDeleteConfirmation = true
+            } label: {
+                HStack {
+                    Image(systemName: "trash")
+                        .foregroundColor(Theme.Colors.expense)
+                    Text("Delete Account")
+                        .foregroundColor(Theme.Colors.expense)
+                    Spacer()
+                    if isDeletingAccount {
+                        ProgressView()
+                            .tint(Theme.Colors.expense)
+                    }
+                }
+                .padding(Theme.Spacing.md)
+                .background(Theme.Colors.cardBackground)
+                .contentShape(Rectangle())
+            }
+            .disabled(isDeletingAccount)
         }
         .cornerRadius(Theme.CornerRadius.md)
         .shadow(color: Theme.Colors.shadowColor, radius: 6, x: 0, y: 2)
         .padding(.horizontal, Theme.Spacing.md)
+        .alert("Delete Account", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                deleteAccount()
+            }
+        } message: {
+            Text("This will permanently delete your account and all your data. This action cannot be undone.")
+        }
+        .alert("Error", isPresented: $showDeleteError) {
+            Button("OK") {}
+        } message: {
+            Text(deleteErrorMessage)
+        }
+    }
+
+    private func deleteAccount() {
+        isDeletingAccount = true
+        Task {
+            do {
+                Analytics.shared.track(.userLoggedOut)
+                Analytics.shared.reset()
+                try await Clerk.shared.user?.delete()
+            } catch {
+                deleteErrorMessage = error.localizedDescription
+                showDeleteError = true
+            }
+            isDeletingAccount = false
+        }
     }
 
     private func loadSimplefinItems() async {
